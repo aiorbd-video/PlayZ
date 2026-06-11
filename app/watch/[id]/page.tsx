@@ -8,7 +8,7 @@ import 'shaka-player/dist/controls.css';
 const MATCH_API = "/api/proxy-matches";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
-// 🚀 ১০০% ক্যাশ-ফ্রি ফেচার
+// 🚀 ১০০% ক্যাশ-ফ্রি ফেচার (Next.js এর ক্যাশ বাইপাস করতে)
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 
 const getImg = (url: string) => {
@@ -32,8 +32,8 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
   const { data: matches } = useSWR(MATCH_API, fetcher);
   const currentMatch = matches?.find((m: any) => m.id.toString() === id);
   
-  const FIREBASE_URL = process.env.NEXT_PUBLIC_FIREBASE_URL || "https://ratul-liv-default-rtdb.asia-southeast1.firebasedatabase.app";
-  const { data: streams } = useSWR(`${FIREBASE_URL}/live-streams/${id}.json`, fetcher, { refreshInterval: 5000 });
+  // 🛡️ সিকিউর API কল: ফায়ারবেস লিংক এখন হাইড করা (কেউ দেখতে পারবে না)
+  const { data: streams } = useSWR(`/api/streams/${id}`, fetcher, { refreshInterval: 5000 });
 
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
@@ -181,7 +181,7 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
                   href={`/watch/${match.id}`} 
                   key={match.id} 
                   className="outline-none"
-                  prefetch={false} // 🟢 সঠিক জায়গা: Link ট্যাগের ভেতরে
+                  prefetch={false} // 🟢 Link এর মধ্যে ক্যাশ বাইপাস
                 >
                   <div className={`bg-[#1a1e29] border rounded-xl p-4 transition-all hover:bg-[#202533] ${
                     isCurrent ? 'border-[#3498db] bg-[#1e2738]/50 shadow-md shadow-[#3498db]/5' : 'border-[#2d6a85]/30'
