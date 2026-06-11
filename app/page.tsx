@@ -14,7 +14,7 @@ const getImg = (url: string) => {
   return `${IMG_PROXY}${encodeURIComponent(url)}`;
 };
 
-// 🟢 লাইভ, আপকামিং নাকি শেষ—সেটা বের করার লজিক
+// লাইভ, আপকামিং নাকি শেষ—সেটা বের করার লজিক
 const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => {
   if (!startStr || !endStr) return 'upcoming';
 
@@ -26,7 +26,7 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
   return 'upcoming';
 };
 
-// 🚀 ম্যাজিক টাইমার: আপনার শর্ত অনুযায়ী সময় দেখানোর ডাইনামিক ফাংশন
+// আপকামিং ম্যাচের ডাইনামিক কাউন্টডাউন টাইমার
 const renderUpcomingTime = (startStr: string, currentTime: Date) => {
   if (!startStr) return <span className="text-[#3498db] font-bold text-xs">TBA</span>;
   
@@ -37,7 +37,6 @@ const renderUpcomingTime = (startStr: string, currentTime: Date) => {
 
   const diffHours = diffMs / (1000 * 60 * 60);
 
-  // শর্ত ১: ৬ ঘণ্টার বেশি হলে (ডেট এবং টাইম)
   if (diffHours > 6) {
     const dateStr = startTime.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
     const timeStr = startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -47,9 +46,7 @@ const renderUpcomingTime = (startStr: string, currentTime: Date) => {
         <span className="text-xs font-bold text-[#3498db] mt-0.5">{timeStr}</span>
       </div>
     );
-  } 
-  // শর্ত ২: ১ ঘণ্টা থেকে ৬ ঘণ্টার মধ্যে (ঘণ্টা এবং মিনিট)
-  else if (diffHours > 1) {
+  } else if (diffHours > 1) {
     const h = Math.floor(diffHours);
     const m = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
     return (
@@ -58,9 +55,7 @@ const renderUpcomingTime = (startStr: string, currentTime: Date) => {
         <span className="text-xs font-bold text-orange-400">{h}h {m}m</span>
       </div>
     );
-  } 
-  // শর্ত ৩: ১ ঘণ্টার কম (মিনিট এবং সেকেন্ডের কাউন্টডাউন)
-  else {
+  } else {
     const m = Math.floor(diffMs / (1000 * 60));
     const s = Math.floor((diffMs % (1000 * 60)) / 1000);
     return (
@@ -89,14 +84,72 @@ export default function Home() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [mounted, setMounted] = useState(false);
 
-  // ⏱️ আপডেট: প্রতি ১ সেকেন্ড পর পর টাইম রিফ্রেশ হবে (কাউন্টডাউনের জন্য)
+  // 🛡️ গ্লোবাল সিকিউরিটি ফায়ারওয়াল স্টেট
+  const [isVerified, setIsVerified] = useState<boolean>(false);
+  const [verifying, setVerifying] = useState<boolean>(false);
+  const [captchaError, setCaptchaError] = useState<boolean>(false);
+
+  // সেশন ভেরিফিকেশন চেক ও টাইমার ইনিশিয়ালাইজেশন
   useEffect(() => {
     setMounted(true);
+    
+    const sessionAuth = sessionStorage.getItem('site_verified');
+    if (sessionAuth === 'true') {
+      setIsVerified(true);
+    }
+
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const { data: matches } = useSWR(MATCH_API, fetcher, { refreshInterval: 60000 });
+  // 🟢 ক্যাপচা পাস হওয়ার পর টোকেন ব্যাকএন্ডে সাবমিট করার প্রসেস
+  const handleGlobalVerify = async (token: string) => {
+    setVerifying(true);
+    setCaptchaError(false);
+    try {
+      const res = await fetch('/api/verify-captcha', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+
+      if (res.ok) {
+        sessionStorage.setItem('site_verified', 'true');
+        setIsVerified(true);
+      } else {
+        setCaptchaError(true);
+      }
+    } catch {
+      setCaptchaError(true);
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  // 🟢 ক্লাউডফ্লেয়ার উইজেটকে পুশ করে স্ক্রিনে রেন্ডার করার রানটাইম লুপ
+  useEffect(() => {
+    if (isVerified || !mounted) return;
+
+    (window as any).global_captcha_callback = (token: string) => {
+      if (token) handleGlobalVerify(token);
+    };
+
+    const interval = setInterval(() => {
+      const turnstile = (window as any).turnstile;
+      const container = document.getElementById('global-captcha-box');
+      if (turnstile && container && container.innerHTML === '') {
+        turnstile.render('#global-captcha-box', {
+          sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "0x4AAAAAABgwttpTXHLnnVvake",
+          callback: 'global_captcha_callback',
+        });
+        clearInterval(interval);
+      }
+    }, 400);
+
+    return () => clearInterval(interval);
+  }, [isVerified, mounted]);
+
+  const { data: matches } = useSWR(isVerified ? MATCH_API : null, fetcher, { refreshInterval: 60000 });
 
   const dynamicCategories = ['All'];
   if (matches && Array.isArray(matches)) {
@@ -142,28 +195,65 @@ export default function Home() {
 
   if (!mounted) return null;
 
+  // 🛡️ ১. গেটওয়ে ফায়ারওয়াল: ইউজার ভেরিফাইড না হলে ডাটা হাইড রেখে এই স্ক্রিনটি দেখাবে
+  if (!isVerified) {
+    return (
+      <div className="min-h-screen bg-[#0f111a] flex flex-col items-center justify-center p-4 text-center select-none">
+        <div className="max-w-md w-full bg-[#161925] p-8 rounded-2xl border border-gray-800 shadow-2xl flex flex-col items-center">
+          <div className="w-16 h-16 bg-[#3498db]/10 rounded-full flex items-center justify-center mb-4 text-[#3498db]">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0 0v2m0-2h2m-2 0H10m3.432-3.432a8 8 0 11-6.864 0M12 9V7m0 2a3 3 0 110 6 3 3 0 010-6z" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-black text-white mb-2 tracking-wide uppercase">All In One Sports</h1>
+          <p className="text-gray-400 text-sm mb-6 max-w-xs">Please complete the security check to safely access live dashboard.</p>
+          
+          <div className="flex justify-center min-h-[75px] w-full">
+            <div id="global-captcha-box"></div>
+          </div>
+
+          {verifying && (
+            <div className="flex items-center gap-2 text-blue-400 text-xs mt-4 animate-pulse">
+              <div className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+              Securing connection gateway...
+            </div>
+          )}
+
+          {captchaError && (
+            <p className="text-red-500 text-xs mt-4 font-bold bg-red-500/10 border border-red-500/20 px-3 py-1.5 rounded-lg">
+              Verification Failed! Please reload page and try again.
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // 🎉 ২. আসল ড্যাশবোর্ড: ক্যাপচা সফলভাবে ভেরিফাই হওয়ার পর এটি আনলক হবে
   return (
     <main className="min-h-screen bg-[#12141c] text-white font-sans pb-20">
       
-      {/* 🔴 Top Header */}
-      <nav className="p-4 bg-[#12141c] sticky top-0 z-50 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button className="text-gray-300 hover:text-white outline-none">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          <h1 className="text-xl md:text-2xl font-bold text-[#3498db] tracking-wide">All in one sports web</h1>
-        </div>
-        <div className="flex items-center gap-4 text-gray-300">
-          <button className="outline-none hover:text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg></button>
-          <button className="outline-none hover:text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></button>
+      {/* Top Header */}
+      <nav className="p-4 bg-[#12141c] sticky top-0 z-50 flex items-center justify-between border-b border-gray-800/50 backdrop-blur-md bg-opacity-90">
+        <div className="max-w-4xl w-full mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button className="text-gray-300 hover:text-white outline-none">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <h1 className="text-xl md:text-2xl font-bold text-[#3498db] tracking-wide">All in one sports web</h1>
+          </div>
+          <div className="flex items-center gap-4 text-gray-300">
+            <button className="outline-none hover:text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg></button>
+            <button className="outline-none hover:text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></button>
+          </div>
         </div>
       </nav>
 
       <div className="max-w-4xl mx-auto px-4 mt-2">
         
-        {/* ⚾ Dynamic Category Circles */}
+        {/* Category Circles */}
         <div className="flex items-center justify-around md:justify-start md:gap-10 py-4 mb-2 overflow-x-auto scrollbar-hide">
           {dynamicCategories.map((cat) => (
             <div key={cat} onClick={() => setActiveCategory(cat)} className="flex flex-col items-center gap-2 cursor-pointer outline-none group min-w-[70px]">
@@ -177,7 +267,7 @@ export default function Home() {
           ))}
         </div>
 
-        {/* 🎛️ Filter Pills */}
+        {/* Filter Pills */}
         <div className="flex items-center gap-3 overflow-x-auto scrollbar-hide mb-6 py-1">
           {filters.map((filter) => (
             <button
@@ -195,7 +285,7 @@ export default function Home() {
           ))}
         </div>
 
-        {/* 🏟️ Matches List */}
+        {/* Matches List */}
         {!matches && <div className="text-center py-10 text-gray-400 animate-pulse font-medium">Loading premium matches...</div>}
         {matches && processedMatches?.length === 0 && (
           <div className="text-center py-10 text-gray-500 font-medium bg-[#1a1e29] rounded-xl border border-gray-800">
@@ -241,7 +331,7 @@ export default function Home() {
                       </div>
                     )}
 
-                    {/* Center: Dynamic Status Badge (ম্যাজিক এখানে) */}
+                    {/* Center: Dynamic Status Badge */}
                     <div className="w-1/3 flex justify-center mt-[-20px]">
                       {status === 'live' && (
                         <span className="bg-red-500/10 text-red-500 border border-red-500/30 px-3 py-1.5 rounded-lg font-black text-xs tracking-wider flex items-center gap-1.5 shadow-[0_0_10px_rgba(239,68,68,0.2)]">
@@ -250,7 +340,6 @@ export default function Home() {
                         </span>
                       )}
                       
-                      {/* ⏱️ আপকামিং এর জন্য নতুন কাউন্টডাউন বাটন */}
                       {status === 'upcoming' && (
                         <div className="bg-[#1e2738] border border-[#2d6a85]/50 px-3 py-1.5 rounded-lg flex items-center justify-center min-w-[80px] shadow-inner">
                           {renderUpcomingTime(eventInfo.startTime, currentTime)}
@@ -269,7 +358,7 @@ export default function Home() {
                       <div className="flex flex-col items-center gap-3 w-1/3">
                         {eventInfo.teamBFlag && eventInfo.teamBFlag !== "null" ? (
                           <div className="w-14 h-14 md:w-16 md:h-16 rounded-full p-0.5 bg-gray-800/50 shadow-inner group-hover:scale-105 transition-transform">
-                            <img src={getImg(eventInfo.teamBFlag)} className="w-full h-full object-cover rounded-full" loading="lazy" />
+                            <img src={getImg(match.eventInfo.teamBFlag)} className="w-full h-full object-cover rounded-full" loading="lazy" />
                           </div>
                         ) : (
                           <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-gray-800 flex items-center justify-center text-xl">🛡️</div>
