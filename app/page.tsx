@@ -132,7 +132,7 @@ export default function Home() {
     }
   };
 
-  // 🟢 ১০০% সাকসেসফুল রেন্ডারিং লুপ (উইন্ডো লিসেনার মুক্ত পদ্ধতি)
+  // 🟢 ১০০% গ্যারান্টিড রেন্ডারিং লুপ (আসল কি সরাসরি হার্ডকোডেড বসানো হয়েছে)
   useEffect(() => {
     if (isVerified || !mounted) return;
 
@@ -142,18 +142,16 @@ export default function Home() {
       const turnstile = (window as any).turnstile;
       const container = document.getElementById('global-captcha-box');
 
-      // যদি ক্লাউডফ্লেয়ারের গ্লোবাল অবজেক্ট রেডি থাকে এবং কন্টেইনারটি খালি থাকে
       if (turnstile && container && container.innerHTML === '') {
         try {
           widgetId = turnstile.render('#global-captcha-box', {
-            sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "0x4AAAAAABgwttpTXHLnnVvake",
+            sitekey: "0x4AAAAAABgwttpTXHLnnVvake", // 🟢 সরাসরি আপনার আসল সাইট কি বসিয়ে দেওয়া হলো
             callback: function(token: string) {
               if (token) {
                 handleGlobalVerify(token);
               }
             },
           });
-          // সফলভাবে রেন্ডার হয়ে গেলে লুপ বন্ধ করে দাও
           clearInterval(renderInterval);
         } catch (e) {
           console.error("Turnstile render error:", e);
@@ -161,12 +159,10 @@ export default function Home() {
       }
     };
 
-    // প্রতি ৩০০ মিলিসেকেন্ড পর পর চেক করে জোর করে রেন্ডার করবেই করবে
     const renderInterval = setInterval(tryExplicitRender, 300);
 
     return () => {
       clearInterval(renderInterval);
-      // মেমোরি ক্লিনআপ
       const turnstile = (window as any).turnstile;
       if (turnstile && widgetId !== null) {
         try { turnstile.remove(widgetId); } catch(e){}
