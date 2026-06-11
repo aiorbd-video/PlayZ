@@ -8,7 +8,7 @@ import 'shaka-player/dist/controls.css';
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export default function PlayerPage({ params }: { params: Promise<{ id: string }> }) {
-  // Promise হিসেবে আসা params কে use() দিয়ে আনপ্যাক করা
+  // Next.js 15 এর নিয়মে params থেকে id বের করা
   const { id } = use(params);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -34,7 +34,10 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
     let ui: any;
 
     // Server-Side Rendering এরর এড়াতে Dynamic Import
-    import('shaka-player/dist/shaka-player.ui.js').then((shaka) => {
+    import('shaka-player/dist/shaka-player.ui.js').then((module) => {
+      // TypeScript-কে শান্ত করার জন্য 'any' টাইপ ব্যবহার করা হলো
+      const shaka = module as any;
+
       shaka.polyfill.installAll();
 
       if (shaka.Player.isBrowserSupported()) {
@@ -159,4 +162,4 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
       
     </main>
   );
-                  }
+}
