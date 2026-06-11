@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   keywords: ['live sports', 'free cricket streaming', 'live football streaming', 'wwe live watch', 'all in one sports', 'hd sports stream', 'bangladesh cricket live'],
   authors: [{ name: 'MD. RATUL HASAN' }],
   creator: 'MD. RATUL HASAN',
-  text: 'All in One Sports Web',
+  publisher: 'All in One Sports Web',
   robots: {
     index: true,
     follow: true,
