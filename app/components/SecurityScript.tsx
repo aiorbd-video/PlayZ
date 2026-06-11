@@ -4,12 +4,13 @@ import { useEffect } from 'react';
 
 export default function SecurityScript() {
   useEffect(() => {
-    const disableInspect = (e: MouseEvent | KeyboardEvent) => {
-      // ১. রাইট ক্লিক লক
-      if ('button' in e && e.button === 2) {
-        e.preventDefault();
-      }
-      // ২. F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U লক
+    // ১. মাউস রাইট-ক্লিক লক করার ফাংশন
+    const handleContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+
+    // ২. কি-বোর্ডের শর্টকাট (F12, Ctrl+U ইত্যাদি) লক করার ফাংশন
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (
         e.key === 'F12' ||
         (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) ||
@@ -19,14 +20,16 @@ export default function SecurityScript() {
       }
     };
 
-    document.addEventListener('contextmenu', disableInspect);
-    document.addEventListener('keydown', disableInspect);
+    // ইভেন্ট লিসেনারগুলো অ্যাড করা হলো
+    document.addEventListener('contextmenu', handleContextMenu);
+    document.addEventListener('keydown', handleKeyDown);
 
+    // মেমোরি লিক বন্ধ করতে ক্লিনআপ করা হলো
     return () => {
-      document.removeEventListener('contextmenu', disableInspect);
-      document.removeEventListener('keydown', disableInspect);
+      document.removeEventListener('contextmenu', handleContextMenu);
+      document.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
 
-  return null; // এটি ব্যাকগ্রাউন্ডে কাজ করবে, স্ক্রিনে কিছু দেখাবে না
+  return null;
 }
