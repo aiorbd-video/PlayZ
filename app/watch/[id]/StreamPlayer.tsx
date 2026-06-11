@@ -5,7 +5,6 @@ import useSWR from 'swr';
 import Link from 'next/link';
 import 'shaka-player/dist/controls.css';
 
-// 🟢 ডাটা লোড না হওয়ার সমস্যা মেটাতে ফুল এবসোলিউট পাথ ব্যবহার করা হয়েছে
 const MATCH_API = "https://ratulxlive.vercel.app/api/proxy-matches";
 const IMG_PROXY = "https://img.aiorbd.workers.dev/?url=";
 
@@ -29,6 +28,7 @@ export default function StreamPlayer({ id }: { id: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const [playerInstance, setPlayerInstance] = useState<any>(null);
+  const [uiInstance, setUiInstance] = useState<any>(null); // 🟢 UI Instance ট্র্যাক করার জন্য স্টেট
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -41,14 +41,23 @@ export default function StreamPlayer({ id }: { id: string }) {
     setActiveStreamIndex(0);
   }, [id]);
 
-  // ম্যাচ ইনফো এবং কার্ডের ডাটা ফেচিং
-  const { data: matches } = useSWR(MATCH_API, fetcher);
+  // 🟢 রি-রেন্ডারিং সমস্যা এড়াতে এবং ফুল-স্ক্রিন লক রাখতে 'revalidate' প্রোপার্টি কন্ট্রোল করা হয়েছে
+  const { data: matches } = useSWR(MATCH_API, fetcher, {
+    revalidateIfStale: false,
+    revalidateOnFocus: false,
+    revalidateOnReconnect: false
+  });
+  
   const currentMatch = matches?.find((m: any) => m.id.toString() === id);
   
-  // স্ট্রিম সার্ভার লিংকের ডাটা ফেচিং
-  const { data: apiResponse } = useSWR(`/api/streams/${id}`, fetcher, { refreshInterval: 5000 });
+  // ব্যাকগ্রাউন্ডে স্ট্রিম এপিআই কল করলেও যেন প্লেয়ার স্টেট ফ্লিকার না করে
+  const { data: apiResponse } = useSWR(`/api/streams/${id}`, fetcher, { 
+    refreshInterval: 10000,
+    revalidateOnFocus: false
+  });
   const streams = apiResponse?.streams || null;
 
+  // 🟢 Shaka Player ইনিশিয়ালাইজেশন (একবারই রান হবে)
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
     let player: any;
@@ -66,7 +75,9 @@ export default function StreamPlayer({ id }: { id: string }) {
           controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'fullscreen', 'overflow_menu'],
           addSeekBar: true,
         });
+        
         setPlayerInstance(player);
+        setUiInstance(ui);
       }
     });
 
@@ -76,15 +87,18 @@ export default function StreamPlayer({ id }: { id: string }) {
     };
   }, []);
 
+  // 🟢 ভিডিও সোর্স লোড ও ফুল-স্ক্রিন প্রটেকশন লজিক
   useEffect(() => {
     if (!playerInstance || !streams || streams.length === 0) return;
     const currentStream = streams[activeStreamIndex] || streams[0];
     const streamUrl = currentStream.link;
     const drmKeyString = currentStream.api;
 
+    // যদি অলরেডি এই ইউআরএলটি প্লে হতে থাকে, তবে নতুন করে লোড করে ফুল-স্ক্রিন ভাঙবো না
+    if (playerInstance.getAssetUri() === streamUrl) return;
+
     const loadVideo = async () => {
       try {
-        await playerInstance.unload();
         const playerConfig: any = {
           streaming: {
             bufferingGoal: 30,       
@@ -114,11 +128,10 @@ export default function StreamPlayer({ id }: { id: string }) {
       }
     };
     loadVideo();
-  }, [playerInstance, streams, activeStreamIndex, id]); 
+  }, [playerInstance, streams, activeStreamIndex]); 
 
   return (
     <main className="min-h-screen bg-[#12141c] text-white font-sans pb-10">
-      {/* নেভিগেশন বার */}
       <nav className="p-3 bg-[#181a20] sticky top-0 z-50 border-b border-gray-800">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/">
@@ -137,21 +150,17 @@ export default function StreamPlayer({ id }: { id: string }) {
       </nav>
 
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
-        {/* বাম কলাম: ভিডিও প্লেয়ার এবং ম্যাচ ইনফো কার্ড */}
         <div className="lg:col-span-2 flex flex-col">
-          <div className="w-full bg-black aspect-video relative rounded-none sm:rounded-xl overflow-hidden shadow-xl border border-gray-800">
+          <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-none sm:rounded-xl overflow-hidden shadow-xl border border-gray-800 shaka-video-container">
             {!streams && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#12141c]/90 z-10 flex-col gap-3">
                 <div className="w-10 h-10 border-4 border-[#3498db] border-t-transparent rounded-full animate-spin"></div>
                 <span className="text-gray-400 text-sm animate-pulse">Fetching Secure Stream...</span>
               </div>
             )}
-            <div ref={videoContainerRef} className="w-full h-full">
-              <video ref={videoRef} className="w-full h-full" autoPlay playsInline />
-            </div>
+            <video ref={videoRef} className="w-full h-full" autoPlay playsInline />
           </div>
 
-          {/* সার্ভার বাটন গ্রুপ */}
           {streams && streams.length > 0 && (
             <div className="flex gap-2 overflow-x-auto scrollbar-hide py-3 my-2 border-b border-gray-800/50">
               <span className="text-gray-400 font-bold flex items-center text-sm mr-2 whitespace-nowrap">Servers:</span>
@@ -169,7 +178,6 @@ export default function StreamPlayer({ id }: { id: string }) {
             </div>
           )}
 
-          {/* 🟢 প্লেয়ারের নিচের ডাইনামিক ম্যাচ ইনফো কার্ড (যা আগে আসছিল না) */}
           {currentMatch ? (
             <div className="bg-[#1a1e29] border border-gray-800/80 rounded-xl p-5 mt-2">
               <div className="text-center text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
@@ -195,7 +203,6 @@ export default function StreamPlayer({ id }: { id: string }) {
           )}
         </div>
 
-        {/* ডান কলাম: অন্যান্য লাইভ ম্যাচের তালিকা (সাইডবার) */}
         <div className="mt-6 lg:mt-0 lg:col-span-1 max-h-[70vh] lg:max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-hide pr-1">
           <div className="flex flex-col gap-3">
             <span className="text-xs font-bold uppercase tracking-wider text-gray-400 px-1 mb-1">More Live Events</span>
