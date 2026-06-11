@@ -7,9 +7,9 @@ import 'shaka-player/dist/controls.css';
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-export default function PlayerPage({ params }: { params: { id: string } }) {
-  // Next.js 15 এর নিয়মে params থেকে id বের করা
-  const { id } = use(params) as any;
+export default function PlayerPage({ params }: { params: Promise<{ id: string }> }) {
+  // Promise হিসেবে আসা params কে use() দিয়ে আনপ্যাক করা
+  const { id } = use(params);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
