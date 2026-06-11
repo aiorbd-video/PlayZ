@@ -8,7 +8,7 @@ import 'shaka-player/dist/controls.css';
 const MATCH_API = "/api/proxy-matches";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
-// 🚀 ১০০% ক্যাশ-ফ্রি ফেচার (Next.js এর ক্যাশ বাইপাস করতে cache: 'no-store' যুক্ত করা হয়েছে)
+// 🚀 ১০০% ক্যাশ-ফ্রি ফেচার
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 
 const getImg = (url: string) => {
@@ -24,7 +24,7 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
   const [playerInstance, setPlayerInstance] = useState<any>(null);
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
 
-  // 🟢 ম্যাজিক ১: অন্য ম্যাচে ক্লিক করলে সার্ভার অটোমেটিক ১ নম্বরে রিসেট হয়ে যাবে
+  // 🟢 অন্য ম্যাচে ক্লিক করলে সার্ভার অটোমেটিক ১ নম্বরে রিসেট হয়ে যাবে
   useEffect(() => {
     setActiveStreamIndex(0);
   }, [id]);
@@ -33,7 +33,6 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
   const currentMatch = matches?.find((m: any) => m.id.toString() === id);
   
   const FIREBASE_URL = process.env.NEXT_PUBLIC_FIREBASE_URL || "https://ratul-liv-default-rtdb.asia-southeast1.firebasedatabase.app";
-  // 🟢 ম্যাজিক ২: SWR এর মাধ্যমে প্রতিবার ফায়ারবেস থেকে ফ্রেশ ডাটা আনা
   const { data: streams } = useSWR(`${FIREBASE_URL}/live-streams/${id}.json`, fetcher, { refreshInterval: 5000 });
 
   useEffect(() => {
@@ -71,7 +70,7 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
 
     const loadVideo = async () => {
       try {
-        // 🟢 ম্যাজিক ৩: আগের ভিডিও ফোর্স স্টপ করে মেমোরি ক্লিয়ার করা (যাতে মিক্স না হয়)
+        // 🟢 আগের ভিডিও ফোর্স স্টপ করে মেমোরি ক্লিয়ার করা
         await playerInstance.unload();
 
         if (drmKeyString && drmKeyString.includes(':')) {
@@ -178,13 +177,15 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
               const isCurrent = match.id.toString() === id;
 
               return (
-                <Link href={`/watch/${match.id}`} key={match.id} className="outline-none">
+                <Link 
+                  href={`/watch/${match.id}`} 
+                  key={match.id} 
+                  className="outline-none"
+                  prefetch={false} // 🟢 সঠিক জায়গা: Link ট্যাগের ভেতরে
+                >
                   <div className={`bg-[#1a1e29] border rounded-xl p-4 transition-all hover:bg-[#202533] ${
                     isCurrent ? 'border-[#3498db] bg-[#1e2738]/50 shadow-md shadow-[#3498db]/5' : 'border-[#2d6a85]/30'
-                  }`}
-                  // 🟢 নেভিগেশনের সময় ক্যাশ বাইপাস
-                  prefetch={false}
-                  >
+                  }`}>
                     
                     <div className="text-[12px] text-gray-400 font-medium mb-3 flex items-center gap-2 truncate">
                       <img src={getImg(match.eventInfo.eventLogo)} className="w-3.5 h-3.5 object-contain rounded-full" alt="" loading="lazy" />
