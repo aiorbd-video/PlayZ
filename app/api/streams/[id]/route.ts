@@ -1,36 +1,13 @@
 import { NextResponse } from 'next/server';
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  // Promise থেকে id বের করা (Next.js 15+ রুলস)
+  const { id } = await params;
+  
+  // 🟢 আপনার আসল ডাটাবেস লিংকটি এখন সার্ভারের ভেতরে লক করা থাকলো (কেউ দেখতে পারবে না)
+  const FIREBASE_URL = "https://ratul-liv-default-rtdb.asia-southeast1.firebasedatabase.app";
+  
   try {
-    const { id } = await params;
-    
-    // ফ্রন্টএন্ড থেকে পাঠানো টোকেন বডি থেকে রিসিভ করা
-    const { token } = await request.json();
-
-    if (!token) {
-      return NextResponse.json({ error: "Captcha token required" }, { status: 400 });
-    }
-
-    // 🛡️ ক্লাউডফ্লেয়ার Turnstile এপিআই ভেরিফিকেশন কল
-    const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        secret: process.env.CLOUDFLARE_SECRET_KEY || "0x4AAAAAABgwtjiZwrO5JxPdx_AyT7Mm8Bg",
-        response: token
-      })
-    });
-
-    const captchaResult = await verifyRes.json();
-
-    // ভেরিফিকেশন ফেইল করলে ডাটা লক থাকবে
-    if (!captchaResult.success) {
-      return NextResponse.json({ error: "Bot detected! Access denied." }, { status: 403 });
-    }
-
-    // 🟢 ক্যাপচা সফল হলে ফায়ারবেস থেকে লাইভ ডাটা লোড হবে
-    const FIREBASE_URL = process.env.FIREBASE_DB_URL || "https://ratul-liv-default-rtdb.asia-southeast1.firebasedatabase.app";
-    
     const res = await fetch(`${FIREBASE_URL}/live-streams/${id}.json`, { 
       cache: 'no-store',
       headers: {
@@ -44,6 +21,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     
     const data = await res.json();
     
+    // ডাটা যদি null হয় (অর্থাৎ ডাটাবেসে কিছু নেই)
     if (!data) {
       return NextResponse.json([], { status: 200 });
     }
