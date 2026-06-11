@@ -49,16 +49,12 @@ export default function RootLayout({
   return (
     <html lang="en" className="scroll-smooth">
       <head>
+        {/* 🟢 ইন-অ্যাপ ব্রাউজার (মেসেঞ্জার/টেলিগ্রাম) ব্লকিং ফিক্স */}
         <meta httpEquiv="X-Frame-Options" content="SAMEORIGIN" />
         <meta httpEquiv="X-Content-Type-Options" content="nosniff" />
-        {/* 🟢 গ্যারান্টিড রেন্ডারিং স্ক্রিপ্ট: লোড হওয়া মাত্রই সে 'onloadTurnstileCallback' ফাংশনটি কল করবে */}
-        <script 
-          src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onloadTurnstileCallback" 
-          async 
-          defer
-        ></script>
       </head>
       <body className="bg-gray-900 text-white selection:bg-[#3498db] selection:text-white antialiased">
+        {/* 🛡️ গ্লোবাল সিকিউরিটি স্ক্রিপ্ট */}
         <SecurityScript />
         {children}
       </body>
