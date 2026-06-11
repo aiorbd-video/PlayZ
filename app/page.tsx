@@ -37,7 +37,7 @@ const renderUpcomingTime = (startStr: string, currentTime: Date) => {
 
   const diffHours = diffMs / (1000 * 60 * 60);
 
-  // শর্ত ১:６ ঘণ্টার বেশি হলে (ডেট এবং টাইম)
+  // শর্ত ১: ৬ ঘণ্টার বেশি হলে (ডেট এবং টাইম)
   if (diffHours > 6) {
     const dateStr = startTime.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
     const timeStr = startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -132,36 +132,46 @@ export default function Home() {
     }
   };
 
-  // 🟢 অন-লোড ইভেন্ট ড্রাইভেন উপায়ে ক্লাউডফ্লেয়ার ক্যাপচা লোড হ্যান্ডলার
+  // 🟢 ১০০% সাকসেসফুল রেন্ডারিং লুপ (উইন্ডো লিসেনার মুক্ত পদ্ধতি)
   useEffect(() => {
     if (isVerified || !mounted) return;
 
-    // ক্যাপচা সফলভাবে পূরণ হলে ক্লাউডফ্লেয়ার এই গ্লোবাল ফাংশনটি কল করবে
-    (window as any).global_captcha_callback = (token: string) => {
-      if (token) handleGlobalVerify(token);
-    };
+    let widgetId: any = null;
 
-    // স্ক্রিপ্ট পুরোপুরি রেডি হওয়ার সাথে সাথে রেন্ডার করবে
-    (window as any).onloadTurnstileCallback = () => {
+    const tryExplicitRender = () => {
       const turnstile = (window as any).turnstile;
       const container = document.getElementById('global-captcha-box');
+
+      // যদি ক্লাউডফ্লেয়ারের গ্লোবাল অবজেক্ট রেডি থাকে এবং কন্টেইনারটি খালি থাকে
       if (turnstile && container && container.innerHTML === '') {
-        turnstile.render('#global-captcha-box', {
-          sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "0x4AAAAAABgwttpTXHLnnVvake",
-          callback: 'global_captcha_callback',
-        });
+        try {
+          widgetId = turnstile.render('#global-captcha-box', {
+            sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "0x4AAAAAABgwttpTXHLnnVvake",
+            callback: function(token: string) {
+              if (token) {
+                handleGlobalVerify(token);
+              }
+            },
+          });
+          // সফলভাবে রেন্ডার হয়ে গেলে লুপ বন্ধ করে দাও
+          clearInterval(renderInterval);
+        } catch (e) {
+          console.error("Turnstile render error:", e);
+        }
       }
     };
 
-    // ব্যাকআপ রেন্ডারিং লুপ (যদি স্ক্রিপ্ট আগেই ক্যাশ থেকে চলে আসে)
-    const turnstile = (window as any).turnstile;
-    const container = document.getElementById('global-captcha-box');
-    if (turnstile && container && container.innerHTML === '') {
-      turnstile.render('#global-captcha-box', {
-        sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "0x4AAAAAABgwttpTXHLnnVvake",
-        callback: 'global_captcha_callback',
-      });
-    }
+    // প্রতি ৩০০ মিলিসেকেন্ড পর পর চেক করে জোর করে রেন্ডার করবেই করবে
+    const renderInterval = setInterval(tryExplicitRender, 300);
+
+    return () => {
+      clearInterval(renderInterval);
+      // মেমোরি ক্লিনআপ
+      const turnstile = (window as any).turnstile;
+      if (turnstile && widgetId !== null) {
+        try { turnstile.remove(widgetId); } catch(e){}
+      }
+    };
   }, [isVerified, mounted]);
 
   // ইউজার ভেরিফাইড হলে এপিআই থেকে ডাটা আসবে, নয়তো আসবে না (ডাটা প্রোটেকশন)
@@ -225,7 +235,7 @@ export default function Home() {
           <p className="text-gray-400 text-sm mb-6 max-w-xs">Please complete the security check to safely access live dashboard.</p>
           
           <div className="flex justify-center min-h-[75px] w-full">
-            {/* 🟢 ক্লাউডফ্লেয়ার উইজেট রেন্ডারিং টার্গেটボックス */}
+            {/* 🟢 ক্লাউডফ্লেয়ার উইজেট রেন্ডারিং টার্গেট বক্স */}
             <div id="global-captcha-box"></div>
           </div>
 
