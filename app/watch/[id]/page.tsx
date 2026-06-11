@@ -8,51 +8,44 @@ import 'shaka-player/dist/controls.css';
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
 export default function PlayerPage({ params }: { params: Promise<{ id: string }> }) {
-  // Next.js 15 এর নিয়মে params থেকে id বের করা
   const { id } = use(params);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const [playerInstance, setPlayerInstance] = useState<any>(null);
+  
+  // 🟢 নতুন: কোন সার্ভারটি এখন প্লে হবে তার ট্র্যাক রাখা (ডিফল্ট 0 মানে প্রথমটা)
+  const [activeStreamIndex, setActiveStreamIndex] = useState(0);
 
-  // ১. ম্যাচের ডিটেইলস টানা (আমাদের বানানো প্রক্সি লিংক থেকে)
   const { data: matches } = useSWR('/api/proxy-matches', fetcher);
   const matchDetails = matches?.find((m: any) => m.id.toString() === id);
 
-  // ২. ফায়ারবেস থেকে লাইভ ভিডিও লিংক ও DRM চাবি টানা (প্রতি ৫ সেকেন্ডে রিফ্রেশ)
   const FIREBASE_URL = process.env.NEXT_PUBLIC_FIREBASE_URL || "https://ratul-liv-default-rtdb.asia-southeast1.firebasedatabase.app";
   const { data: streams } = useSWR(`${FIREBASE_URL}/live-stream.json`, fetcher, { refreshInterval: 5000 });
 
   const imgProxy = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
   const getImg = (url: string) => (url && url !== "null" ? `${imgProxy}${url}` : "");
 
-  // ⚙️ Shaka Player ইনিশিয়ালাইজ করা
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
 
     let player: any;
     let ui: any;
 
-    // Server-Side Rendering এরর এড়াতে Dynamic Import
     import('shaka-player/dist/shaka-player.ui.js').then((module) => {
-      // TypeScript-কে শান্ত করার জন্য 'any' টাইপ ব্যবহার করা হলো
       const shaka = module as any;
-
       shaka.polyfill.installAll();
 
       if (shaka.Player.isBrowserSupported()) {
         player = new shaka.Player(videoRef.current);
         ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
         
-        // প্লেয়ারের UI কাস্টমাইজেশন (Premium Look)
         ui.configure({
           controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'fullscreen', 'overflow_menu'],
           addSeekBar: true,
         });
 
         setPlayerInstance(player);
-      } else {
-        console.error('আপনার ব্রাউজারটি ভিডিও প্লেয়ার সাপোর্ট করছে না!');
       }
     });
 
@@ -62,14 +55,14 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
     };
   }, []);
 
-  // 🚀 স্ট্রিম ডেটা পেলে ভিডিও লোড ও DRM আনলক করা
+  // 🚀 যখনই activeStreamIndex বা streams চেঞ্জ হবে, নতুন ভিডিও লোড হবে
   useEffect(() => {
     if (!playerInstance || !streams || streams.length === 0) return;
 
-    // টার্মাক্স থেকে আসা লেটেস্ট লিংক
-    const currentStream = streams[0];
+    // ইউজারের সিলেক্ট করা লিংকটি নেওয়া হলো
+    const currentStream = streams[activeStreamIndex] || streams[0];
     const streamUrl = currentStream.link;
-    const drmKeyString = currentStream.api; // ফরম্যাট: "KID:KEY"
+    const drmKeyString = currentStream.api;
 
     const loadVideo = async () => {
       try {
@@ -84,17 +77,16 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
 
         await playerInstance.load(streamUrl);
       } catch (e) {
-        console.error('ভিডিও লোড হতে সমস্যা হচ্ছে:', e);
+        console.error('ভিডিও লোড হতে সমস্যা:', e);
       }
     };
 
     loadVideo();
-  }, [playerInstance, streams]);
+  }, [playerInstance, streams, activeStreamIndex]); // activeStreamIndex ডিপেন্ডেন্সিতে অ্যাড করা হয়েছে
 
   return (
     <main className="min-h-screen bg-[#0B0F19] text-white pb-20">
       
-      {/* 🔙 Top Navigation */}
       <nav className="p-4 flex items-center gap-4 bg-[#0B0F19] border-b border-gray-800 sticky top-0 z-50">
         <Link href="/">
           <button className="p-2 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors">
@@ -109,7 +101,6 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
       </nav>
 
       <div className="max-w-5xl mx-auto w-full">
-        {/* 📺 Video Player Section */}
         <div className="w-full bg-black aspect-video relative shadow-2xl shadow-red-900/10">
           {!streams ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-10">
@@ -118,18 +109,35 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
             </div>
           ) : null}
 
-          {/* Shaka Player Container */}
           <div ref={videoContainerRef} className="w-full h-full">
             <video ref={videoRef} className="w-full h-full" autoPlay playsInline />
           </div>
         </div>
 
-        {/* 📊 Match Info Section */}
+        {/* 🎛️ Server Switcher Buttons (নতুন যুক্ত করা হয়েছে) */}
+        {streams && streams.length > 1 && (
+          <div className="bg-[#0F1523] p-4 border-b border-gray-800 flex gap-3 overflow-x-auto scrollbar-hide">
+            <span className="text-gray-400 font-bold flex items-center whitespace-nowrap">Servers:</span>
+            {streams.map((stream: any, index: number) => (
+              <button
+                key={index}
+                onClick={() => setActiveStreamIndex(index)}
+                className={`px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${
+                  activeStreamIndex === index
+                    ? "bg-red-600 text-white shadow-[0_0_10px_rgba(239,68,68,0.5)]"
+                    : "bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700"
+                }`}
+              >
+                {stream.title || `Server ${index + 1}`}
+              </button>
+            ))}
+          </div>
+        )}
+
         {matchDetails && (
           <div className="p-4 md:p-8">
             <div className="bg-[#151C2C] border border-gray-800 rounded-2xl p-6 md:p-8">
               
-              {/* Event Badge */}
               <div className="flex justify-center mb-6">
                 <span className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-2">
                   <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
@@ -137,18 +145,14 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
                 </span>
               </div>
 
-              {/* Teams Display */}
               <div className="flex justify-center items-center gap-6 md:gap-16">
-                {/* Team A */}
                 <div className="flex flex-col items-center w-32">
                   <img src={getImg(matchDetails.eventInfo.teamAFlag)} alt={matchDetails.eventInfo.teamA} className="w-20 h-20 md:w-24 md:h-24 object-contain mb-3 drop-shadow-lg" />
                   <span className="text-base md:text-xl font-bold text-center">{matchDetails.eventInfo.teamA}</span>
                 </div>
 
-                {/* VS */}
                 <div className="text-xl md:text-3xl font-black italic text-gray-700">VS</div>
 
-                {/* Team B */}
                 <div className="flex flex-col items-center w-32">
                   <img src={getImg(matchDetails.eventInfo.teamBFlag)} alt={matchDetails.eventInfo.teamB} className="w-20 h-20 md:w-24 md:h-24 object-contain mb-3 drop-shadow-lg" />
                   <span className="text-base md:text-xl font-bold text-center">{matchDetails.eventInfo.teamB}</span>
