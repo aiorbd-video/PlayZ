@@ -1,10 +1,9 @@
-'use client';
-
-import { useEffect } from 'react';
+import { Metadata } from 'next';
 import './globals.css';
+import SecurityScript from './components/SecurityScript'; // নিচে আমরা এই কম্পোনেন্টটি বানাচ্ছি
 
-// 🟢 SEO Boost: সার্চ ইঞ্জিনের জন্য মেটাডাটা অবজেক্ট (Next.js 13+ স্ট্যান্ডার্ড)
-export const metadata = {
+// 🟢 SEO Boost: এটি এখন পারফেক্টলি সার্ভার সাইড থেকে কাজ করবে
+export const metadata: Metadata = {
   title: {
     default: 'All in One Sports Web | Watch Premium Live Events Free',
     template: '%s | All in One Sports Web'
@@ -25,23 +24,21 @@ export const metadata = {
       'max-snippet': -1,
     },
   },
-  // 🟢 Facebook, Messenger, WhatsApp-এ লিংক শেয়ার করলে যেমন দেখাবে (Open Graph)
   openGraph: {
     title: 'All in One Sports Web | Watch Premium Live Events Free',
     description: 'Stream premium live cricket, football, WWE, and global sports events in HD for free without any buffering.',
-    url: 'https://dstyle.vercel.app', // আপনার অরিজিনাল ডোমেইন থাকলে এখানে বসাতে পারেন
+    url: 'https://dstyle.vercel.app',
     siteName: 'All in One Sports Web',
     locale: 'en_US',
     type: 'website',
   },
-  // 🟢 Twitter/X এর জন্য কার্ড মেটাডাটা
   twitter: {
     card: 'summary_large_image',
     title: 'All in One Sports Web | Watch Premium Live Events Free',
     description: 'Stream premium live cricket, football, WWE, and global sports events in HD for free without any buffering.',
   },
   icons: {
-    icon: '/favicon.ico', // আপনার public ফোল্ডারে favicon থাকলে অটো পাবে
+    icon: '/favicon.ico',
   }
 };
 
@@ -50,40 +47,14 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-
-  // 🛡️ সিকিউরিটি লেয়ার: পুরো সাইটে রাইট-ক্লিক এবং Inspect Element (F12) ব্লক
-  useEffect(() => {
-    const disableInspect = (e: MouseEvent | KeyboardEvent) => {
-      // ১. রাইট ক্লিক লক
-      if ('button' in e && e.button === 2) {
-        e.preventDefault();
-      }
-      // ২. F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U (Source Code view) লক
-      if (
-        e.key === 'F12' ||
-        (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) ||
-        (e.ctrlKey && e.key === 'U')
-      ) {
-        e.preventDefault();
-      }
-    };
-
-    document.addEventListener('contextmenu', disableInspect);
-    document.addEventListener('keydown', disableInspect);
-
-    return () => {
-      document.removeEventListener('contextmenu', disableInspect);
-      document.removeEventListener('keydown', disableInspect);
-    };
-  }, []);
-
   return (
     <html lang="en" className="scroll-smooth">
       <head>
-        {/* অতিরিক্ত সিকিউরিটি হেডার যা ব্রাউজারকে আপনার সাইট ফ্রেম বা চুরি করতে বাধা দেবে */}
         <meta httpEquiv="X-Frame-Options" content="DENY" />
-      </meta>
+      </head>
       <body className="bg-gray-900 text-white selection:bg-[#3498db] selection:text-white antialiased">
+        {/* সিকিউরিটি স্ক্রিপ্টটি এখানে রান হবে */}
+        <SecurityScript />
         {children}
       </body>
     </html>
