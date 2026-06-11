@@ -8,12 +8,27 @@ import 'shaka-player/dist/controls.css';
 const MATCH_API = "/api/proxy-matches";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
-// 🚀 ১০০% ক্যাশ-ফ্রি ফেচার (Next.js এর ক্যাশ বাইপাস করতে)
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 
 const getImg = (url: string) => {
   if (!url || url === "null") return "";
   return `${IMG_PROXY}${encodeURIComponent(url)}`;
+};
+
+// 🟢 লাইভ, আপকামিং নাকি শেষ—সেটা বের করার লজিক
+const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => {
+  if (!startStr || !endStr) return { type: "upcoming", label: "TBA" };
+
+  const startTime = new Date(startStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
+  const endTime = new Date(endStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
+
+  if (currentTime > endTime) {
+    return { type: "ended", label: "Ended" };
+  } else if (currentTime >= startTime && currentTime <= endTime) {
+    return { type: "live", label: "LIVE" };
+  } else {
+    return { type: "upcoming", label: startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) };
+  }
 };
 
 export default function PlayerPage({ params }: { params: Promise<{ id: string }> }) {
@@ -23,8 +38,14 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const [playerInstance, setPlayerInstance] = useState<any>(null);
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
+  const [currentTime, setCurrentTime] = useState(new Date());
 
-  // 🟢 অন্য ম্যাচে ক্লিক করলে সার্ভার অটোমেটিক ১ নম্বরে রিসেট হয়ে যাবে
+  // প্রতি মিনিটে টাইম আপডেট করার টাইমার
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
   useEffect(() => {
     setActiveStreamIndex(0);
   }, [id]);
@@ -32,7 +53,6 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
   const { data: matches } = useSWR(MATCH_API, fetcher);
   const currentMatch = matches?.find((m: any) => m.id.toString() === id);
   
-  // 🛡️ সিকিউর API কল: ফায়ারবেস লিংক এখন হাইড করা (কেউ দেখতে পারবে না)
   const { data: streams } = useSWR(`/api/streams/${id}`, fetcher, { refreshInterval: 5000 });
 
   useEffect(() => {
@@ -70,7 +90,6 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
 
     const loadVideo = async () => {
       try {
-        // 🟢 আগের ভিডিও ফোর্স স্টপ করে মেমোরি ক্লিয়ার করা
         await playerInstance.unload();
 
         if (drmKeyString && drmKeyString.includes(':')) {
@@ -101,8 +120,10 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
               <span className="text-sm font-medium hidden sm:inline">Back to Home</span>
             </button>
           </Link>
-          <span className="text-sm md:text-base font-bold text-gray-300 truncate max-w-xs sm:max-w-md">
-            {currentMatch ? currentMatch.title : "Live Streaming"}
+          
+          {/* 🟢 আপডেট: এখন টিমের নাম হেডারে শো করবে (যেমন: BAN VS AUS) */}
+          <span className="text-sm md:text-base font-bold text-gray-200 truncate max-w-xs sm:max-w-md tracking-wide">
+            {currentMatch ? `${currentMatch.eventInfo.teamA} VS ${currentMatch.eventInfo.teamB}` : "Live Streaming"}
           </span>
           <div className="w-10"></div>
         </div>
@@ -173,7 +194,7 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
           
           <div className="flex flex-col gap-3">
             {matches && matches.map((match: any) => {
-              const startTime = new Date(match.eventInfo.startTime.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
+              const status = getMatchStatus(match.eventInfo.startTime, match.eventInfo.endTime, currentTime);
               const isCurrent = match.id.toString() === id;
 
               return (
@@ -181,7 +202,7 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
                   href={`/watch/${match.id}`} 
                   key={match.id} 
                   className="outline-none"
-                  prefetch={false} // 🟢 Link এর মধ্যে ক্যাশ বাইপাস
+                  prefetch={false}
                 >
                   <div className={`bg-[#1a1e29] border rounded-xl p-4 transition-all hover:bg-[#202533] ${
                     isCurrent ? 'border-[#3498db] bg-[#1e2738]/50 shadow-md shadow-[#3498db]/5' : 'border-[#2d6a85]/30'
@@ -198,10 +219,21 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
                         <span className="text-xs font-semibold text-gray-200 truncate">{match.eventInfo.teamA}</span>
                       </div>
 
-                      <div className="w-[20%] text-center">
-                         <span className="text-[#3498db] font-bold text-[11px] bg-[#3498db]/10 px-1.5 py-0.5 rounded">
-                           {startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                         </span>
+                      {/* 🟢 আপডেট: এখন ডানদিকের লিস্টেও Live/Ended স্ট্যাটাস শো করবে */}
+                      <div className="w-[20%] text-center flex justify-center">
+                        {status.type === 'live' ? (
+                          <span className="text-red-500 font-bold text-[10px] bg-red-500/10 border border-red-500/30 px-1.5 py-0.5 rounded flex items-center gap-1 animate-pulse">
+                            <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span> LIVE
+                          </span>
+                        ) : status.type === 'ended' ? (
+                          <span className="text-gray-400 font-bold text-[10px] bg-[#252a38] px-1.5 py-0.5 rounded border border-gray-700">
+                            Ended
+                          </span>
+                        ) : (
+                          <span className="text-[#3498db] font-bold text-[11px] bg-[#3498db]/10 px-1.5 py-0.5 rounded whitespace-nowrap">
+                            {status.label}
+                          </span>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2 w-[40%] justify-end">
