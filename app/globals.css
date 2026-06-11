@@ -2,8 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  body {
-    @apply bg-brand-dark text-white;
-  }
+:root {
+  --brand-red: #e60f0f;
+  --brand-dark: #1a1a1a;
+}
+
+body {
+  background-color: var(--brand-dark);
+  color: white;
 }

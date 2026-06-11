@@ -12,8 +12,8 @@ const config: Config = {
         'xs': '475px',
       },
       colors: {
-        'brand-red': '#e60f0f',
-        'brand-dark': '#1a1a1a',
+        'brand-red': 'var(--brand-red)',
+        'brand-dark': 'var(--brand-dark)',
       },
     },
   },
