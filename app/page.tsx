@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo, memo } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
-import Image from 'next/image'; // 🟢 Next/Image ইমপোর্ট করা হলো
+import Image from 'next/image';
+import { motion } from 'framer-motion'; //  Motion import
 
 const MATCH_API = "/api/proxy-matches";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
@@ -11,7 +12,7 @@ const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.worke
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 
 const getImg = (url: string) => {
-  if (!url || url === "null") return "/fallback-logo.png"; // ডিফল্ট লোগো পাথ
+  if (!url || url === "null") return "/fallback-logo.png";
   return `${IMG_PROXY}${encodeURIComponent(url)}`;
 };
 
@@ -24,8 +25,6 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
   return 'upcoming';
 };
 
-// ⏱️ ৫. Timer Isolation: কাউন্টডাউন টাইম ট্র্যাকিংকে একদম আলাদা কম্পোনেন্টে লক করা হলো
-// এর ফলে প্রতি সেকেন্ডের টিক-টিক কাউন্টে পুরো পেজ বা ম্যাচ কার্ড রি-রেন্ডার হবে না
 const MatchCountdown = memo(({ startTimeStr }: { startTimeStr: string }) => {
   const [time, setTime] = useState(new Date());
 
@@ -83,31 +82,29 @@ const getCategoryIcon = (cat: string) => {
   return <span className="text-2xl">🏆</span>;
 };
 
-// 🏟️ ২. MatchCard Component: মেমোয়াইজড কাস্টম কম্পোনেন্ট যা শুধুমাত্র ডাটা চেঞ্জ হলে রেন্ডার হবে
 const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
   const eventInfo = match.eventInfo || {};
 
   return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
     <Link 
       href={`/watch/${match.id}`} 
-      className="outline-none rounded-2xl focus:outline-none group block content-visibility-auto contain-intrinsic-size-[180px]" // 🟢 ৬. Virtualization/Containment ইফেক্ট
+      className="outline-none rounded-2xl focus:outline-none group block content-visibility-auto contain-intrinsic-size-[180px]"
       prefetch={false}
     >
       <div className="bg-[#141822] border border-gray-800/50 rounded-2xl p-5 transition-all duration-300 transform group-hover:bg-[#1a202e] group-hover:border-[#3498db]/40 group-focus:scale-[1.03] group-focus:bg-[#1a202e] group-focus:border-[#3498db] group-focus:ring-4 group-focus:ring-[#3498db]/20 shadow-md flex flex-col justify-between h-full min-h-[180px]">
         
-        {/* Top: Category & Event Name */}
         {(eventInfo.eventCat || eventInfo.eventName) && (
           <div className="text-xs md:text-sm text-gray-400 font-semibold mb-4 flex items-center justify-center gap-2 border-b border-gray-800/30 pb-2">
             {eventInfo.eventLogo && eventInfo.eventLogo !== "null" && (
               <div className="relative w-4 h-4">
-                {/* 🟢 ৩. Next/Image অপ্টিমাইজেশন */}
                 <Image 
                   src={getImg(eventInfo.eventLogo)} 
                   alt="" 
                   fill
                   sizes="16px"
                   className="object-contain rounded-full"
-                  unoptimized // প্রক্সি ইমেজের জন্য আনঅপ্টিমাইজড ট্র্যাকিং রাখা ভালো
+                  unoptimized
                 />
               </div>
             )}
@@ -117,9 +114,7 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
           </div>
         )}
 
-        {/* Teams Layout */}
         <div className="flex justify-between items-center mt-auto">
-          {/* Team A */}
           <div className="flex flex-col items-center gap-2.5 w-1/3">
             <div className="relative w-12 h-12 md:w-14 md:h-14 bg-gray-800/40 border border-gray-700/30 rounded-full p-0.5 overflow-hidden">
               <Image src={getImg(eventInfo.teamAFlag)} alt="" fill sizes="(max-width: 768px) 48px, 56px" className="object-cover rounded-full" unoptimized />
@@ -127,7 +122,6 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
             <span className="font-bold text-xs md:text-sm text-gray-200 truncate w-full text-center tracking-wide">{eventInfo.teamA || 'Team A'}</span>
           </div>
 
-          {/* Center Badge */}
           <div className="w-1/3 flex justify-center items-center">
             {status === 'live' && (
               <span className="bg-red-500/10 text-red-500 border border-red-500/30 px-3 py-1.5 rounded-xl font-black text-[10px] tracking-widest flex items-center gap-1.5 shadow-[0_0_15px_rgba(239,68,68,0.15)] animate-pulse">
@@ -146,7 +140,6 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
             )}
           </div>
 
-          {/* Team B */}
           <div className="flex flex-col items-center gap-2.5 w-1/3">
             <div className="relative w-12 h-12 md:w-14 md:h-14 bg-gray-800/40 border border-gray-700/30 rounded-full p-0.5 overflow-hidden">
               <Image src={getImg(eventInfo.teamBFlag)} alt="" fill sizes="(max-width: 768px) 48px, 56px" className="object-cover rounded-full" unoptimized />
@@ -157,6 +150,7 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
 
       </div>
     </Link>
+    </motion.div>
   );
 });
 MatchCard.displayName = 'MatchCard';
@@ -177,8 +171,8 @@ function MatchSkeleton() {
 export default function Home() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeFilter, setActiveFilter] = useState('All');
-  const [searchInp, setSearchInp] = useState(''); // রিয়েল-টাইম ইনপুট স্টেট
-  const [debouncedSearch, setDebouncedSearch] = useState(''); // 🔍 ৪. Debounced Search স্টেট
+  const [searchInp, setSearchInp] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -186,7 +180,6 @@ export default function Home() {
     setMounted(true);
   }, []);
 
-  // 🔍 ৪. Debounce Logic Effect (৩০০ মিলিমেকেন্ড বাফার)
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(searchInp);
@@ -196,7 +189,6 @@ export default function Home() {
 
   const { data: matches, error } = useSWR(MATCH_API, fetcher, { refreshInterval: 30000 });
 
-  // 🟢 ১. useMemo: ডাইনামিক ক্যাটাগরি মেমোয়াইজেশন
   const dynamicCategories = useMemo(() => {
     const list = ['All'];
     if (matches && Array.isArray(matches)) {
@@ -208,7 +200,6 @@ export default function Home() {
 
   const filters = ['All', 'Live', 'Recent', 'Upcoming'];
 
-  // 🟢 ১. useMemo: ফিল্টারিং এবং সর্টিং লজিক মেমোয়াইজেশন (সুপার অপ্টিমাইজড)
   const processedMatches = useMemo(() => {
     if (!matches) return [];
     const now = new Date();
@@ -252,22 +243,28 @@ export default function Home() {
   if (!mounted) return null;
 
   return (
-    <main className="min-h-screen bg-[#0d0f14] text-white font-sans pb-20 tv:p-8">
+    <main className="min-h-screen bg-[#0d0f14] text-white font-sans pb-20 tv:p-8 animate-fade-in">
       
-      {/* Header */}
-      <nav className="p-4 bg-[#0d0f14]/90 sticky top-0 z-50 flex items-center justify-between border-b border-gray-900/60 backdrop-blur-md max-w-7xl mx-auto rounded-b-xl">
+      <motion.nav 
+        initial={{ y: -100, opacity: 0 }} 
+        animate={{ y: 0, opacity: 1 }} 
+        transition={{ duration: 0.5 }}
+        className="p-4 bg-[#0d0f14]/90 sticky top-0 z-50 flex items-center justify-between border-b border-gray-900/60 backdrop-blur-md max-w-7xl mx-auto rounded-b-xl"
+      >
         <div className="flex items-center gap-4">
           <h1 className="text-xl md:text-2xl font-black text-[#3498db] tracking-wide uppercase tv:text-3xl">All in one sports</h1>
         </div>
 
-        {/* Search Input */}
         <div className="flex items-center gap-3 w-full max-w-xs justify-end">
           {showSearch && (
-            <input 
+            <motion.input 
+              initial={{ width: 0, opacity: 0 }} 
+              animate={{ width: '100%', opacity: 1 }} 
+              transition={{ duration: 0.3 }}
               type="text" 
               placeholder="Search team or event..." 
               value={searchInp}
-              onChange={(e) => setSearchInp(e.target.value)} // ডেবোউন্সড ইনপুট ট্রিগার
+              onChange={(e) => setSearchInp(e.target.value)}
               className="bg-[#161a24] border border-gray-800 text-sm rounded-xl px-4 py-2 w-full focus:outline-none focus:border-[#3498db] transition-all text-white"
               autoFocus
             />
@@ -280,15 +277,22 @@ export default function Home() {
             )}
           </button>
         </div>
-      </nav>
+      </motion.nav>
 
-      <div className="max-w-7xl mx-auto px-4 mt-4">
+      <motion.div 
+        initial={{ opacity: 0 }} 
+        animate={{ opacity: 1 }} 
+        transition={{ duration: 0.5, delay: 0.2 }}
+        className="max-w-7xl mx-auto px-4 mt-4"
+      >
         
-        {/* Categories Navbar */}
         <div className="flex items-center justify-start gap-4 md:gap-8 py-4 mb-2 overflow-x-auto scrollbar-hide scroll-smooth snap-x">
-          {dynamicCategories.map((cat) => (
-            <button 
+          {dynamicCategories.map((cat, i) => (
+            <motion.button 
               key={cat} 
+              initial={{ opacity: 0, x: -20 }} 
+              animate={{ opacity: 1, x: 0 }} 
+              transition={{ duration: 0.3, delay: i * 0.05 }}
               onClick={() => setActiveCategory(cat)} 
               className="flex flex-col items-center gap-2 cursor-pointer outline-none group min-w-[75px] snap-center focus:outline-none"
             >
@@ -298,15 +302,17 @@ export default function Home() {
                 {getCategoryIcon(cat)}
               </div>
               <span className={`text-xs font-bold transition-colors ${activeCategory === cat ? 'text-[#3498db]' : 'text-gray-400 group-hover:text-white'} truncate max-w-[75px]`}>{cat}</span>
-            </button>
+            </motion.button>
           ))}
         </div>
 
-        {/* Filter Pills */}
         <div className="flex items-center gap-3 overflow-x-auto scrollbar-hide mb-8 py-1 snap-x">
-          {filters.map((filter) => (
-            <button
+          {filters.map((filter, i) => (
+            <motion.button
               key={filter}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: i * 0.05 + 0.2 }}
               onClick={() => setActiveFilter(filter)}
               className={`px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all border snap-center focus:outline-none focus:ring-2 focus:ring-[#3498db] flex items-center gap-2 ${
                 activeFilter === filter
@@ -316,11 +322,10 @@ export default function Home() {
             >
               {activeFilter === filter && <span className="w-1.5 h-1.5 bg-[#3498db] rounded-full animate-pulse"></span>}
               {filter}
-            </button>
+            </motion.button>
           ))}
         </div>
 
-        {/* Matches Grid Layer */}
         {error && <div className="text-center py-10 text-red-400 font-medium">Failed to load data.</div>}
         
         {!matches && !error && (
@@ -332,22 +337,23 @@ export default function Home() {
         )}
 
         {matches && processedMatches.length === 0 && (
-          <div className="text-center py-12 text-gray-500 font-semibold bg-[#141822] rounded-2xl border border-gray-800/40">
+          <div className="text-center py-12 text-gray-500 font-semibold bg-[#141822] rounded-2xl border border-gray-800/40 animate-fade-in">
             No matches available matching your criteria.
           </div>
         )}
 
-        {/* 🏟️ মেইন ম্যাচ লিস্ট গ্রিড */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <motion.div 
+            layout 
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
+        >
           {processedMatches.map((match: any) => {
             const now = new Date();
             const status = getMatchStatus(match.eventInfo?.startTime, match.eventInfo?.endTime, now);
             return <MatchCard key={match.id} match={match} status={status} />;
           })}
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
-      {/* CSS কন্টেইনমেন্ট লেয়ার */}
       <style dangerouslySetInnerHTML={{__html: `
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
