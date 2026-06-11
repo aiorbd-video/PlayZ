@@ -1,8 +1,7 @@
 import { Metadata } from 'next';
 import './globals.css';
-import SecurityScript from './components/SecurityScript'; // নিচে আমরা এই কম্পোনেন্টটি বানাচ্ছি
+import SecurityScript from './components/SecurityScript';
 
-// 🟢 SEO Boost: এটি এখন পারফেক্টলি সার্ভার সাইড থেকে কাজ করবে
 export const metadata: Metadata = {
   title: {
     default: 'All in One Sports Web | Watch Premium Live Events Free',
@@ -27,7 +26,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'All in One Sports Web | Watch Premium Live Events Free',
     description: 'Stream premium live cricket, football, WWE, and global sports events in HD for free without any buffering.',
-    url: 'https://dstyle.vercel.app',
+    url: 'https://ratulxlive.vercel.app',
     siteName: 'All in One Sports Web',
     locale: 'en_US',
     type: 'website',
@@ -51,9 +50,10 @@ export default function RootLayout({
     <html lang="en" className="scroll-smooth">
       <head>
         <meta httpEquiv="X-Frame-Options" content="DENY" />
+        {/* 🟢 ক্লাউডফ্লেয়ারের অফিশিয়াল ইঞ্জিন স্ক্রিপ্ট যা ক্যাপচাকে স্ক্রিনে ফুটিয়ে তুলবে */}
+        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
       </head>
       <body className="bg-gray-900 text-white selection:bg-[#3498db] selection:text-white antialiased">
-        {/* সিকিউরিটি স্ক্রিপ্টটি এখানে রান হবে */}
         <SecurityScript />
         {children}
       </body>
