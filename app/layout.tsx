@@ -50,8 +50,6 @@ export default function RootLayout({
     <html lang="en" className="scroll-smooth">
       <head>
         <meta httpEquiv="X-Frame-Options" content="DENY" />
-        {/* 🟢 ক্লাউডফ্লেয়ারের অফিশিয়াল ইঞ্জিন স্ক্রিপ্ট যা ক্যাপচাকে স্ক্রিনে ফুটিয়ে তুলবে */}
-        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
       </head>
       <body className="bg-gray-900 text-white selection:bg-[#3498db] selection:text-white antialiased">
         <SecurityScript />
