@@ -17,6 +17,7 @@ const getImg = (url: string) => {
 };
 
 export default function PlayerPage({ params }: { params: Promise<{ id: string }> }) {
+  // Next.js 15+ এর নিয়মে ডাইনামিক রাউট আইডি বের করা
   const { id } = use(params);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -24,13 +25,15 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
   const [playerInstance, setPlayerInstance] = useState<any>(null);
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
 
+  // Render API থেকে সব ম্যাচের লিস্ট
   const { data: matches } = useSWR(MATCH_API, fetcher);
-  
-  const FIREBASE_URL = process.env.NEXT_PUBLIC_FIREBASE_URL || "https://ratul-liv-default-rtdb.asia-southeast1.firebasedatabase.app";
-  const { data: streams } = useSWR(`${FIREBASE_URL}/live-stream.json`, fetcher, { refreshInterval: 5000 });
-
   const currentMatch = matches?.find((m: any) => m.id.toString() === id);
+  
+  // ✅ ফায়ারবেস থেকে শুধুমাত্র নির্দিষ্ট আইডির (Match ID) স্ট্রিম ডাটা টানা
+  const FIREBASE_URL = process.env.NEXT_PUBLIC_FIREBASE_URL || "https://ratul-liv-default-rtdb.asia-southeast1.firebasedatabase.app";
+  const { data: streams } = useSWR(`${FIREBASE_URL}/live-streams/${id}.json`, fetcher, { refreshInterval: 5000 });
 
+  // ⚙️ Shaka Player ইনিশিয়ালাইজেশন
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
     let player: any;
@@ -58,8 +61,11 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
     };
   }, []);
 
+  // 🚀 স্ট্রিম লোড এবং DRM ডিক্রিপশন লজিক
   useEffect(() => {
     if (!playerInstance || !streams || streams.length === 0) return;
+    
+    // ইউজার যে সার্ভার সিলেক্ট করবে সেটা লোড হবে, না হলে ডিফল্ট ১ নম্বর সার্ভার
     const currentStream = streams[activeStreamIndex] || streams[0];
     const streamUrl = currentStream.link;
     const drmKeyString = currentStream.api;
@@ -101,7 +107,7 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
         </div>
       </nav>
 
-      {/* 🖥️ 📱 Responsive Layout Container */}
+      {/* 🖥️ 📱 Responsive Layout Container (Two-Column for PC/TV) */}
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
         
         {/* 🎬 LEFT COLUMN: Player & Servers */}
@@ -109,8 +115,9 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
           
           <div className="w-full bg-black aspect-video relative rounded-none sm:rounded-xl overflow-hidden shadow-xl border border-gray-800">
             {!streams && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#12141c]/90 z-10">
+              <div className="absolute inset-0 flex items-center justify-center bg-[#12141c]/90 z-10 flex-col gap-3">
                 <div className="w-10 h-10 border-4 border-[#3498db] border-t-transparent rounded-full animate-spin"></div>
+                <span className="text-gray-400 text-sm animate-pulse">Waiting for Stream...</span>
               </div>
             )}
             <div ref={videoContainerRef} className="w-full h-full">
@@ -139,14 +146,20 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
             </div>
           )}
 
-          {/* Current Match Live Info */}
+          {/* 📊 Current Match Live Info */}
           {currentMatch && (
             <div className="bg-[#1a1e29] border border-gray-800/80 rounded-xl p-5 mt-2 hidden lg:block">
               <div className="text-center text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">{currentMatch.eventInfo.eventName}</div>
               <div className="flex justify-center items-center gap-8">
-                <div className="flex items-center gap-3"><img src={getImg(currentMatch.eventInfo.teamAFlag)} className="w-8 h-8 rounded-full" loading="lazy" /> <span className="font-bold">{currentMatch.eventInfo.teamA}</span></div>
+                <div className="flex items-center gap-3">
+                  <img src={getImg(currentMatch.eventInfo.teamAFlag)} className="w-8 h-8 rounded-full" loading="lazy" /> 
+                  <span className="font-bold">{currentMatch.eventInfo.teamA}</span>
+                </div>
                 <span className="text-gray-600 font-black italic text-sm">VS</span>
-                <div className="flex items-center gap-3"><img src={getImg(currentMatch.eventInfo.teamBFlag)} className="w-8 h-8 rounded-full" loading="lazy" /> <span className="font-bold">{currentMatch.eventInfo.teamB}</span></div>
+                <div className="flex items-center gap-3">
+                  <img src={getImg(currentMatch.eventInfo.teamBFlag)} className="w-8 h-8 rounded-full" loading="lazy" /> 
+                  <span className="font-bold">{currentMatch.eventInfo.teamB}</span>
+                </div>
               </div>
             </div>
           )}
