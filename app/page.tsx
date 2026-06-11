@@ -9,7 +9,12 @@ const MATCH_API = "/api/proxy-matches";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
-const getImg = (url: string) => (url && url !== "null" ? `${IMG_PROXY}${url}` : "");
+
+// 🚀 আল্ট্রা-সেফ প্রক্সি ইমেজ লোডার (যেকোনো জটিল লিংক লোড করবে)
+const getImg = (url: string) => {
+  if (!url || url === "null") return "";
+  return `${IMG_PROXY}${encodeURIComponent(url)}`;
+};
 
 const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => {
   if (!startStr || !endStr) return { type: "upcoming", time: "", date: "", label: "TBA" };
@@ -88,7 +93,7 @@ export default function Home() {
               <div className={`w-14 h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center border-2 transition-all ${
                 activeCat === cat.title ? 'border-[#3498db] bg-[#1e2738] scale-105 shadow-md shadow-[#3498db]/20' : 'border-transparent bg-[#1e222d] group-hover:bg-[#252a38]'
               }`}>
-                <img src={getImg(cat.image)} alt={cat.title} className="w-7 h-7 md:w-8 md:h-8 object-contain" />
+                <img src={getImg(cat.image)} alt={cat.title} className="w-7 h-7 md:w-8 md:h-8 object-contain" loading="lazy" />
               </div>
               <span className={`text-xs md:text-sm transition-colors ${activeCat === cat.title ? 'text-[#3498db] font-bold' : 'text-gray-400 group-hover:text-gray-200'}`}>{cat.title}</span>
             </button>
@@ -108,7 +113,7 @@ export default function Home() {
         ))}
       </section>
 
-      {/* 🏟️ Matches Responsive Grid (1 col on Mobile, 2 on Tablet, 3 on Desktop/TV) */}
+      {/* 🏟️ Matches Responsive Grid */}
       <section className="max-w-7xl mx-auto px-4 mt-2">
         {!matches ? (
           <div className="flex justify-center mt-10"><div className="w-8 h-8 border-4 border-[#3498db] border-t-transparent rounded-full animate-spin"></div></div>
@@ -126,14 +131,14 @@ export default function Home() {
                     <div>
                       {/* Top: Info */}
                       <div className="text-center text-[13px] text-gray-300 font-medium mb-5 flex items-center justify-center gap-2 border-b border-gray-800/50 pb-2">
-                        <img src={getImg(match.eventInfo.eventLogo)} className="w-4 h-4 object-contain rounded-full" alt="" />
+                        <img src={getImg(match.eventInfo.eventLogo)} className="w-4 h-4 object-contain rounded-full" alt="" loading="lazy" />
                         <span className="truncate">{match.eventInfo.eventCat} | {match.eventInfo.eventName}</span>
                       </div>
 
                       {/* Middle: Teams */}
                       <div className="flex justify-between items-center my-2">
                         <div className="flex flex-col items-center w-1/3">
-                          <img src={getImg(match.eventInfo.teamAFlag)} alt={match.eventInfo.teamA} className="w-12 h-12 md:w-14 md:h-14 object-contain mb-2 rounded-full shadow-md" />
+                          <img src={getImg(match.eventInfo.teamAFlag)} alt={match.eventInfo.teamA} className="w-12 h-12 md:w-14 md:h-14 object-contain mb-2 rounded-full shadow-md" loading="lazy" />
                           <span className="text-sm font-semibold text-gray-200 text-center line-clamp-1">{match.eventInfo.teamA}</span>
                         </div>
 
@@ -152,7 +157,7 @@ export default function Home() {
                         </div>
 
                         <div className="flex flex-col items-center w-1/3">
-                          <img src={getImg(match.eventInfo.teamBFlag)} alt={match.eventInfo.teamB} className="w-12 h-12 md:w-14 md:h-14 object-contain mb-2 rounded-full shadow-md" />
+                          <img src={getImg(match.eventInfo.teamBFlag)} alt={match.eventInfo.teamB} className="w-12 h-12 md:w-14 md:h-14 object-contain mb-2 rounded-full shadow-md" loading="lazy" />
                           <span className="text-sm font-semibold text-gray-200 text-center line-clamp-1">{match.eventInfo.teamB}</span>
                         </div>
                       </div>
