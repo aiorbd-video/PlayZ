@@ -14,7 +14,7 @@ const getImg = (url: string) => {
   return `${IMG_PROXY}${encodeURIComponent(url)}`;
 };
 
-// লাইভ, আপকামিং নাকি শেষ—সেটা বের করার লজিক
+// 🟢 লাইভ, আপকামিং নাকি শেষ—সেটা বের করার লজিক
 const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => {
   if (!startStr || !endStr) return 'upcoming';
 
@@ -26,7 +26,7 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
   return 'upcoming';
 };
 
-// আপকামিং ম্যাচের ডাইনামিক কাউন্টডাউন টাইমার
+// 🚀 ম্যাজিক টাইমার: আপনার শর্ত অনুযায়ী সময় দেখানোর ডাইনামিক ফাংশন
 const renderUpcomingTime = (startStr: string, currentTime: Date) => {
   if (!startStr) return <span className="text-[#3498db] font-bold text-xs">TBA</span>;
   
@@ -37,6 +37,7 @@ const renderUpcomingTime = (startStr: string, currentTime: Date) => {
 
   const diffHours = diffMs / (1000 * 60 * 60);
 
+  // শর্ত ১: ৬ ঘণ্টার বেশি হলে (ডেট এবং টাইম)
   if (diffHours > 6) {
     const dateStr = startTime.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
     const timeStr = startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -46,7 +47,9 @@ const renderUpcomingTime = (startStr: string, currentTime: Date) => {
         <span className="text-xs font-bold text-[#3498db] mt-0.5">{timeStr}</span>
       </div>
     );
-  } else if (diffHours > 1) {
+  } 
+  // শর্ত ২: ১ ঘণ্টা থেকে ৬ ঘণ্টার মধ্যে (ঘণ্টা এবং মিনিট)
+  else if (diffHours > 1) {
     const h = Math.floor(diffHours);
     const m = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
     return (
@@ -55,7 +58,9 @@ const renderUpcomingTime = (startStr: string, currentTime: Date) => {
         <span className="text-xs font-bold text-orange-400">{h}h {m}m</span>
       </div>
     );
-  } else {
+  } 
+  // শর্ত ৩: ১ ঘণ্টার কম (মিনিট এবং সেকেন্ডের কাউন্টডাউন)
+  else {
     const m = Math.floor(diffMs / (1000 * 60));
     const s = Math.floor((diffMs % (1000 * 60)) / 1000);
     return (
@@ -84,15 +89,16 @@ export default function Home() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [mounted, setMounted] = useState(false);
 
-  // 🛡️ গ্লোবাল সিকিউরিটি ফায়ারওয়াল স্টেট
+  // 🛡️ সিকিউরিটি ভেরিফিকেশন স্টেটসমূহ
   const [isVerified, setIsVerified] = useState<boolean>(false);
   const [verifying, setVerifying] = useState<boolean>(false);
   const [captchaError, setCaptchaError] = useState<boolean>(false);
 
-  // সেশন ভেরিফিকেশন চেক ও টাইমার ইনিশিয়ালাইজেশন
+  // ⏱️ আপডেট: প্রতি ১ সেকেন্ড পর পর টাইম রিফ্রেশ হবে (কাউন্টডাউনের জন্য)
   useEffect(() => {
     setMounted(true);
-    
+
+    // সেশন চেক করা হচ্ছে যে আগে ভেরিফাই করা হয়েছে কি না
     const sessionAuth = sessionStorage.getItem('site_verified');
     if (sessionAuth === 'true') {
       setIsVerified(true);
@@ -102,7 +108,7 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
-  // 🟢 ক্যাপচা পাস হওয়ার পর টোকেন ব্যাকএন্ডে সাবমিট করার প্রসেস
+  // 🟢 ক্যাপচা টোকেন যাচাই করার এপিআই কল লজিক
   const handleGlobalVerify = async (token: string) => {
     setVerifying(true);
     setCaptchaError(false);
@@ -126,15 +132,17 @@ export default function Home() {
     }
   };
 
-  // 🟢 ক্লাউডফ্লেয়ার উইজেটকে পুশ করে স্ক্রিনে রেন্ডার করার রানটাইম লুপ
+  // 🟢 অন-লোড ইভেন্ট ড্রাইভেন উপায়ে ক্লাউডফ্লেয়ার ক্যাপচা লোড হ্যান্ডলার
   useEffect(() => {
     if (isVerified || !mounted) return;
 
+    // ক্যাপচা সফলভাবে পূরণ হলে ক্লাউডফ্লেয়ার এই গ্লোবাল ফাংশনটি কল করবে
     (window as any).global_captcha_callback = (token: string) => {
       if (token) handleGlobalVerify(token);
     };
 
-    const interval = setInterval(() => {
+    // স্ক্রিপ্ট পুরোপুরি রেডি হওয়ার সাথে সাথে রেন্ডার করবে
+    (window as any).onloadTurnstileCallback = () => {
       const turnstile = (window as any).turnstile;
       const container = document.getElementById('global-captcha-box');
       if (turnstile && container && container.innerHTML === '') {
@@ -142,13 +150,21 @@ export default function Home() {
           sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "0x4AAAAAABgwttpTXHLnnVvake",
           callback: 'global_captcha_callback',
         });
-        clearInterval(interval);
       }
-    }, 400);
+    };
 
-    return () => clearInterval(interval);
+    // ব্যাকআপ রেন্ডারিং লুপ (যদি স্ক্রিপ্ট আগেই ক্যাশ থেকে চলে আসে)
+    const turnstile = (window as any).turnstile;
+    const container = document.getElementById('global-captcha-box');
+    if (turnstile && container && container.innerHTML === '') {
+      turnstile.render('#global-captcha-box', {
+        sitekey: process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "0x4AAAAAABgwttpTXHLnnVvake",
+        callback: 'global_captcha_callback',
+      });
+    }
   }, [isVerified, mounted]);
 
+  // ইউজার ভেরিফাইড হলে এপিআই থেকে ডাটা আসবে, নয়তো আসবে না (ডাটা প্রোটেকশন)
   const { data: matches } = useSWR(isVerified ? MATCH_API : null, fetcher, { refreshInterval: 60000 });
 
   const dynamicCategories = ['All'];
@@ -195,7 +211,7 @@ export default function Home() {
 
   if (!mounted) return null;
 
-  // 🛡️ ১. গেটওয়ে ফায়ারওয়াল: ইউজার ভেরিফাইড না হলে ডাটা হাইড রেখে এই স্ক্রিনটি দেখাবে
+  // 🛡️ গেটওয়ে স্ক্রিন: ইউজার ক্যাপচা ভেরিফাই না করা পর্যন্ত ফুল পেজ লক থাকবে
   if (!isVerified) {
     return (
       <div className="min-h-screen bg-[#0f111a] flex flex-col items-center justify-center p-4 text-center select-none">
@@ -209,6 +225,7 @@ export default function Home() {
           <p className="text-gray-400 text-sm mb-6 max-w-xs">Please complete the security check to safely access live dashboard.</p>
           
           <div className="flex justify-center min-h-[75px] w-full">
+            {/* 🟢 ক্লাউডফ্লেয়ার উইজেট রেন্ডারিং টার্গেট বক্স */}
             <div id="global-captcha-box"></div>
           </div>
 
@@ -229,31 +246,29 @@ export default function Home() {
     );
   }
 
-  // 🎉 ২. আসল ড্যাশবোর্ড: ক্যাপচা সফলভাবে ভেরিফাই হওয়ার পর এটি আনলক হবে
+  // 🎉 আসল মেইন ড্যাশবোর্ড স্ক্রিন (ভেরিফিকেশন সফল হলে এটি আনলক হবে)
   return (
     <main className="min-h-screen bg-[#12141c] text-white font-sans pb-20">
       
-      {/* Top Header */}
-      <nav className="p-4 bg-[#12141c] sticky top-0 z-50 flex items-center justify-between border-b border-gray-800/50 backdrop-blur-md bg-opacity-90">
-        <div className="max-w-4xl w-full mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button className="text-gray-300 hover:text-white outline-none">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-            <h1 className="text-xl md:text-2xl font-bold text-[#3498db] tracking-wide">All in one sports web</h1>
-          </div>
-          <div className="flex items-center gap-4 text-gray-300">
-            <button className="outline-none hover:text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg></button>
-            <button className="outline-none hover:text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></button>
-          </div>
+      {/* 🔴 Top Header */}
+      <nav className="p-4 bg-[#12141c] sticky top-0 z-50 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <button className="text-gray-300 hover:text-white outline-none">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <h1 className="text-xl md:text-2xl font-bold text-[#3498db] tracking-wide">All in one sports web</h1>
+        </div>
+        <div className="flex items-center gap-4 text-gray-300">
+          <button className="outline-none hover:text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg></button>
+          <button className="outline-none hover:text-white"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg></button>
         </div>
       </nav>
 
       <div className="max-w-4xl mx-auto px-4 mt-2">
         
-        {/* Category Circles */}
+        {/* ⚾ Dynamic Category Circles */}
         <div className="flex items-center justify-around md:justify-start md:gap-10 py-4 mb-2 overflow-x-auto scrollbar-hide">
           {dynamicCategories.map((cat) => (
             <div key={cat} onClick={() => setActiveCategory(cat)} className="flex flex-col items-center gap-2 cursor-pointer outline-none group min-w-[70px]">
@@ -267,7 +282,7 @@ export default function Home() {
           ))}
         </div>
 
-        {/* Filter Pills */}
+        {/* 🎛️ Filter Pills */}
         <div className="flex items-center gap-3 overflow-x-auto scrollbar-hide mb-6 py-1">
           {filters.map((filter) => (
             <button
@@ -285,7 +300,7 @@ export default function Home() {
           ))}
         </div>
 
-        {/* Matches List */}
+        {/* 🏟️ Matches List */}
         {!matches && <div className="text-center py-10 text-gray-400 animate-pulse font-medium">Loading premium matches...</div>}
         {matches && processedMatches?.length === 0 && (
           <div className="text-center py-10 text-gray-500 font-medium bg-[#1a1e29] rounded-xl border border-gray-800">
@@ -325,60 +340,3 @@ export default function Home() {
                             <img src={getImg(eventInfo.teamAFlag)} className="w-full h-full object-cover rounded-full" loading="lazy" />
                           </div>
                         ) : (
-                          <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-gray-800 flex items-center justify-center text-xl">🛡️</div>
-                        )}
-                        <span className="font-bold text-sm md:text-base text-gray-100 truncate w-full text-center">{eventInfo.teamA}</span>
-                      </div>
-                    )}
-
-                    {/* Center: Dynamic Status Badge */}
-                    <div className="w-1/3 flex justify-center mt-[-20px]">
-                      {status === 'live' && (
-                        <span className="bg-red-500/10 text-red-500 border border-red-500/30 px-3 py-1.5 rounded-lg font-black text-xs tracking-wider flex items-center gap-1.5 shadow-[0_0_10px_rgba(239,68,68,0.2)]">
-                          <span className="w-2 h-2 bg-red-500 rounded-full animate-ping absolute opacity-75"></span>
-                          <span className="w-2 h-2 bg-red-500 rounded-full relative"></span> LIVE
-                        </span>
-                      )}
-                      
-                      {status === 'upcoming' && (
-                        <div className="bg-[#1e2738] border border-[#2d6a85]/50 px-3 py-1.5 rounded-lg flex items-center justify-center min-w-[80px] shadow-inner">
-                          {renderUpcomingTime(eventInfo.startTime, currentTime)}
-                        </div>
-                      )}
-
-                      {status === 'recent' && (
-                        <span className="bg-[#252a38] text-gray-400 border border-gray-700 px-3 py-1.5 rounded-lg font-bold text-xs tracking-wider uppercase">
-                          Ended
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Team B */}
-                    {eventInfo.teamB && (
-                      <div className="flex flex-col items-center gap-3 w-1/3">
-                        {eventInfo.teamBFlag && eventInfo.teamBFlag !== "null" ? (
-                          <div className="w-14 h-14 md:w-16 md:h-16 rounded-full p-0.5 bg-gray-800/50 shadow-inner group-hover:scale-105 transition-transform">
-                            <img src={getImg(match.eventInfo.teamBFlag)} className="w-full h-full object-cover rounded-full" loading="lazy" />
-                          </div>
-                        ) : (
-                          <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-gray-800 flex items-center justify-center text-xl">🛡️</div>
-                        )}
-                        <span className="font-bold text-sm md:text-base text-gray-100 truncate w-full text-center">{eventInfo.teamB}</span>
-                      </div>
-                    )}
-
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-      </div>
-
-      <style dangerouslySetInnerHTML={{__html: `
-        .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-      `}} />
-    </main>
-  );
-}
