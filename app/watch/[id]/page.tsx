@@ -9,7 +9,12 @@ const MATCH_API = "/api/proxy-matches";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
-const getImg = (url: string) => (url && url !== "null" ? `${IMG_PROXY}${url}` : "");
+
+// 🚀 আল্ট্রা-সেফ প্রক্সি ইমেজ লোডার
+const getImg = (url: string) => {
+  if (!url || url === "null") return "";
+  return `${IMG_PROXY}${encodeURIComponent(url)}`;
+};
 
 export default function PlayerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -26,7 +31,6 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
 
   const currentMatch = matches?.find((m: any) => m.id.toString() === id);
 
-  // Shaka Player Init
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
     let player: any;
@@ -40,7 +44,6 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
         player = new shaka.Player(videoRef.current);
         ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
         
-        // টিভিতে রিমোট দিয়ে কন্ট্রোল করার জন্য স্ট্যান্ডার্ড কন্ট্রোলস
         ui.configure({
           controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'fullscreen', 'overflow_menu'],
           addSeekBar: true,
@@ -55,7 +58,6 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
     };
   }, []);
 
-  // Streaming Link Loader
   useEffect(() => {
     if (!playerInstance || !streams || streams.length === 0) return;
     const currentStream = streams[activeStreamIndex] || streams[0];
@@ -95,17 +97,16 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
           <span className="text-sm md:text-base font-bold text-gray-300 truncate max-w-xs sm:max-w-md">
             {currentMatch ? currentMatch.title : "Live Streaming"}
           </span>
-          <div className="w-10"></div> {/* Spacer */}
+          <div className="w-10"></div>
         </div>
       </nav>
 
       {/* 🖥️ 📱 Responsive Layout Container */}
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
         
-        {/* 🎬 LEFT COLUMN: Player & Servers (Takes 2 columns on Big Screens) */}
+        {/* 🎬 LEFT COLUMN: Player & Servers */}
         <div className="lg:col-span-2 flex flex-col">
           
-          {/* 📺 Theatre View Video Container */}
           <div className="w-full bg-black aspect-video relative rounded-none sm:rounded-xl overflow-hidden shadow-xl border border-gray-800">
             {!streams && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#12141c]/90 z-10">
@@ -143,16 +144,16 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
             <div className="bg-[#1a1e29] border border-gray-800/80 rounded-xl p-5 mt-2 hidden lg:block">
               <div className="text-center text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">{currentMatch.eventInfo.eventName}</div>
               <div className="flex justify-center items-center gap-8">
-                <div className="flex items-center gap-3"><img src={getImg(currentMatch.eventInfo.teamAFlag)} className="w-8 h-8 rounded-full" /> <span className="font-bold">{currentMatch.eventInfo.teamA}</span></div>
+                <div className="flex items-center gap-3"><img src={getImg(currentMatch.eventInfo.teamAFlag)} className="w-8 h-8 rounded-full" loading="lazy" /> <span className="font-bold">{currentMatch.eventInfo.teamA}</span></div>
                 <span className="text-gray-600 font-black italic text-sm">VS</span>
-                <div className="flex items-center gap-3"><img src={getImg(currentMatch.eventInfo.teamBFlag)} className="w-8 h-8 rounded-full" /> <span className="font-bold">{currentMatch.eventInfo.teamB}</span></div>
+                <div className="flex items-center gap-3"><img src={getImg(currentMatch.eventInfo.teamBFlag)} className="w-8 h-8 rounded-full" loading="lazy" /> <span className="font-bold">{currentMatch.eventInfo.teamB}</span></div>
               </div>
             </div>
           )}
 
         </div>
 
-        {/* 🏟️ RIGHT COLUMN: Playlist / Other Matches (1 column on Big Screens) */}
+        {/* 🏟️ RIGHT COLUMN: Playlist / Other Matches */}
         <div className="mt-6 lg:mt-0 lg:col-span-1 h-[calc(100vh-150px)] overflow-y-auto scrollbar-hide pr-1">
           <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 px-1 hidden lg:block">More Matches</h2>
           
@@ -168,13 +169,13 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
                   }`}>
                     
                     <div className="text-[12px] text-gray-400 font-medium mb-3 flex items-center gap-2 truncate">
-                      <img src={getImg(match.eventInfo.eventLogo)} className="w-3.5 h-3.5 object-contain rounded-full" alt="" />
+                      <img src={getImg(match.eventInfo.eventLogo)} className="w-3.5 h-3.5 object-contain rounded-full" alt="" loading="lazy" />
                       <span className="truncate">{match.eventInfo.eventCat} | {match.eventInfo.eventName}</span>
                     </div>
 
                     <div className="flex justify-between items-center">
                       <div className="flex items-center gap-2 w-[40%]">
-                        <img src={getImg(match.eventInfo.teamAFlag)} className="w-7 h-7 object-contain rounded-full" />
+                        <img src={getImg(match.eventInfo.teamAFlag)} className="w-7 h-7 object-contain rounded-full" loading="lazy" />
                         <span className="text-xs font-semibold text-gray-200 truncate">{match.eventInfo.teamA}</span>
                       </div>
 
@@ -186,7 +187,7 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
 
                       <div className="flex items-center gap-2 w-[40%] justify-end">
                         <span className="text-xs font-semibold text-gray-200 truncate text-right">{match.eventInfo.teamB}</span>
-                        <img src={getImg(match.eventInfo.teamBFlag)} className="w-7 h-7 object-contain rounded-full" />
+                        <img src={getImg(match.eventInfo.teamBFlag)} className="w-7 h-7 object-contain rounded-full" loading="lazy" />
                       </div>
                     </div>
 
