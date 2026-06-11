@@ -84,7 +84,7 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
     } catch (err) {
       console.error("Verification error:", err);
       setCaptchaError(true);
-    } final {
+    } finally {
       setVerifying(false);
     }
   };
