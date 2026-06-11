@@ -5,8 +5,9 @@ import useSWR from 'swr';
 import Link from 'next/link';
 import 'shaka-player/dist/controls.css';
 
-const MATCH_API = "/api/proxy-matches";
-const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
+// 🟢 ডাটা লোড না হওয়ার সমস্যা মেটাতে ফুল এবসোলিউট পাথ ব্যবহার করা হয়েছে
+const MATCH_API = "https://ratulxlive.vercel.app/api/proxy-matches";
+const IMG_PROXY = "https://img.aiorbd.workers.dev/?url=";
 
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 
@@ -40,9 +41,11 @@ export default function StreamPlayer({ id }: { id: string }) {
     setActiveStreamIndex(0);
   }, [id]);
 
+  // ম্যাচ ইনফো এবং কার্ডের ডাটা ফেচিং
   const { data: matches } = useSWR(MATCH_API, fetcher);
   const currentMatch = matches?.find((m: any) => m.id.toString() === id);
   
+  // স্ট্রিম সার্ভার লিংকের ডাটা ফেচিং
   const { data: apiResponse } = useSWR(`/api/streams/${id}`, fetcher, { refreshInterval: 5000 });
   const streams = apiResponse?.streams || null;
 
@@ -115,6 +118,7 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   return (
     <main className="min-h-screen bg-[#12141c] text-white font-sans pb-10">
+      {/* নেভিগেশন বার */}
       <nav className="p-3 bg-[#181a20] sticky top-0 z-50 border-b border-gray-800">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/">
@@ -133,6 +137,7 @@ export default function StreamPlayer({ id }: { id: string }) {
       </nav>
 
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
+        {/* বাম কলাম: ভিডিও প্লেয়ার এবং ম্যাচ ইনফো কার্ড */}
         <div className="lg:col-span-2 flex flex-col">
           <div className="w-full bg-black aspect-video relative rounded-none sm:rounded-xl overflow-hidden shadow-xl border border-gray-800">
             {!streams && (
@@ -146,6 +151,7 @@ export default function StreamPlayer({ id }: { id: string }) {
             </div>
           </div>
 
+          {/* সার্ভার বাটন গ্রুপ */}
           {streams && streams.length > 0 && (
             <div className="flex gap-2 overflow-x-auto scrollbar-hide py-3 my-2 border-b border-gray-800/50">
               <span className="text-gray-400 font-bold flex items-center text-sm mr-2 whitespace-nowrap">Servers:</span>
@@ -163,41 +169,58 @@ export default function StreamPlayer({ id }: { id: string }) {
             </div>
           )}
 
-          {currentMatch && (
-            <div className="bg-[#1a1e29] border border-gray-800/80 rounded-xl p-5 mt-2 hidden lg:block">
-              <div className="text-center text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">{currentMatch.eventInfo.eventName}</div>
-              <div className="flex justify-center items-center gap-8">
+          {/* 🟢 প্লেয়ারের নিচের ডাইনামিক ম্যাচ ইনফো কার্ড (যা আগে আসছিল না) */}
+          {currentMatch ? (
+            <div className="bg-[#1a1e29] border border-gray-800/80 rounded-xl p-5 mt-2">
+              <div className="text-center text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">
+                {currentMatch.eventInfo.eventName}
+              </div>
+              <div className="flex justify-center items-center gap-6 sm:gap-12">
                 <div className="flex items-center gap-3">
-                  <img src={getImg(currentMatch.eventInfo.teamAFlag)} className="w-8 h-8 rounded-full" loading="lazy" /> 
-                  <span className="font-bold">{currentMatch.eventInfo.teamA}</span>
+                  <img src={getImg(currentMatch.eventInfo.teamAFlag)} className="w-8 h-8 rounded-full object-cover bg-gray-800" alt="teamA" /> 
+                  <span className="font-bold text-sm md:text-base">{currentMatch.eventInfo.teamA}</span>
                 </div>
-                <span className="text-gray-600 font-black italic text-sm">VS</span>
+                <span className="text-[#3498db] font-black italic text-sm">VS</span>
                 <div className="flex items-center gap-3">
-                  <img src={getImg(currentMatch.eventInfo.teamBFlag)} className="w-8 h-8 rounded-full" loading="lazy" /> 
-                  <span className="font-bold">{currentMatch.eventInfo.teamB}</span>
+                  <img src={getImg(currentMatch.eventInfo.teamBFlag)} className="w-8 h-8 rounded-full object-cover bg-gray-800" alt="teamB" /> 
+                  <span className="font-bold text-sm md:text-base">{currentMatch.eventInfo.teamB}</span>
                 </div>
               </div>
+            </div>
+          ) : (
+            <div className="bg-[#1a1e29] border border-gray-800/80 rounded-xl p-5 mt-2 animate-pulse flex justify-between items-center">
+              <div className="h-4 bg-gray-800 rounded w-1/3"></div>
+              <div className="h-4 bg-gray-800 rounded w-1/4"></div>
             </div>
           )}
         </div>
 
-        {/* Right Column (More Matches) */}
-        <div className="mt-6 lg:mt-0 lg:col-span-1 h-[calc(100vh-150px)] overflow-y-auto scrollbar-hide pr-1">
+        {/* ডান কলাম: অন্যান্য লাইভ ম্যাচের তালিকা (সাইডবার) */}
+        <div className="mt-6 lg:mt-0 lg:col-span-1 max-h-[70vh] lg:max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-hide pr-1">
           <div className="flex flex-col gap-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-gray-400 px-1 mb-1">More Live Events</span>
             {matches && matches.map((match: any) => {
               const status = getMatchStatus(match.eventInfo.startTime, match.eventInfo.endTime, currentTime);
               const isCurrent = match.id.toString() === id;
 
               return (
                 <Link href={`/watch/${match.id}`} key={match.id} className="outline-none" prefetch={false}>
-                  <div className={`bg-[#1a1e29] border rounded-xl p-4 ${isCurrent ? 'border-[#3498db] bg-[#1e2738]/50' : 'border-[#2d6a85]/30'}`}>
-                    <div className="text-[12px] text-gray-400 mb-3 truncate">
-                      {match.eventInfo.eventCat} | {match.eventInfo.eventName}
+                  <div className={`bg-[#1a1e29] border rounded-xl p-4 transition-all hover:bg-[#1e2738]/30 ${isCurrent ? 'border-[#3498db] bg-[#1e2738]/50' : 'border-gray-800/60'}`}>
+                    <div className="text-[11px] text-gray-400 mb-2 truncate uppercase tracking-wide">
+                      {match.eventInfo.eventCat} • {match.eventInfo.eventName}
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-semibold truncate">{match.eventInfo.teamA}</span>
-                      <span className="text-xs text-blue-400 font-bold uppercase">{status.label}</span>
-                      <span className="text-xs font-semibold truncate text-right">{match.eventInfo.teamB}</span>
+                    <div className="flex justify-between items-center gap-2">
+                      <div className="flex items-center gap-2 truncate max-w-[40%]">
+                        <img src={getImg(match.eventInfo.teamAFlag)} className="w-4 h-4 rounded-full min-w-[16px]" loading="lazy" />
+                        <span className="text-xs font-semibold truncate text-gray-200">{match.eventInfo.teamA}</span>
+                      </div>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wide shrink-0 ${status.type === 'live' ? 'bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse' : 'bg-blue-500/10 text-blue-400'}`}>
+                        {status.label}
+                      </span>
+                      <div className="flex items-center gap-2 truncate max-w-[40%] justify-end">
+                        <span className="text-xs font-semibold truncate text-gray-200 text-right">{match.eventInfo.teamB}</span>
+                        <img src={getImg(match.eventInfo.teamBFlag)} className="w-4 h-4 rounded-full min-w-[16px]" loading="lazy" />
+                      </div>
                     </div>
                   </div>
                 </Link>
@@ -208,4 +231,4 @@ export default function StreamPlayer({ id }: { id: string }) {
       </div>
     </main>
   );
-      }
+}
