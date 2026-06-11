@@ -1,32 +1,24 @@
 import { NextResponse } from 'next/server';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  // Promise থেকে id বের করা (Next.js 15+ রুলস)
   const { id } = await params;
-  
-  // 🟢 আপনার আসল ডাটাবেস লিংকটি এখন সার্ভারের ভেতরে লক করা থাকলো (কেউ দেখতে পারবে না)
   const FIREBASE_URL = "https://ratul-liv-default-rtdb.asia-southeast1.firebasedatabase.app";
-  
-  try {
-    const res = await fetch(`${FIREBASE_URL}/live-streams/${id}.json`, { 
-      cache: 'no-store',
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate'
-      }
-    });
-    
-    if (!res.ok) {
-      return NextResponse.json({ error: "Stream not found" }, { status: 404 });
-    }
-    
-    const data = await res.json();
-    
-    // ডাটা যদি null হয় (অর্থাৎ ডাটাবেসে কিছু নেই)
-    if (!data) {
-      return NextResponse.json([], { status: 200 });
-    }
+  const MATCH_API = "https://ratulxlive.vercel.app/api/proxy-matches"; // আপনার মেইন ম্যাচ এপিআই
 
-    return NextResponse.json(data, { status: 200 });
+  try {
+    // ১. ফায়ারবেস থেকে স্ট্রিম লিংক নেওয়া
+    const res = await fetch(`${FIREBASE_URL}/live-streams/${id}.json`, { cache: 'no-store' });
+    const streamsData = res.ok ? await res.json() : null;
+
+    // ২. ম্যাচ এপিআই থেকে টাইটেল ও ছবির ডাটা নেওয়া (মেটাডাটার ব্যাকআপের জন্য)
+    const matchRes = await fetch(MATCH_API, { cache: 'no-store' });
+    const matches = matchRes.ok ? await matchRes.json() : [];
+    const currentMatch = matches?.find((m: any) => m.id.toString() === id);
+
+    return NextResponse.json({
+      streams: streamsData || [],
+      matchInfo: currentMatch || null
+    }, { status: 200 });
 
   } catch (error) {
     console.error("Secure API Error:", error);
