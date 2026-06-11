@@ -3,13 +3,11 @@
 import { useEffect, useRef, useState, use } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
-import Turnstile from 'react-turnstile';
 import 'shaka-player/dist/controls.css';
 
 const MATCH_API = "/api/proxy-matches";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
-// ১০০% ক্যাশ-ফ্রি ফেচার (ম্যাচ লিস্টের জন্য)
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 
 const getImg = (url: string) => {
@@ -17,7 +15,6 @@ const getImg = (url: string) => {
   return `${IMG_PROXY}${encodeURIComponent(url)}`;
 };
 
-// লাইভ, আপকামিং নাকি শেষ—সেটা বের করার লজিক
 const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => {
   if (!startStr || !endStr) return { type: "upcoming", label: "TBA" };
 
@@ -42,19 +39,18 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  // 🛡️ ক্যাপচা এবং সিকিউর স্ট্রিম স্টেট
+  // 🛡️ ক্যাপচা ও স্ট্রিম সিকিউরিটি স্টেট
   const [streams, setStreams] = useState<any[] | null>(null);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [captchaError, setCaptchaError] = useState<boolean>(false);
   const [verifying, setVerifying] = useState<boolean>(false);
 
-  // প্রতি মিনিটে টাইম আপডেট করার টাইমার
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
 
-  // আইডি চেঞ্জ হলে সব রিসেট হবে (নতুন ম্যাচের জন্য আবার ক্যাপচা আসবে)
+  // ম্যাচ চেঞ্জ হলে স্টেট রি-লক হবে
   useEffect(() => {
     setActiveStreamIndex(0);
     setStreams(null);
@@ -66,7 +62,7 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
   const { data: matches } = useSWR(MATCH_API, fetcher);
   const currentMatch = matches?.find((m: any) => m.id.toString() === id);
 
-  // 🟢 ক্যাপচা ভেরিফাই হওয়ার পর টোকেন দিয়ে ব্যাকএন্ড থেকে সিকিউর ডাটা আনা (POST Method)
+  // 🟢 ক্যাপচা সাকসেস হলে টোকেন দিয়ে ব্যাকএন্ড এপিআই সাবমিট করার ফাংশন
   const handleCaptchaVerify = async (token: string) => {
     setCaptchaToken(token);
     setVerifying(true);
@@ -88,14 +84,23 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
     } catch (err) {
       console.error("Verification error:", err);
       setCaptchaError(true);
-    } finally {
+    } final {
       setVerifying(false);
     }
   };
 
-  // Shaka Player ইনিশিয়ালাইজেশন
+  // 🟢 গ্লোবাল ক্লাউডফ্লেয়ার কলব্যাক উইন্ডো লিসেনার সেটআপ
   useEffect(() => {
-    if (!videoRef.current || !videoContainerRef.current) return;
+    (window as any).javascript_captcha_callback = function (token: string) {
+      if (token) {
+        handleCaptchaVerify(token);
+      }
+    };
+  }, [id]);
+
+  // Shaka Player লোডার
+  useEffect(() => {
+    if (!videoRef.current || !videoContainerRef.current || !streams) return;
     let player: any;
     let ui: any;
 
@@ -119,9 +124,9 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
       if (player) player.destroy();
       if (ui) ui.destroy();
     };
-  }, [streams]); // streams লোড হওয়ার পর প্লেয়ার মাউন্ট হবে
+  }, [streams]);
 
-  // ভিডিও লোড করার লজিক
+  // স্ট্রিম ডিক্রিপ্ট এবং প্লে লজিক
   useEffect(() => {
     if (!playerInstance || !streams || streams.length === 0) return;
     const currentStream = streams[activeStreamIndex] || streams[0];
@@ -143,15 +148,8 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
               backoffFactor: 2,
             }
           },
-          abr: {
-            enabled: true,
-            defaultBandwidthEstimate: 1000000, 
-          },
-          manifest: {
-            dash: {
-              ignoreMinBufferTime: true, 
-            }
-          }
+          abr: { enabled: true, defaultBandwidthEstimate: 1000000 },
+          manifest: { dash: { ignoreMinBufferTime: true } }
         };
 
         if (drmKeyString && drmKeyString.includes(':')) {
@@ -200,16 +198,18 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
           
           <div className="w-full bg-black aspect-video relative rounded-none sm:rounded-xl overflow-hidden shadow-xl border border-gray-800 flex items-center justify-center">
             
-            {/* 🛡️ কন্ডিশনাল রেন্ডারিং: ক্যাপচা ভেরিফাইড না হলে প্লেয়ারের জায়গায় ক্যাপচা বক্স থাকবে */}
+            {/* 🛡️ কন্ডিশনাল ফায়ারওয়াল রেন্ডারিং */}
             {!streams ? (
               <div className="absolute inset-0 flex items-center justify-center bg-[#181a20] z-10 flex-col gap-4 p-4 text-center">
                 {!captchaToken && (
                   <>
                     <span className="text-gray-300 text-sm md:text-base font-semibold">Please verify to unlock secure live streams</span>
-                    <div className="scale-90 sm:scale-100">
-                      <Turnstile
-                        sitekey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
-                        onVerify={handleCaptchaVerify}
+                    <div className="scale-90 sm:scale-100 min-h-[65px]">
+                      {/* পিওর এইচটিএমএল ক্লাউডফ্লেয়ার উইজেট */}
+                      <div 
+                        className="cf-turnstile" 
+                        data-sitekey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "0x4AAAAAABgwttpTXHLnnVvake"}
+                        data-callback="javascript_captcha_callback"
                       />
                     </div>
                   </>
@@ -229,7 +229,6 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
                 )}
               </div>
             ) : (
-              /* ভেরিফিকেশন ডান হলে মেইন ভিডিও এলিমেন্ট মাউন্ট হবে */
               <div ref={videoContainerRef} className="w-full h-full">
                 <video ref={videoRef} className="w-full h-full" autoPlay playsInline />
               </div>
