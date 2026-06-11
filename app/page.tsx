@@ -5,9 +5,13 @@ import useSWR from 'swr';
 import Link from 'next/link';
 
 // .env থেকে লিংকগুলো টানা হলো
-const CAT_API = process.env.NEXT_PUBLIC_CAT_API;
-const MATCH_API = process.env.NEXT_PUBLIC_MATCH_API;
-const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY;
+// সরাসরি আমাদের বানানো Next.js প্রক্সি লিংক
+const CAT_API = "/api/proxy-cats";
+const MATCH_API = "/api/proxy-matches";
+
+// ইমেজ প্রক্সি আগের মতোই থাকবে
+const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
+
 
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
