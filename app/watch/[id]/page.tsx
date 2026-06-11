@@ -1,6 +1,6 @@
 import StreamPlayer from './StreamPlayer';
 
-// 🟢 ১. সার্ভার সাইড ওপেনগ্রাফ (OG) মেটাডাটা জেনারেটর (Next.js স্ট্যান্ডার্ড অনুযায়ী)
+// 🟢 সার্ভার সাইড ওপেনগ্রাফ (OG) মেটাডাটা জেনারেটর
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   
@@ -43,10 +43,10 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   }
 }
 
-// 🟢 ২. সার্ভার কম্পোনেন্ট মেইন রেন্ডারার
+// 🟢 সার্ভার কম্পোনেন্ট রেন্ডারার
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  // ক্লায়েন্ট কম্পোনেন্ট প্লেয়ারকে আইডি পাস করে লোড করানো হচ্ছে
+  // ক্লায়েন্ট কম্পোনেন্ট প্লেয়ারকে লোড করানো হচ্ছে
   return <StreamPlayer id={id} />;
 }
