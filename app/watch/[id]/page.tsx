@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState, use } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
+import Turnstile from 'react-turnstile';
 import 'shaka-player/dist/controls.css';
 
 const MATCH_API = "/api/proxy-matches";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
-// ১০০% ক্যাশ-ফ্রি ফেচার
+// ১০০% ক্যাশ-ফ্রি ফেচার (ম্যাচ লিস্টের জন্য)
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 
 const getImg = (url: string) => {
@@ -41,22 +42,58 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
 
+  // 🛡️ ক্যাপচা এবং সিকিউর স্ট্রিম স্টেট
+  const [streams, setStreams] = useState<any[] | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaError, setCaptchaError] = useState<boolean>(false);
+  const [verifying, setVerifying] = useState<boolean>(false);
+
   // প্রতি মিনিটে টাইম আপডেট করার টাইমার
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
 
+  // আইডি চেঞ্জ হলে সব রিসেট হবে (নতুন ম্যাচের জন্য আবার ক্যাপচা আসবে)
   useEffect(() => {
     setActiveStreamIndex(0);
+    setStreams(null);
+    setCaptchaToken(null);
+    setCaptchaError(false);
+    setVerifying(false);
   }, [id]);
 
   const { data: matches } = useSWR(MATCH_API, fetcher);
   const currentMatch = matches?.find((m: any) => m.id.toString() === id);
-  
-  // সিকিউর API কল: ফায়ারবেস লিংক এখন হাইড করা
-  const { data: streams } = useSWR(`/api/streams/${id}`, fetcher, { refreshInterval: 5000 });
 
+  // 🟢 ক্যাপচা ভেরিফাই হওয়ার পর টোকেন দিয়ে ব্যাকএন্ড থেকে সিকিউর ডাটা আনা (POST Method)
+  const handleCaptchaVerify = async (token: string) => {
+    setCaptchaToken(token);
+    setVerifying(true);
+    setCaptchaError(false);
+    try {
+      const res = await fetch(`/api/streams/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setStreams(data);
+      } else {
+        setCaptchaError(true);
+        setStreams([]);
+      }
+    } catch (err) {
+      console.error("Verification error:", err);
+      setCaptchaError(true);
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  // Shaka Player ইনিশিয়ালাইজেশন
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
     let player: any;
@@ -82,8 +119,9 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
       if (player) player.destroy();
       if (ui) ui.destroy();
     };
-  }, []);
+  }, [streams]); // streams লোড হওয়ার পর প্লেয়ার মাউন্ট হবে
 
+  // ভিডিও লোড করার লজিক
   useEffect(() => {
     if (!playerInstance || !streams || streams.length === 0) return;
     const currentStream = streams[activeStreamIndex] || streams[0];
@@ -92,28 +130,26 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
 
     const loadVideo = async () => {
       try {
-        // আগের ভিডিও ফোর্স স্টপ করে মেমোরি ক্লিয়ার করা
         await playerInstance.unload();
 
-        // প্রো-লেভেল Shaka Player কনফিগারেশন (Anti-Buffering)
         const playerConfig: any = {
           streaming: {
-            bufferingGoal: 30,       // প্লেয়ার সবসময় ৩০ সেকেন্ডের ভিডিও অ্যাডভান্স লোড করে রাখবে
-            rebufferingGoal: 5,      // নেটওয়ার্ক ড্রপ করলে ৫ সেকেন্ড বাফার হওয়ার পর আবার প্লে হবে
-            bufferBehind: 15,        // মেমোরি বাঁচানোর জন্য পেছনের ১৫ সেকেন্ডের বেশি ভিডিও মুছে ফেলবে
+            bufferingGoal: 30,       
+            rebufferingGoal: 5,      
+            bufferBehind: 15,        
             retryParameters: {
-              maxAttempts: 7,        // নেটওয়ার্ক ফেইল করলে ৭ বার নিজে থেকে ট্রাই করবে
+              maxAttempts: 7,        
               baseDelay: 1000,
               backoffFactor: 2,
             }
           },
           abr: {
             enabled: true,
-            defaultBandwidthEstimate: 1000000, // শুরুতে 1 Mbps কোয়ালিটিতে প্লে হবে যাতে দ্রুত স্টার্ট হয়
+            defaultBandwidthEstimate: 1000000, 
           },
           manifest: {
             dash: {
-              ignoreMinBufferTime: true, // সার্ভারের ডিফল্ট বাফার টাইম ইগনোর করবে
+              ignoreMinBufferTime: true, 
             }
           }
         };
@@ -162,16 +198,42 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
         {/* LEFT COLUMN: Player & Servers */}
         <div className="lg:col-span-2 flex flex-col">
           
-          <div className="w-full bg-black aspect-video relative rounded-none sm:rounded-xl overflow-hidden shadow-xl border border-gray-800">
-            {!streams && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#12141c]/90 z-10 flex-col gap-3">
-                <div className="w-10 h-10 border-4 border-[#3498db] border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-gray-400 text-sm animate-pulse">Fetching Secure Stream...</span>
+          <div className="w-full bg-black aspect-video relative rounded-none sm:rounded-xl overflow-hidden shadow-xl border border-gray-800 flex items-center justify-center">
+            
+            {/* 🛡️ কন্ডিশনাল রেন্ডারিং: ক্যাপচা ভেরিফাইড না হলে প্লেয়ারের জায়গায় ক্যাপচা বক্স থাকবে */}
+            {!streams ? (
+              <div className="absolute inset-0 flex items-center justify-center bg-[#181a20] z-10 flex-col gap-4 p-4 text-center">
+                {!captchaToken && (
+                  <>
+                    <span className="text-gray-300 text-sm md:text-base font-semibold">Please verify to unlock secure live streams</span>
+                    <div className="scale-90 sm:scale-100">
+                      <Turnstile
+                        sitekey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
+                        onVerify={handleCaptchaVerify}
+                      />
+                    </div>
+                  </>
+                )}
+                
+                {verifying && (
+                  <>
+                    <div className="w-10 h-10 border-4 border-[#3498db] border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-gray-400 text-sm animate-pulse">Verifying secure firewall token...</span>
+                  </>
+                )}
+
+                {captchaError && (
+                  <span className="text-red-500 text-sm font-bold bg-red-500/10 border border-red-500/20 px-4 py-2 rounded-lg">
+                    Verification Failed! Please reload page and try again.
+                  </span>
+                )}
+              </div>
+            ) : (
+              /* ভেরিফিকেশন ডান হলে মেইন ভিডিও এলিমেন্ট মাউন্ট হবে */
+              <div ref={videoContainerRef} className="w-full h-full">
+                <video ref={videoRef} className="w-full h-full" autoPlay playsInline />
               </div>
             )}
-            <div ref={videoContainerRef} className="w-full h-full">
-              <video ref={videoRef} className="w-full h-full" autoPlay playsInline />
-            </div>
           </div>
 
           {/* Server Switcher Pills */}
