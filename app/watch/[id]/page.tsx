@@ -1,6 +1,6 @@
 import StreamPlayer from './StreamPlayer';
 
-// 🟢 সার্ভার সাইড ওপেনগ্রাফ (OG) মেটাডাটা জেনারেটর
+// 🟢 সম্পূর্ণ সার্ভার-সাইড মেটাডাটা জেনারেটর (সোশাল শেয়ারিং কার্ডের জন্য)
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   
@@ -43,10 +43,8 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   }
 }
 
-// 🟢 সার্ভার কম্পোনেন্ট রেন্ডারার
+// 🟢 মেইন সার্ভার রেন্ডারার
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-
-  // ক্লায়েন্ট কম্পোনেন্ট প্লেয়ারকে লোড করানো হচ্ছে
   return <StreamPlayer id={id} />;
 }
