@@ -5,7 +5,12 @@ import useSWR from 'swr';
 import Link from 'next/link';
 import 'shaka-player/dist/controls.css';
 
+const CAT_API = "/api/proxy-cats";
+const MATCH_API = "/api/proxy-matches";
+const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
+
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
+const getImg = (url: string) => (url && url !== "null" ? `${IMG_PROXY}${url}` : "");
 
 export default function PlayerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -13,22 +18,16 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const [playerInstance, setPlayerInstance] = useState<any>(null);
-  
-  // 🟢 নতুন: কোন সার্ভারটি এখন প্লে হবে তার ট্র্যাক রাখা (ডিফল্ট 0 মানে প্রথমটা)
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
 
-  const { data: matches } = useSWR('/api/proxy-matches', fetcher);
-  const matchDetails = matches?.find((m: any) => m.id.toString() === id);
-
+  const { data: matches } = useSWR(MATCH_API, fetcher);
+  
   const FIREBASE_URL = process.env.NEXT_PUBLIC_FIREBASE_URL || "https://ratul-liv-default-rtdb.asia-southeast1.firebasedatabase.app";
   const { data: streams } = useSWR(`${FIREBASE_URL}/live-stream.json`, fetcher, { refreshInterval: 5000 });
 
-  const imgProxy = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
-  const getImg = (url: string) => (url && url !== "null" ? `${imgProxy}${url}` : "");
-
+  // Shaka Player Setup
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
-
     let player: any;
     let ui: any;
 
@@ -39,12 +38,10 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
       if (shaka.Player.isBrowserSupported()) {
         player = new shaka.Player(videoRef.current);
         ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
-        
         ui.configure({
           controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'fullscreen', 'overflow_menu'],
           addSeekBar: true,
         });
-
         setPlayerInstance(player);
       }
     });
@@ -55,11 +52,9 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
     };
   }, []);
 
-  // 🚀 যখনই activeStreamIndex বা streams চেঞ্জ হবে, নতুন ভিডিও লোড হবে
+  // Video Loading Logic
   useEffect(() => {
     if (!playerInstance || !streams || streams.length === 0) return;
-
-    // ইউজারের সিলেক্ট করা লিংকটি নেওয়া হলো
     const currentStream = streams[activeStreamIndex] || streams[0];
     const streamUrl = currentStream.link;
     const drmKeyString = currentStream.api;
@@ -68,102 +63,109 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
       try {
         if (drmKeyString && drmKeyString.includes(':')) {
           const [kid, key] = drmKeyString.split(':');
-          playerInstance.configure({
-            drm: { clearKeys: { [kid]: key } }
-          });
+          playerInstance.configure({ drm: { clearKeys: { [kid]: key } } });
         } else {
           playerInstance.configure({ drm: { clearKeys: {} } });
         }
-
         await playerInstance.load(streamUrl);
       } catch (e) {
-        console.error('ভিডিও লোড হতে সমস্যা:', e);
+        console.error('Video Error:', e);
       }
     };
-
     loadVideo();
-  }, [playerInstance, streams, activeStreamIndex]); // activeStreamIndex ডিপেন্ডেন্সিতে অ্যাড করা হয়েছে
+  }, [playerInstance, streams, activeStreamIndex]);
 
   return (
-    <main className="min-h-screen bg-[#0B0F19] text-white pb-20">
+    <main className="min-h-screen bg-[#12141c] text-white font-sans pb-20">
       
-      <nav className="p-4 flex items-center gap-4 bg-[#0B0F19] border-b border-gray-800 sticky top-0 z-50">
+      {/* 🔙 Back Nav */}
+      <nav className="p-3 flex items-center bg-[#181a20]">
         <Link href="/">
-          <button className="p-2 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+          <button className="p-2 text-gray-300 hover:text-white">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
           </button>
         </Link>
-        <h1 className="text-lg font-bold text-gray-200">
-          {matchDetails ? matchDetails.title : "Live Stream"}
-        </h1>
       </nav>
 
-      <div className="max-w-5xl mx-auto w-full">
-        <div className="w-full bg-black aspect-video relative shadow-2xl shadow-red-900/10">
-          {!streams ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 z-10">
-              <div className="w-12 h-12 border-4 border-gray-700 border-t-red-500 rounded-full animate-spin mb-4"></div>
-              <p className="text-gray-400 font-medium animate-pulse">খেলার লাইভ সার্ভার খোঁজা হচ্ছে...</p>
-            </div>
-          ) : null}
-
-          <div ref={videoContainerRef} className="w-full h-full">
-            <video ref={videoRef} className="w-full h-full" autoPlay playsInline />
+      {/* 📺 Player */}
+      <div className="w-full max-w-3xl mx-auto bg-black aspect-video relative">
+        {!streams && (
+          <div className="absolute inset-0 flex items-center justify-center z-10">
+            <div className="w-10 h-10 border-4 border-[#3498db] border-t-transparent rounded-full animate-spin"></div>
           </div>
+        )}
+        <div ref={videoContainerRef} className="w-full h-full">
+          <video ref={videoRef} className="w-full h-full" autoPlay playsInline />
         </div>
+      </div>
 
-        {/* 🎛️ Server Switcher Buttons (নতুন যুক্ত করা হয়েছে) */}
-        {streams && streams.length > 1 && (
-          <div className="bg-[#0F1523] p-4 border-b border-gray-800 flex gap-3 overflow-x-auto scrollbar-hide">
-            <span className="text-gray-400 font-bold flex items-center whitespace-nowrap">Servers:</span>
+      <div className="max-w-2xl mx-auto px-4 mt-4">
+        {/* 🎛️ Server Switcher (GHD Pill Style) */}
+        {streams && streams.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto scrollbar-hide py-2 mb-4">
             {streams.map((stream: any, index: number) => (
               <button
                 key={index}
                 onClick={() => setActiveStreamIndex(index)}
-                className={`px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap transition-all ${
+                className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all flex items-center gap-2 border ${
                   activeStreamIndex === index
-                    ? "bg-red-600 text-white shadow-[0_0_10px_rgba(239,68,68,0.5)]"
-                    : "bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700"
+                    ? "bg-[#2a303f] border-[#3498db] text-white"
+                    : "bg-[#2a303f] border-transparent text-gray-400"
                 }`}
               >
+                {activeStreamIndex === index && <svg className="w-4 h-4 text-[#3498db]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
                 {stream.title || `Server ${index + 1}`}
               </button>
             ))}
           </div>
         )}
 
-        {matchDetails && (
-          <div className="p-4 md:p-8">
-            <div className="bg-[#151C2C] border border-gray-800 rounded-2xl p-6 md:p-8">
-              
-              <div className="flex justify-center mb-6">
-                <span className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-                  <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
-                  {matchDetails.eventInfo.eventName}
-                </span>
-              </div>
+        {/* 🏟️ Other Matches List (Below Player) */}
+        <div className="mt-6">
+          {matches && matches.map((match: any) => {
+            // সিম্পল টাইম রেন্ডারিং
+            const startTime = new Date(match.eventInfo.startTime.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
+            
+            return (
+              <Link href={`/watch/${match.id}`} key={match.id}>
+                <div className={`bg-[#1a1e29] border border-[#2d6a85] rounded-xl p-4 mb-3 hover:bg-[#202533] transition-colors ${match.id.toString() === id ? 'ring-2 ring-[#3498db]' : ''}`}>
+                  
+                  <div className="text-center text-[13px] text-gray-300 font-medium mb-4 flex items-center justify-center gap-2">
+                    <img src={getImg(match.eventInfo.eventLogo)} className="w-4 h-4 object-contain" alt="" />
+                    {match.eventInfo.eventCat} | {match.eventInfo.eventName}
+                  </div>
 
-              <div className="flex justify-center items-center gap-6 md:gap-16">
-                <div className="flex flex-col items-center w-32">
-                  <img src={getImg(matchDetails.eventInfo.teamAFlag)} alt={matchDetails.eventInfo.teamA} className="w-20 h-20 md:w-24 md:h-24 object-contain mb-3 drop-shadow-lg" />
-                  <span className="text-base md:text-xl font-bold text-center">{matchDetails.eventInfo.teamA}</span>
+                  <div className="flex justify-between items-center">
+                    <div className="flex flex-col items-center w-1/3">
+                      <img src={getImg(match.eventInfo.teamAFlag)} alt={match.eventInfo.teamA} className="w-12 h-12 object-contain mb-2 rounded-full" />
+                      <span className="text-sm font-medium text-gray-200 text-center">{match.eventInfo.teamA}</span>
+                    </div>
+
+                    <div className="flex flex-col items-center justify-center w-1/3 text-center">
+                       <span className="text-gray-100 font-bold text-sm">
+                         {startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                       </span>
+                    </div>
+
+                    <div className="flex flex-col items-center w-1/3">
+                      <img src={getImg(match.eventInfo.teamBFlag)} alt={match.eventInfo.teamB} className="w-12 h-12 object-contain mb-2 rounded-full" />
+                      <span className="text-sm font-medium text-gray-200 text-center">{match.eventInfo.teamB}</span>
+                    </div>
+                  </div>
+
                 </div>
-
-                <div className="text-xl md:text-3xl font-black italic text-gray-700">VS</div>
-
-                <div className="flex flex-col items-center w-32">
-                  <img src={getImg(matchDetails.eventInfo.teamBFlag)} alt={matchDetails.eventInfo.teamB} className="w-20 h-20 md:w-24 md:h-24 object-contain mb-3 drop-shadow-lg" />
-                  <span className="text-base md:text-xl font-bold text-center">{matchDetails.eventInfo.teamB}</span>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        )}
+              </Link>
+            );
+          })}
+        </div>
       </div>
-      
+
+      <style dangerouslySetInnerHTML={{__html: `
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+      `}} />
     </main>
   );
 }
