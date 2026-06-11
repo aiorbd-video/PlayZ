@@ -8,6 +8,7 @@ import 'shaka-player/dist/controls.css';
 const MATCH_API = "/api/proxy-matches";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
+// ১০০% ক্যাশ-ফ্রি ফেচার
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 
 const getImg = (url: string) => {
@@ -15,7 +16,7 @@ const getImg = (url: string) => {
   return `${IMG_PROXY}${encodeURIComponent(url)}`;
 };
 
-// 🟢 লাইভ, আপকামিং নাকি শেষ—সেটা বের করার লজিক
+// লাইভ, আপকামিং নাকি শেষ—সেটা বের করার লজিক
 const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => {
   if (!startStr || !endStr) return { type: "upcoming", label: "TBA" };
 
@@ -53,6 +54,7 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
   const { data: matches } = useSWR(MATCH_API, fetcher);
   const currentMatch = matches?.find((m: any) => m.id.toString() === id);
   
+  // সিকিউর API কল: ফায়ারবেস লিংক এখন হাইড করা
   const { data: streams } = useSWR(`/api/streams/${id}`, fetcher, { refreshInterval: 5000 });
 
   useEffect(() => {
@@ -90,14 +92,40 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
 
     const loadVideo = async () => {
       try {
+        // আগের ভিডিও ফোর্স স্টপ করে মেমোরি ক্লিয়ার করা
         await playerInstance.unload();
+
+        // প্রো-লেভেল Shaka Player কনফিগারেশন (Anti-Buffering)
+        const playerConfig: any = {
+          streaming: {
+            bufferingGoal: 30,       // প্লেয়ার সবসময় ৩০ সেকেন্ডের ভিডিও অ্যাডভান্স লোড করে রাখবে
+            rebufferingGoal: 5,      // নেটওয়ার্ক ড্রপ করলে ৫ সেকেন্ড বাফার হওয়ার পর আবার প্লে হবে
+            bufferBehind: 15,        // মেমোরি বাঁচানোর জন্য পেছনের ১৫ সেকেন্ডের বেশি ভিডিও মুছে ফেলবে
+            retryParameters: {
+              maxAttempts: 7,        // নেটওয়ার্ক ফেইল করলে ৭ বার নিজে থেকে ট্রাই করবে
+              baseDelay: 1000,
+              backoffFactor: 2,
+            }
+          },
+          abr: {
+            enabled: true,
+            defaultBandwidthEstimate: 1000000, // শুরুতে 1 Mbps কোয়ালিটিতে প্লে হবে যাতে দ্রুত স্টার্ট হয়
+          },
+          manifest: {
+            dash: {
+              ignoreMinBufferTime: true, // সার্ভারের ডিফল্ট বাফার টাইম ইগনোর করবে
+            }
+          }
+        };
 
         if (drmKeyString && drmKeyString.includes(':')) {
           const [kid, key] = drmKeyString.split(':');
-          playerInstance.configure({ drm: { clearKeys: { [kid]: key } } });
+          playerConfig.drm = { clearKeys: { [kid]: key } };
         } else {
-          playerInstance.configure({ drm: { clearKeys: {} } });
+          playerConfig.drm = { clearKeys: {} };
         }
+
+        playerInstance.configure(playerConfig);
         await playerInstance.load(streamUrl);
       } catch (e) {
         console.error('Video Error:', e);
@@ -109,7 +137,7 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
   return (
     <main className="min-h-screen bg-[#12141c] text-white font-sans pb-10">
       
-      {/* 🔙 Top Back Nav */}
+      {/* Top Back Nav */}
       <nav className="p-3 bg-[#181a20] sticky top-0 z-50 border-b border-gray-800">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/">
@@ -121,7 +149,6 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
             </button>
           </Link>
           
-          {/* 🟢 আপডেট: এখন টিমের নাম হেডারে শো করবে (যেমন: BAN VS AUS) */}
           <span className="text-sm md:text-base font-bold text-gray-200 truncate max-w-xs sm:max-w-md tracking-wide">
             {currentMatch ? `${currentMatch.eventInfo.teamA} VS ${currentMatch.eventInfo.teamB}` : "Live Streaming"}
           </span>
@@ -129,10 +156,10 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
         </div>
       </nav>
 
-      {/* 🖥️ 📱 Responsive Layout Container */}
+      {/* Responsive Layout Container */}
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
         
-        {/* 🎬 LEFT COLUMN: Player & Servers */}
+        {/* LEFT COLUMN: Player & Servers */}
         <div className="lg:col-span-2 flex flex-col">
           
           <div className="w-full bg-black aspect-video relative rounded-none sm:rounded-xl overflow-hidden shadow-xl border border-gray-800">
@@ -147,7 +174,7 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
             </div>
           </div>
 
-          {/* 🎛️ Server Switcher Pills */}
+          {/* Server Switcher Pills */}
           {streams && streams.length > 0 && (
             <div className="flex gap-2 overflow-x-auto scrollbar-hide py-3 my-2 border-b border-gray-800/50">
               <span className="text-gray-400 font-bold flex items-center text-sm mr-2 whitespace-nowrap">Servers:</span>
@@ -168,7 +195,7 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
             </div>
           )}
 
-          {/* 📊 Current Match Live Info */}
+          {/* Current Match Live Info */}
           {currentMatch && (
             <div className="bg-[#1a1e29] border border-gray-800/80 rounded-xl p-5 mt-2 hidden lg:block">
               <div className="text-center text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">{currentMatch.eventInfo.eventName}</div>
@@ -188,7 +215,7 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
 
         </div>
 
-        {/* 🏟️ RIGHT COLUMN: Playlist / Other Matches */}
+        {/* RIGHT COLUMN: Playlist / Other Matches */}
         <div className="mt-6 lg:mt-0 lg:col-span-1 h-[calc(100vh-150px)] overflow-y-auto scrollbar-hide pr-1">
           <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 px-1 hidden lg:block">More Matches</h2>
           
@@ -219,7 +246,6 @@ export default function PlayerPage({ params }: { params: Promise<{ id: string }>
                         <span className="text-xs font-semibold text-gray-200 truncate">{match.eventInfo.teamA}</span>
                       </div>
 
-                      {/* 🟢 আপডেট: এখন ডানদিকের লিস্টেও Live/Ended স্ট্যাটাস শো করবে */}
                       <div className="w-[20%] text-center flex justify-center">
                         {status.type === 'live' ? (
                           <span className="text-red-500 font-bold text-[10px] bg-red-500/10 border border-red-500/30 px-1.5 py-0.5 rounded flex items-center gap-1 animate-pulse">
