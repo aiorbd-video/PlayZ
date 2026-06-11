@@ -49,7 +49,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="scroll-smooth">
       <head>
-        <meta httpEquiv="X-Frame-Options" content="DENY" />
+        <meta httpEquiv="X-Frame-Options" content="SAMEORIGIN" />
         <meta httpEquiv="X-Content-Type-Options" content="nosniff" />
         {/* 🟢 গ্যারান্টিড রেন্ডারিং স্ক্রিপ্ট: লোড হওয়া মাত্রই সে 'onloadTurnstileCallback' ফাংশনটি কল করবে */}
         <script 
