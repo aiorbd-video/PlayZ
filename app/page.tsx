@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, memo } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
+import Image from 'next/image'; // 🟢 Next/Image ইমপোর্ট করা হলো
 
 const MATCH_API = "/api/proxy-matches";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
@@ -10,7 +11,7 @@ const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.worke
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 
 const getImg = (url: string) => {
-  if (!url || url === "null") return "";
+  if (!url || url === "null") return "/fallback-logo.png"; // ডিফল্ট লোগো পাথ
   return `${IMG_PROXY}${encodeURIComponent(url)}`;
 };
 
@@ -23,10 +24,19 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
   return 'upcoming';
 };
 
-const renderUpcomingTime = (startStr: string, currentTime: Date) => {
-  if (!startStr) return <span className="text-[#3498db] font-bold text-xs">TBA</span>;
-  const startTime = new Date(startStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
-  const diffMs = startTime.getTime() - currentTime.getTime();
+// ⏱️ ৫. Timer Isolation: কাউন্টডাউন টাইম ট্র্যাকিংকে একদম আলাদা কম্পোনেন্টে লক করা হলো
+// এর ফলে প্রতি সেকেন্ডের টিক-টিক কাউন্টে পুরো পেজ বা ম্যাচ কার্ড রি-রেন্ডার হবে না
+const MatchCountdown = memo(({ startTimeStr }: { startTimeStr: string }) => {
+  const [time, setTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  if (!startTimeStr) return <span className="text-[#3498db] font-bold text-xs">TBA</span>;
+  const startTime = new Date(startTimeStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
+  const diffMs = startTime.getTime() - time.getTime();
 
   if (diffMs <= 0) return <span className="text-[#3498db] font-bold text-xs">Starting...</span>;
   const diffHours = diffMs / (1000 * 60 * 60);
@@ -59,7 +69,8 @@ const renderUpcomingTime = (startStr: string, currentTime: Date) => {
       </div>
     );
   }
-};
+});
+MatchCountdown.displayName = 'MatchCountdown';
 
 const getCategoryIcon = (cat: string) => {
   if (cat === 'All') return <span className="text-xl font-bold text-[#3498db]">All</span>;
@@ -72,21 +83,92 @@ const getCategoryIcon = (cat: string) => {
   return <span className="text-2xl">🏆</span>;
 };
 
-// 🌟 ১. প্রিমিয়াম কঙ্কাল লোডার কম্পোনেন্ট (Skeleton Loader)
+// 🏟️ ২. MatchCard Component: মেমোয়াইজড কাস্টম কম্পোনেন্ট যা শুধুমাত্র ডাটা চেঞ্জ হলে রেন্ডার হবে
+const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
+  const eventInfo = match.eventInfo || {};
+
+  return (
+    <Link 
+      href={`/watch/${match.id}`} 
+      className="outline-none rounded-2xl focus:outline-none group block content-visibility-auto contain-intrinsic-size-[180px]" // 🟢 ৬. Virtualization/Containment ইফেক্ট
+      prefetch={false}
+    >
+      <div className="bg-[#141822] border border-gray-800/50 rounded-2xl p-5 transition-all duration-300 transform group-hover:bg-[#1a202e] group-hover:border-[#3498db]/40 group-focus:scale-[1.03] group-focus:bg-[#1a202e] group-focus:border-[#3498db] group-focus:ring-4 group-focus:ring-[#3498db]/20 shadow-md flex flex-col justify-between h-full min-h-[180px]">
+        
+        {/* Top: Category & Event Name */}
+        {(eventInfo.eventCat || eventInfo.eventName) && (
+          <div className="text-xs md:text-sm text-gray-400 font-semibold mb-4 flex items-center justify-center gap-2 border-b border-gray-800/30 pb-2">
+            {eventInfo.eventLogo && eventInfo.eventLogo !== "null" && (
+              <div className="relative w-4 h-4">
+                {/* 🟢 ৩. Next/Image অপ্টিমাইজেশন */}
+                <Image 
+                  src={getImg(eventInfo.eventLogo)} 
+                  alt="" 
+                  fill
+                  sizes="16px"
+                  className="object-contain rounded-full"
+                  unoptimized // প্রক্সি ইমেজের জন্য আনঅপ্টিমাইজড ট্র্যাকিং রাখা ভালো
+                />
+              </div>
+            )}
+            <span className="truncate max-w-[200px]">
+              {[eventInfo.eventCat, eventInfo.eventName].filter(Boolean).join(' | ')}
+            </span>
+          </div>
+        )}
+
+        {/* Teams Layout */}
+        <div className="flex justify-between items-center mt-auto">
+          {/* Team A */}
+          <div className="flex flex-col items-center gap-2.5 w-1/3">
+            <div className="relative w-12 h-12 md:w-14 md:h-14 bg-gray-800/40 border border-gray-700/30 rounded-full p-0.5 overflow-hidden">
+              <Image src={getImg(eventInfo.teamAFlag)} alt="" fill sizes="(max-width: 768px) 48px, 56px" className="object-cover rounded-full" unoptimized />
+            </div>
+            <span className="font-bold text-xs md:text-sm text-gray-200 truncate w-full text-center tracking-wide">{eventInfo.teamA || 'Team A'}</span>
+          </div>
+
+          {/* Center Badge */}
+          <div className="w-1/3 flex justify-center items-center">
+            {status === 'live' && (
+              <span className="bg-red-500/10 text-red-500 border border-red-500/30 px-3 py-1.5 rounded-xl font-black text-[10px] tracking-widest flex items-center gap-1.5 shadow-[0_0_15px_rgba(239,68,68,0.15)] animate-pulse">
+                <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span> LIVE
+              </span>
+            )}
+            {status === 'upcoming' && (
+              <div className="bg-[#1b2230] border border-gray-800/80 px-2.5 py-1.5 rounded-xl flex items-center justify-center min-w-[85px]">
+                <MatchCountdown startTimeStr={eventInfo.startTime} />
+              </div>
+            )}
+            {status === 'recent' && (
+              <span className="bg-gray-800/40 text-gray-500 border border-gray-800 px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase">
+                Ended
+              </span>
+            )}
+          </div>
+
+          {/* Team B */}
+          <div className="flex flex-col items-center gap-2.5 w-1/3">
+            <div className="relative w-12 h-12 md:w-14 md:h-14 bg-gray-800/40 border border-gray-700/30 rounded-full p-0.5 overflow-hidden">
+              <Image src={getImg(eventInfo.teamBFlag)} alt="" fill sizes="(max-width: 768px) 48px, 56px" className="object-cover rounded-full" unoptimized />
+            </div>
+            <span className="font-bold text-xs md:text-sm text-gray-200 truncate w-full text-center tracking-wide">{eventInfo.teamB || 'Team B'}</span>
+          </div>
+        </div>
+
+      </div>
+    </Link>
+  );
+});
+MatchCard.displayName = 'MatchCard';
+
 function MatchSkeleton() {
   return (
-    <div className="bg-[#1a1e29] border border-gray-800/40 rounded-2xl p-5 animate-pulse flex flex-col gap-5">
+    <div className="bg-[#1a1e29] border border-gray-800/40 rounded-2xl p-5 animate-pulse flex flex-col gap-5 h-[180px]">
       <div className="h-4 bg-gray-800 rounded w-1/3 mx-auto"></div>
-      <div className="flex justify-between items-center px-4">
-        <div className="flex flex-col items-center gap-2 w-1/3">
-          <div className="w-14 h-14 rounded-full bg-gray-800"></div>
-          <div className="h-4 bg-gray-800 rounded w-3/4"></div>
-        </div>
-        <div className="w-14 h-6 bg-gray-800 rounded"></div>
-        <div className="flex flex-col items-center gap-2 w-1/3">
-          <div className="w-14 h-14 rounded-full bg-gray-800"></div>
-          <div className="h-4 bg-gray-800 rounded w-3/4"></div>
-        </div>
+      <div className="flex justify-between items-center px-2">
+        <div className="w-12 h-12 rounded-full bg-gray-800"></div>
+        <div className="w-12 h-6 bg-gray-800 rounded"></div>
+        <div className="w-12 h-12 rounded-full bg-gray-800"></div>
       </div>
     </div>
   );
@@ -95,98 +177,102 @@ function MatchSkeleton() {
 export default function Home() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [activeFilter, setActiveFilter] = useState('All');
-  const [searchQuery, setSearchQuery] = useState(''); // 🔍 সার্চ স্টেট
+  const [searchInp, setSearchInp] = useState(''); // রিয়েল-টাইম ইনপুট স্টেট
+  const [debouncedSearch, setDebouncedSearch] = useState(''); // 🔍 ৪. Debounced Search স্টেট
   const [showSearch, setShowSearch] = useState(false);
-  const [currentTime, setCurrentTime] = useState(new Date());
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
   }, []);
+
+  // 🔍 ৪. Debounce Logic Effect (৩০০ মিলিমেকেন্ড বাফার)
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchInp);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchInp]);
 
   const { data: matches, error } = useSWR(MATCH_API, fetcher, { refreshInterval: 30000 });
 
-  const dynamicCategories = ['All'];
-  if (matches && Array.isArray(matches)) {
-    const uniqueCats = new Set(matches.map((m: any) => m.eventInfo?.eventCat).filter(Boolean));
-    uniqueCats.forEach(cat => dynamicCategories.push(cat as string));
-  }
+  // 🟢 ১. useMemo: ডাইনামিক ক্যাটাগরি মেমোয়াইজেশন
+  const dynamicCategories = useMemo(() => {
+    const list = ['All'];
+    if (matches && Array.isArray(matches)) {
+      const uniqueCats = new Set(matches.map((m: any) => m.eventInfo?.eventCat).filter(Boolean));
+      uniqueCats.forEach(cat => list.push(cat as string));
+    }
+    return list;
+  }, [matches]);
 
   const filters = ['All', 'Live', 'Recent', 'Upcoming'];
 
-  // 🔍 সার্চ, ক্যাটাগরি এবং স্ট্যাটাস ফিল্টারিং লজিক একসাথে
-  const processedMatches = matches?.filter((match: any) => {
-    const eventInfo = match.eventInfo || {};
-    
-    if (activeCategory !== 'All' && eventInfo.eventCat !== activeCategory) return false;
-    
-    const status = getMatchStatus(eventInfo.startTime, eventInfo.endTime, currentTime);
-    if (activeFilter === 'Live' && status !== 'live') return false;
-    if (activeFilter === 'Recent' && status !== 'recent') return false;
-    if (activeFilter === 'Upcoming' && status !== 'upcoming') return false;
-    
-    // সার্চ কোয়েরি ফিল্টার
-    if (searchQuery.trim() !== '') {
-      const query = searchQuery.toLowerCase();
-      const teamA = (eventInfo.teamA || '').toLowerCase();
-      const teamB = (eventInfo.teamB || '').toLowerCase();
-      const eventName = (eventInfo.eventName || '').toLowerCase();
-      if (!teamA.includes(query) && !teamB.includes(query) && !eventName.includes(query)) return false;
-    }
-    
-    return true;
-  }).sort((a: any, b: any) => {
-    const aStart = new Date(a.eventInfo?.startTime?.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z') || 0).getTime();
-    const bStart = new Date(b.eventInfo?.startTime?.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z') || 0).getTime();
-    const aEnd = new Date(a.eventInfo?.endTime?.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z') || 0).getTime();
-    const bEnd = new Date(b.eventInfo?.endTime?.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z') || 0).getTime();
+  // 🟢 ১. useMemo: ফিল্টারিং এবং সর্টিং লজিক মেমোয়াইজেশন (সুপার অপ্টিমাইজড)
+  const processedMatches = useMemo(() => {
+    if (!matches) return [];
+    const now = new Date();
 
-    const aStatus = getMatchStatus(a.eventInfo?.startTime, a.eventInfo?.endTime, currentTime);
-    const bStatus = getMatchStatus(b.eventInfo?.startTime, b.eventInfo?.endTime, currentTime);
+    return matches.filter((match: any) => {
+      const eventInfo = match.eventInfo || {};
+      if (activeCategory !== 'All' && eventInfo.eventCat !== activeCategory) return false;
+      
+      const status = getMatchStatus(eventInfo.startTime, eventInfo.endTime, now);
+      if (activeFilter === 'Live' && status !== 'live') return false;
+      if (activeFilter === 'Recent' && status !== 'recent') return false;
+      if (activeFilter === 'Upcoming' && status !== 'upcoming') return false;
+      
+      if (debouncedSearch.trim() !== '') {
+        const query = debouncedSearch.toLowerCase();
+        return (
+          (eventInfo.teamA || '').toLowerCase().includes(query) ||
+          (eventInfo.teamB || '').toLowerCase().includes(query) ||
+          (eventInfo.eventName || '').toLowerCase().includes(query)
+        );
+      }
+      return true;
+    }).sort((a: any, b: any) => {
+      const nowTime = new Date();
+      const aStart = new Date(a.eventInfo?.startTime?.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z') || 0).getTime();
+      const bStart = new Date(b.eventInfo?.startTime?.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z') || 0).getTime();
+      const aStatus = getMatchStatus(a.eventInfo?.startTime, a.eventInfo?.endTime, nowTime);
+      const bStatus = getMatchStatus(b.eventInfo?.startTime, b.eventInfo?.endTime, nowTime);
 
-    if (activeFilter === 'All') {
-      const priority: any = { live: 1, upcoming: 2, recent: 3 };
-      if (priority[aStatus] !== priority[bStatus]) return priority[aStatus] - priority[bStatus];
-      if (aStatus === 'upcoming') return aStart - bStart; 
-      if (aStatus === 'recent') return bEnd - aEnd;       
+      if (activeFilter === 'All') {
+        const priority: any = { live: 1, upcoming: 2, recent: 3 };
+        if (priority[aStatus] !== priority[bStatus]) return priority[aStatus] - priority[bStatus];
+        if (aStatus === 'upcoming') return aStart - bStart; 
+        return 0;
+      }
+      if (activeFilter === 'Upcoming') return aStart - bStart;
       return 0;
-    }
-    if (activeFilter === 'Upcoming') return aStart - bStart;
-    if (activeFilter === 'Recent') return bEnd - aEnd;
-    return 0;
-  });
+    });
+  }, [matches, activeCategory, activeFilter, debouncedSearch]);
 
   if (!mounted) return null;
 
   return (
-    <main className="min-h-screen bg-[#12141c] text-white font-sans pb-20">
+    <main className="min-h-screen bg-[#0d0f14] text-white font-sans pb-20 tv:p-8">
       
       {/* Header */}
-      <nav className="p-4 bg-[#12141c] sticky top-0 z-50 flex items-center justify-between border-b border-gray-900/40 backdrop-blur-md">
+      <nav className="p-4 bg-[#0d0f14]/90 sticky top-0 z-50 flex items-center justify-between border-b border-gray-900/60 backdrop-blur-md max-w-7xl mx-auto rounded-b-xl">
         <div className="flex items-center gap-4">
-          <button className="text-gray-300 hover:text-white outline-none">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          {!showSearch && <h1 className="text-xl md:text-2xl font-bold text-[#3498db] tracking-wide">All in one sports web</h1>}
+          <h1 className="text-xl md:text-2xl font-black text-[#3498db] tracking-wide uppercase tv:text-3xl">All in one sports</h1>
         </div>
 
-        {/* 🔍 সার্চ বার ইন্টিগ্রেশন */}
+        {/* Search Input */}
         <div className="flex items-center gap-3 w-full max-w-xs justify-end">
           {showSearch && (
             <input 
               type="text" 
               placeholder="Search team or event..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-[#1a1e29] border border-gray-800 text-sm rounded-xl px-4 py-1.5 w-full focus:outline-none focus:border-[#3498db] transition-all"
+              value={searchInp}
+              onChange={(e) => setSearchInp(e.target.value)} // ডেবোউন্সড ইনপুট ট্রিগার
+              className="bg-[#161a24] border border-gray-800 text-sm rounded-xl px-4 py-2 w-full focus:outline-none focus:border-[#3498db] transition-all text-white"
               autoFocus
             />
           )}
-          <button onClick={() => { setShowSearch(!showSearch); setSearchQuery(''); }} className="outline-none hover:text-[#3498db] text-gray-300">
+          <button onClick={() => { setShowSearch(!showSearch); setSearchInp(''); setDebouncedSearch(''); }} className="outline-none text-gray-300 hover:text-[#3498db] focus:text-[#3498db]">
             {showSearch ? (
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             ) : (
@@ -196,148 +282,80 @@ export default function Home() {
         </div>
       </nav>
 
-      <div className="max-w-4xl mx-auto px-4 mt-2">
+      <div className="max-w-7xl mx-auto px-4 mt-4">
         
-        {/* Category Circles */}
-        <div className="flex items-center justify-around md:justify-start md:gap-10 py-4 mb-2 overflow-x-auto scrollbar-hide">
+        {/* Categories Navbar */}
+        <div className="flex items-center justify-start gap-4 md:gap-8 py-4 mb-2 overflow-x-auto scrollbar-hide scroll-smooth snap-x">
           {dynamicCategories.map((cat) => (
-            <div key={cat} onClick={() => setActiveCategory(cat)} className="flex flex-col items-center gap-2 cursor-pointer outline-none group min-w-[70px]">
-              <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${
-                activeCategory === cat ? 'bg-[#1e2738] border-2 border-[#3498db] shadow-lg shadow-[#3498db]/20' : 'bg-[#1a1e29] border border-gray-800 group-hover:bg-[#202533]'
+            <button 
+              key={cat} 
+              onClick={() => setActiveCategory(cat)} 
+              className="flex flex-col items-center gap-2 cursor-pointer outline-none group min-w-[75px] snap-center focus:outline-none"
+            >
+              <div className={`w-14 h-14 md:w-16 md:h-16 rounded-2xl flex items-center justify-center transition-all duration-200 transform group-focus:scale-110 group-focus:ring-4 group-focus:ring-[#3498db] ${
+                activeCategory === cat ? 'bg-[#1e2738] border-2 border-[#3498db] shadow-lg shadow-[#3498db]/20' : 'bg-[#141822] border border-gray-800/60 group-hover:bg-[#1c2230]'
               }`}>
                 {getCategoryIcon(cat)}
               </div>
-              <span className={`text-xs font-semibold ${activeCategory === cat ? 'text-[#3498db]' : 'text-gray-400'} truncate max-w-[70px]`}>{cat}</span>
-            </div>
+              <span className={`text-xs font-bold transition-colors ${activeCategory === cat ? 'text-[#3498db]' : 'text-gray-400 group-hover:text-white'} truncate max-w-[75px]`}>{cat}</span>
+            </button>
           ))}
         </div>
 
         {/* Filter Pills */}
-        <div className="flex items-center gap-3 overflow-x-auto scrollbar-hide mb-6 py-1">
+        <div className="flex items-center gap-3 overflow-x-auto scrollbar-hide mb-8 py-1 snap-x">
           {filters.map((filter) => (
             <button
               key={filter}
               onClick={() => setActiveFilter(filter)}
-              className={`px-5 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all border outline-none flex items-center gap-2 ${
+              className={`px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all border snap-center focus:outline-none focus:ring-2 focus:ring-[#3498db] flex items-center gap-2 ${
                 activeFilter === filter
                   ? "bg-[#1e2738] border-[#3498db] text-white shadow-md shadow-[#3498db]/10"
-                  : "bg-[#1a1e29] border-transparent text-gray-400 hover:text-white hover:bg-[#202533]"
+                  : "bg-[#141822] border-transparent text-gray-400 hover:text-white hover:bg-[#1c2230]"
               }`}
             >
-              {activeFilter === filter && <span className="w-1.5 h-1.5 bg-[#3498db] rounded-full"></span>}
+              {activeFilter === filter && <span className="w-1.5 h-1.5 bg-[#3498db] rounded-full animate-pulse"></span>}
               {filter}
             </button>
           ))}
         </div>
 
-        {/* 🏟️ Matches List (With Skeleton Loading Error Safe) */}
-        {error && <div className="text-center py-10 text-red-400 font-medium">Failed to load data. Please check network.</div>}
+        {/* Matches Grid Layer */}
+        {error && <div className="text-center py-10 text-red-400 font-medium">Failed to load data.</div>}
         
         {!matches && !error && (
-          <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             <MatchSkeleton />
             <MatchSkeleton />
             <MatchSkeleton />
           </div>
         )}
 
-        {matches && processedMatches?.length === 0 && (
-          <div className="text-center py-10 text-gray-500 font-medium bg-[#1a1e29] rounded-xl border border-gray-800">
-            No matches found matching criteria.
+        {matches && processedMatches.length === 0 && (
+          <div className="text-center py-12 text-gray-500 font-semibold bg-[#141822] rounded-2xl border border-gray-800/40">
+            No matches available matching your criteria.
           </div>
         )}
 
-        <div className="flex flex-col gap-4">
-          {processedMatches?.map((match: any) => {
-            const eventInfo = match.eventInfo || {};
-            const status = getMatchStatus(eventInfo.startTime, eventInfo.endTime, currentTime);
-
-            return (
-              <Link href={`/watch/${match.id}`} key={match.id} className="outline-none" prefetch={false}>
-                <div className="bg-[#1a1e29] border border-[#2d6a85]/20 rounded-2xl p-5 transition-all hover:bg-[#1e2433] hover:border-[#3498db]/40 shadow-sm relative overflow-hidden group">
-                  
-                  {/* Top: Category & Event Name */}
-                  {(eventInfo.eventCat || eventInfo.eventName) && (
-                    <div className="text-sm text-gray-300 font-medium mb-5 flex items-center justify-center gap-2">
-                      {eventInfo.eventLogo && eventInfo.eventLogo !== "null" && (
-                        <img 
-                          src={getImg(eventInfo.eventLogo)} 
-                          className="w-4 h-4 object-contain rounded-full" 
-                          alt="" 
-                          onError={(e)=>{(e.target as HTMLElement).style.display='none';}} // ইমেজে এরর আসলে হাইড হবে
-                          loading="lazy" 
-                        />
-                      )}
-                      <span className="truncate">
-                        {[eventInfo.eventCat, eventInfo.eventName].filter(Boolean).join(' | ')}
-                      </span>
-                    </div>
-                  )}
-
-                  {/* Bottom: Team VS Team Layout */}
-                  <div className="flex justify-between items-center px-2 md:px-8">
-                    
-                    {/* Team A */}
-                    {eventInfo.teamA && (
-                      <div className="flex flex-col items-center gap-3 w-1/3">
-                        {eventInfo.teamAFlag && eventInfo.teamAFlag !== "null" ? (
-                          <div className="w-14 h-14 md:w-16 md:h-16 rounded-full p-0.5 bg-gray-800/50 shadow-inner group-hover:scale-105 transition-transform">
-                            <img src={getImg(eventInfo.teamAFlag)} className="w-full h-full object-cover rounded-full" loading="lazy" />
-                          </div>
-                        ) : (
-                          <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-gray-800 flex items-center justify-center text-xl">🛡️</div>
-                        )}
-                        <span className="font-bold text-sm md:text-base text-gray-100 truncate w-full text-center">{eventInfo.teamA}</span>
-                      </div>
-                    )}
-
-                    {/* Center: Dynamic Status Badge */}
-                    <div className="w-1/3 flex justify-center mt-[-20px]">
-                      {status === 'live' && (
-                        <span className="bg-red-500/10 text-red-500 border border-red-500/30 px-3 py-1.5 rounded-lg font-black text-xs tracking-wider flex items-center gap-1.5 shadow-[0_0_10px_rgba(239,68,68,0.2)]">
-                          <span className="w-2 h-2 bg-red-500 rounded-full animate-ping absolute opacity-75"></span>
-                          <span className="w-2 h-2 bg-red-500 rounded-full relative"></span> LIVE
-                        </span>
-                      )}
-                      
-                      {status === 'upcoming' && (
-                        <div className="bg-[#1e2738] border border-[#2d6a85]/50 px-3 py-1.5 rounded-lg flex items-center justify-center min-w-[80px] shadow-inner">
-                          {renderUpcomingTime(eventInfo.startTime, currentTime)}
-                        </div>
-                      )}
-
-                      {status === 'recent' && (
-                        <span className="bg-[#252a38] text-gray-400 border border-gray-700 px-3 py-1.5 rounded-lg font-bold text-xs tracking-wider uppercase">
-                          Ended
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Team B */}
-                    {eventInfo.teamB && (
-                      <div className="flex flex-col items-center gap-3 w-1/3">
-                        {eventInfo.teamBFlag && eventInfo.teamBFlag !== "null" ? (
-                          <div className="w-14 h-14 md:w-16 md:h-16 rounded-full p-0.5 bg-gray-800/50 shadow-inner group-hover:scale-105 transition-transform">
-                            <img src={getImg(eventInfo.teamBFlag)} className="w-full h-full object-cover rounded-full" loading="lazy" />
-                          </div>
-                        ) : (
-                          <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-gray-800 flex items-center justify-center text-xl">🛡️</div>
-                        )}
-                        <span className="font-bold text-sm md:text-base text-gray-100 truncate w-full text-center">{eventInfo.teamB}</span>
-                      </div>
-                    )}
-
-                  </div>
-                </div>
-              </Link>
-            );
+        {/* 🏟️ মেইন ম্যাচ লিস্ট গ্রিড */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {processedMatches.map((match: any) => {
+            const now = new Date();
+            const status = getMatchStatus(match.eventInfo?.startTime, match.eventInfo?.endTime, now);
+            return <MatchCard key={match.id} match={match} status={status} />;
           })}
         </div>
       </div>
 
+      {/* CSS কন্টেইনমেন্ট লেয়ার */}
       <style dangerouslySetInnerHTML={{__html: `
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        .content-visibility-auto { content-visibility: auto; }
+        @media (min-width: 1920px) {
+          .tv\\:p-8 { padding: 2rem !important; }
+          .tv\\:text-3xl { font-size: 1.875rem !important; line-height: 2.25rem !important; }
+        }
       `}} />
     </main>
   );
