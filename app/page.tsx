@@ -26,7 +26,52 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
   return 'upcoming';
 };
 
-// 🟢 ডাইনামিক ক্যাটাগরি আইকন লজিক
+// 🚀 ম্যাজিক টাইমার: আপনার শর্ত অনুযায়ী সময় দেখানোর ডাইনামিক ফাংশন
+const renderUpcomingTime = (startStr: string, currentTime: Date) => {
+  if (!startStr) return <span className="text-[#3498db] font-bold text-xs">TBA</span>;
+  
+  const startTime = new Date(startStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
+  const diffMs = startTime.getTime() - currentTime.getTime();
+
+  if (diffMs <= 0) return <span className="text-[#3498db] font-bold text-xs">Starting...</span>;
+
+  const diffHours = diffMs / (1000 * 60 * 60);
+
+  // শর্ত ১: ৬ ঘণ্টার বেশি হলে (ডেট এবং টাইম)
+  if (diffHours > 6) {
+    const dateStr = startTime.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+    const timeStr = startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    return (
+      <div className="flex flex-col items-center leading-tight">
+        <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">{dateStr}</span>
+        <span className="text-xs font-bold text-[#3498db] mt-0.5">{timeStr}</span>
+      </div>
+    );
+  } 
+  // শর্ত ২: ১ ঘণ্টা থেকে ৬ ঘণ্টার মধ্যে (ঘণ্টা এবং মিনিট)
+  else if (diffHours > 1) {
+    const h = Math.floor(diffHours);
+    const m = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    return (
+      <div className="flex flex-col items-center">
+        <span className="text-[9px] text-gray-400 uppercase tracking-widest mb-0.5">Starts In</span>
+        <span className="text-xs font-bold text-orange-400">{h}h {m}m</span>
+      </div>
+    );
+  } 
+  // শর্ত ৩: ১ ঘণ্টার কম (মিনিট এবং সেকেন্ডের কাউন্টডাউন)
+  else {
+    const m = Math.floor(diffMs / (1000 * 60));
+    const s = Math.floor((diffMs % (1000 * 60)) / 1000);
+    return (
+      <div className="flex flex-col items-center">
+        <span className="text-[9px] text-gray-400 uppercase tracking-widest mb-0.5 animate-pulse">Starts In</span>
+        <span className="text-sm font-black text-orange-500 font-mono tracking-wider">{m}m {s}s</span>
+      </div>
+    );
+  }
+};
+
 const getCategoryIcon = (cat: string) => {
   if (cat === 'All') return <span className="text-xl font-bold text-[#3498db]">All</span>;
   const lowerCat = cat.toLowerCase();
@@ -35,7 +80,7 @@ const getCategoryIcon = (cat: string) => {
   if (lowerCat.includes('wwe') || lowerCat.includes('wrestling')) return <span className="text-2xl">🤼‍♂️</span>;
   if (lowerCat.includes('tennis')) return <span className="text-2xl">🎾</span>;
   if (lowerCat.includes('basketball')) return <span className="text-2xl">🏀</span>;
-  return <span className="text-2xl">🏆</span>; // ডিফল্ট আইকন
+  return <span className="text-2xl">🏆</span>;
 };
 
 export default function Home() {
@@ -44,15 +89,15 @@ export default function Home() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [mounted, setMounted] = useState(false);
 
+  // ⏱️ আপডেট: প্রতি ১ সেকেন্ড পর পর টাইম রিফ্রেশ হবে (কাউন্টডাউনের জন্য)
   useEffect(() => {
     setMounted(true);
-    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
   const { data: matches } = useSWR(MATCH_API, fetcher, { refreshInterval: 60000 });
 
-  // 🟢 API থেকে ডাইনামিকভাবে সব ক্যাটাগরি বের করে আনা
   const dynamicCategories = ['All'];
   if (matches && Array.isArray(matches)) {
     const uniqueCats = new Set(matches.map((m: any) => m.eventInfo?.eventCat).filter(Boolean));
@@ -162,14 +207,12 @@ export default function Home() {
           {processedMatches?.map((match: any) => {
             const eventInfo = match.eventInfo || {};
             const status = getMatchStatus(eventInfo.startTime, eventInfo.endTime, currentTime);
-            const startTime = eventInfo.startTime ? new Date(eventInfo.startTime.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z')) : null;
-            const formattedTime = startTime ? startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : "TBA";
 
             return (
               <Link href={`/watch/${match.id}`} key={match.id} className="outline-none" prefetch={false}>
                 <div className="bg-[#1a1e29] border border-[#2d6a85]/20 rounded-2xl p-5 transition-all hover:bg-[#1e2433] hover:border-[#3498db]/40 shadow-sm relative overflow-hidden group">
                   
-                  {/* Top: Category & Event Name (অটোমেটিক হাইড হবে ডাটা না থাকলে) */}
+                  {/* Top: Category & Event Name */}
                   {(eventInfo.eventCat || eventInfo.eventName) && (
                     <div className="text-sm text-gray-300 font-medium mb-5 flex items-center justify-center gap-2">
                       {eventInfo.eventLogo && eventInfo.eventLogo !== "null" && (
@@ -198,7 +241,7 @@ export default function Home() {
                       </div>
                     )}
 
-                    {/* Center: Status Badge */}
+                    {/* Center: Dynamic Status Badge (ম্যাজিক এখানে) */}
                     <div className="w-1/3 flex justify-center mt-[-20px]">
                       {status === 'live' && (
                         <span className="bg-red-500/10 text-red-500 border border-red-500/30 px-3 py-1.5 rounded-lg font-black text-xs tracking-wider flex items-center gap-1.5 shadow-[0_0_10px_rgba(239,68,68,0.2)]">
@@ -206,11 +249,14 @@ export default function Home() {
                           <span className="w-2 h-2 bg-red-500 rounded-full relative"></span> LIVE
                         </span>
                       )}
+                      
+                      {/* ⏱️ আপকামিং এর জন্য নতুন কাউন্টডাউন বাটন */}
                       {status === 'upcoming' && (
-                        <span className="bg-[#1e2738] text-[#3498db] border border-[#2d6a85]/50 px-3 py-1.5 rounded-lg font-bold text-xs tracking-wider">
-                          {formattedTime}
-                        </span>
+                        <div className="bg-[#1e2738] border border-[#2d6a85]/50 px-3 py-1.5 rounded-lg flex items-center justify-center min-w-[80px] shadow-inner">
+                          {renderUpcomingTime(eventInfo.startTime, currentTime)}
+                        </div>
                       )}
+
                       {status === 'recent' && (
                         <span className="bg-[#252a38] text-gray-400 border border-gray-700 px-3 py-1.5 rounded-lg font-bold text-xs tracking-wider uppercase">
                           Ended
