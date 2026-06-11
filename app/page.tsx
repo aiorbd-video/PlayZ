@@ -37,7 +37,7 @@ const renderUpcomingTime = (startStr: string, currentTime: Date) => {
 
   const diffHours = diffMs / (1000 * 60 * 60);
 
-  // শর্ত ১: ৬ ঘণ্টার বেশি হলে (ডেট এবং টাইম)
+  // শর্ত ১:６ ঘণ্টার বেশি হলে (ডেট এবং টাইম)
   if (diffHours > 6) {
     const dateStr = startTime.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
     const timeStr = startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
@@ -225,7 +225,7 @@ export default function Home() {
           <p className="text-gray-400 text-sm mb-6 max-w-xs">Please complete the security check to safely access live dashboard.</p>
           
           <div className="flex justify-center min-h-[75px] w-full">
-            {/* 🟢 ক্লাউডফ্লেয়ার উইজেট রেন্ডারিং টার্গেট বক্স */}
+            {/* 🟢 ক্লাউডফ্লেয়ার উইজেট রেন্ডারিং টার্গেটボックス */}
             <div id="global-captcha-box"></div>
           </div>
 
@@ -340,3 +340,60 @@ export default function Home() {
                             <img src={getImg(eventInfo.teamAFlag)} className="w-full h-full object-cover rounded-full" loading="lazy" />
                           </div>
                         ) : (
+                          <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-gray-800 flex items-center justify-center text-xl">🛡️</div>
+                        )}
+                        <span className="font-bold text-sm md:text-base text-gray-100 truncate w-full text-center">{eventInfo.teamA}</span>
+                      </div>
+                    )}
+
+                    {/* Center: Dynamic Status Badge */}
+                    <div className="w-1/3 flex justify-center mt-[-20px]">
+                      {status === 'live' && (
+                        <span className="bg-red-500/10 text-red-500 border border-red-500/30 px-3 py-1.5 rounded-lg font-black text-xs tracking-wider flex items-center gap-1.5 shadow-[0_0_10px_rgba(239,68,68,0.2)]">
+                          <span className="w-2 h-2 bg-red-500 rounded-full animate-ping absolute opacity-75"></span>
+                          <span className="w-2 h-2 bg-red-500 rounded-full relative"></span> LIVE
+                        </span>
+                      )}
+                      
+                      {status === 'upcoming' && (
+                        <div className="bg-[#1e2738] border border-[#2d6a85]/50 px-3 py-1.5 rounded-lg flex items-center justify-center min-w-[80px] shadow-inner">
+                          {renderUpcomingTime(eventInfo.startTime, currentTime)}
+                        </div>
+                      )}
+
+                      {status === 'recent' && (
+                        <span className="bg-[#252a38] text-gray-400 border border-gray-700 px-3 py-1.5 rounded-lg font-bold text-xs tracking-wider uppercase">
+                          Ended
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Team B */}
+                    {eventInfo.teamB && (
+                      <div className="flex flex-col items-center gap-3 w-1/3">
+                        {eventInfo.teamBFlag && eventInfo.teamBFlag !== "null" ? (
+                          <div className="w-14 h-14 md:w-16 md:h-16 rounded-full p-0.5 bg-gray-800/50 shadow-inner group-hover:scale-105 transition-transform">
+                            <img src={getImg(eventInfo.teamBFlag)} className="w-full h-full object-cover rounded-full" loading="lazy" />
+                          </div>
+                        ) : (
+                          <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-gray-800 flex items-center justify-center text-xl">🛡️</div>
+                        )}
+                        <span className="font-bold text-sm md:text-base text-gray-100 truncate w-full text-center">{eventInfo.teamB}</span>
+                      </div>
+                    )}
+
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+
+      <style dangerouslySetInnerHTML={{__html: `
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+      `}} />
+    </main>
+  );
+}
