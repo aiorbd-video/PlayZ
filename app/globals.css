@@ -1,13 +1,1 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-:root {
-  --brand-red: #e60f0f;
-  --brand-dark: #1a1a1a;
-}
-
-body {
-  background-color: var(--brand-dark);
-  color: white;
-}
+@import "tailwindcss";
