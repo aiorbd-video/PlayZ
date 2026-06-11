@@ -61,7 +61,7 @@ export default function RootLayout({
         
         {/* 🟢 গুগল অ্যানালিটিক্স ট্র্যাকিং স্ক্রিপ্ট */}
         {/* ⚠️ "G-Z517JJ7M56" কেটে আপনার আসল গুগল অ্যানালিটিক্স Measurement ID-টি এখানে বসিয়ে দিন */}
-        <GoogleAnalytics gaId="G-XXXXXXXXXX" /> 
+        <GoogleAnalytics gaId="G-Z517JJ7M56" /> 
       </body>
     </html>
   );
