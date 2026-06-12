@@ -5,10 +5,9 @@ import useSWR from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
 import 'shaka-player/dist/controls.css';
-import shaka from 'shaka-player';
-import 'shaka-player/dist/shaka-player.ui';
+import shaka from 'shaka-player/dist/shaka-player.ui';
 
-// 🟢 টাইপ-সেফটির জন্য ইন্টারফেস 정의 করা হয়েছে
+// 🟢 টাইপ-সেফটির জন্য ইন্টারফেস সংজ্ঞায়িত করা হয়েছে
 interface Stream {
   link: string;
   api: string;
