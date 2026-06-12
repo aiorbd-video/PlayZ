@@ -2,20 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  :root {
-    --bg-main: #0d0f14;
-    --bg-card: #141822;
-    --bg-nav: #0d0f14;
-    --text-primary: #ffffff;
-    --text-secondary: #9ca3af;
-    --border-color: rgba(34, 211, 238, 0.3);
-    --accent: #22d3ee;
-    --accent-glow: rgba(34, 211, 238, 0.2);
-  }
+:root {
+  --main-bg: #0D1117;
+  --nav-bg: rgba(13, 17, 23, 0.7);
+  --card-bg: #161B22;
+  --primary-text: #E6EDF3;
+  --secondary-text: #8B949E;
+  --border-color: #30363D;
+  --accent: #22D3EE;
+}
 
-  body {
-    background-color: var(--bg-main);
-    color: var(--text-primary);
+body {
+  background-color: var(--main-bg);
+  color: var(--primary-text);
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
   }
+}
+
+/* Shaka Player Customizations */
+.shaka-video-container {
+    --range-color: var(--accent, #22D3EE);
+    --track-color: rgba(255, 255, 255, 0.3);
+    --rail-color: rgba(255, 255, 255, 0.3);
+    --thumb-color: var(--accent, #22D3EE);
+    --buffer-color: rgba(255, 255, 255, 0.5);
+    --hover-color: rgba(255, 255, 255, 0.2);
 }
