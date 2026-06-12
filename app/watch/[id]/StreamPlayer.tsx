@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
 import 'shaka-player/dist/controls.css';
 import shaka from 'shaka-player/dist/shaka-player.ui';
 
-// 🟢 টাইপ-সেফটির জন্য ইন্টারফেস সংজ্ঞায়িত করা হয়েছে
 interface Stream {
   link: string;
   api: string;
@@ -147,16 +146,21 @@ export default function StreamPlayer({ id }: { id: string }) {
   }, [playerInstance, streams, activeStreamIndex]);
 
   return (
-    <main className="min-h-screen bg-main-bg text-primary-text font-sans pb-10">
-      <nav className="p-3 bg-nav-bg sticky top-0 z-50 border-b border-border-color">
+    // 🟢 ব্যাকগ্রাউন্ড থিম হোমপেজের মতোই ডিপ ডার্ক করা হলো
+    <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
+      
+      {/* 🟢 প্রিমিয়াম ন্যাভ বার */}
+      <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/">
-            <button className="p-2 text-secondary-text hover:text-primary-text flex items-center gap-2 group outline-none focus:text-accent">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 group-hover:-translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-              <span className="text-sm font-medium hidden sm:inline">Back to Home</span>
+            <button className="p-2 text-gray-400 hover:text-[#00E5FF] flex items-center gap-2 group outline-none transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 group-hover:-translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              <span className="text-sm font-bold hidden sm:inline">Back to Home</span>
             </button>
           </Link>
-          <span className="text-sm md:text-base font-bold text-primary-text truncate max-w-xs sm:max-w-md tracking-wide">
+          <span className="text-sm md:text-base font-bold text-gray-100 truncate max-w-xs sm:max-w-md tracking-wide">
             {currentMatch ? `${currentMatch.eventInfo.teamA} VS ${currentMatch.eventInfo.teamB}` : "Live Streaming"}
           </span>
           <div className="w-10"></div>
@@ -164,66 +168,111 @@ export default function StreamPlayer({ id }: { id: string }) {
       </nav>
 
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
+        {/* বাম সেকশন: ভিডিও প্লেয়ার এবং ম্যাচ কার্ড ডিটেইলস */}
         <div className="lg:col-span-2 flex flex-col">
-          <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-none sm:rounded-xl overflow-hidden shadow-xl border border-border-color shaka-video-container">
-            {!streams && <div className="absolute inset-0 flex items-center justify-center bg-main-bg/90 z-10 flex-col gap-3"><div className="w-10 h-10 border-4 border-accent border-t-transparent rounded-full animate-spin"></div><span className="text-secondary-text text-sm animate-pulse">Fetching Secure Stream...</span></div>}
+          
+          {/* ভিডিও উইন্ডো */}
+          <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container">
+            {!streams && (
+              <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/90 z-10 flex-col gap-3">
+                <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin"></div>
+                <span className="text-gray-400 text-sm animate-pulse">Fetching Secure Stream...</span>
+              </div>
+            )}
             <video ref={videoRef} className="w-full h-full" autoPlay playsInline />
           </div>
 
+          {/* 🟢 সার্ভার বাটন গ্রুপ (২য় ইমেজের মতো চমৎকার পিল-শেপ ডিজাইন) */}
           {streams && streams.length > 0 && (
-            <div className="flex gap-2 overflow-x-auto scrollbar-hide py-3 my-2 border-b border-border-color/50">
-              <span className="text-secondary-text font-bold flex items-center text-sm mr-2 whitespace-nowrap">Servers:</span>
+            <div className="flex gap-2 overflow-x-auto scrollbar-hide py-4 my-2 border-b border-gray-800/40 items-center">
+              <span className="text-gray-400 font-bold text-xs md:text-sm mr-2 whitespace-nowrap uppercase tracking-wider">Servers:</span>
               {streams.map((stream, index) => (
-                <button key={index} onClick={() => setActiveStreamIndex(index)} className={`px-4 py-2 rounded-lg text-xs md:text-sm font-bold whitespace-nowrap transition-all flex items-center gap-2 border outline-none ${activeStreamIndex === index ? "bg-accent/10 border-accent text-primary-text" : "bg-card-bg border-transparent text-secondary-text"}`}>
+                <button 
+                  key={index} 
+                  onClick={() => setActiveStreamIndex(index)} 
+                  className={`px-5 py-2 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border outline-none ${
+                    activeStreamIndex === index 
+                      ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-md shadow-[#00E5FF]/10" 
+                      : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white"
+                  }`}
+                >
                   {stream.title || `Server ${index + 1}`}
                 </button>
               ))}
             </div>
           )}
 
+          {/* 🟢 কারেন্ট ম্যাচ ইনফো কার্ড (২য় ইমেজের মতো সায়ান বর্ডার থিম) */}
           {currentMatch ? (
-            <div className="bg-card-bg border border-border-color/80 rounded-xl p-5 mt-2">
-              <div className="text-center text-xs font-bold text-secondary-text uppercase tracking-widest mb-3">{currentMatch.eventInfo.eventName}</div>
-              <div className="flex justify-center items-center gap-6 sm:gap-12">
-                <div className="flex items-center gap-3">
-                  <Image unoptimized src={getImg(currentMatch.eventInfo.teamAFlag)} width={32} height={32} className="rounded-full object-cover bg-main-bg" alt={currentMatch.eventInfo.teamA} /> 
-                  <span className="font-bold text-sm md:text-base">{currentMatch.eventInfo.teamA}</span>
+            <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 mt-3 shadow-lg">
+              <div className="text-center text-xs font-bold text-[#00E5FF] uppercase tracking-widest mb-4">
+                {currentMatch.eventInfo.eventCat} | {currentMatch.eventInfo.eventName}
+              </div>
+              <div className="flex justify-center items-center gap-6 sm:gap-12 py-2">
+                {/* Team A */}
+                <div className="flex items-center gap-3 w-[40%] justify-end">
+                  <span className="font-bold text-sm md:text-base text-gray-200 text-right truncate">{currentMatch.eventInfo.teamA}</span>
+                  <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-700/50 flex-shrink-0 relative">
+                    <Image unoptimized src={getImg(currentMatch.eventInfo.teamAFlag)} fill className="object-cover" alt="" />
+                  </div>
                 </div>
-                <span className="text-accent font-black italic text-sm">VS</span>
-                <div className="flex items-center gap-3">
-                  <Image unoptimized src={getImg(currentMatch.eventInfo.teamBFlag)} width={32} height={32} className="rounded-full object-cover bg-main-bg" alt={currentMatch.eventInfo.teamB} /> 
-                  <span className="font-bold text-sm md:text-base">{currentMatch.eventInfo.teamB}</span>
+                {/* VS */}
+                <span className="text-gray-400 font-black italic text-sm md:text-base px-2">VS</span>
+                {/* Team B */}
+                <div className="flex items-center gap-3 w-[40%] justify-start">
+                  <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-700/50 flex-shrink-0 relative">
+                    <Image unoptimized src={getImg(currentMatch.eventInfo.teamBFlag)} fill className="object-cover" alt="" />
+                  </div>
+                  <span className="font-bold text-sm md:text-base text-gray-200 text-left truncate">{currentMatch.eventInfo.teamB}</span>
                 </div>
               </div>
             </div>
           ) : (
-            <div className="bg-card-bg border border-border-color/80 rounded-xl p-5 mt-2 animate-pulse flex justify-between items-center">
-              <div className="h-4 bg-main-bg rounded w-1/3"></div>
-              <div className="h-4 bg-main-bg rounded w-1/4"></div>
+            <div className="bg-[#1C1E2B] border border-gray-800/60 rounded-[20px] p-5 mt-3 animate-pulse flex justify-between items-center">
+              <div className="h-4 bg-gray-800 rounded w-1/3"></div>
+              <div className="h-4 bg-gray-800 rounded w-1/4"></div>
             </div>
           )}
         </div>
 
+        {/* ডান সেকশন: মোর লাইভ ইভেন্টস লিস্ট (২য় ইমেজের গ্রিড ম্যাচিং) */}
         <div className="mt-6 lg:mt-0 lg:col-span-1 max-h-[70vh] lg:max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-hide pr-1">
-          <div className="flex flex-col gap-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-secondary-text px-1 mb-1">More Live Events</span>
+          <div className="flex flex-col gap-3.5">
+            <span className="text-xs font-black uppercase tracking-wider text-gray-400 pl-1 mb-1">More Live Events</span>
             {matches && matches.map((match) => {
               const status = getMatchStatus(match.eventInfo.startTime, match.eventInfo.endTime, currentTime);
               const isCurrent = match.id.toString() === id;
 
               return (
                 <Link href={`/watch/${match.id}`} key={match.id} className="outline-none" prefetch={false}>
-                  <div className={`bg-card-bg border rounded-xl p-4 transition-all hover:bg-accent/5 ${isCurrent ? 'border-accent bg-accent/10' : 'border-border-color/60'}`}>
-                    <div className="text-[11px] text-secondary-text mb-2 truncate uppercase tracking-wide">{match.eventInfo.eventCat} • {match.eventInfo.eventName}</div>
+                  <div className={`bg-[#1C1E2B] border rounded-[18px] p-4 transition-all ${
+                    isCurrent 
+                      ? 'border-[#00E5FF] shadow-md shadow-[#00E5FF]/5' 
+                      : 'border-gray-800/80 hover:border-[#00E5FF]/40'
+                  }`}>
+                    <div className="text-[11px] text-gray-400 mb-2 truncate uppercase tracking-wide">
+                      {match.eventInfo.eventCat} • {match.eventInfo.eventName}
+                    </div>
                     <div className="flex justify-between items-center gap-2">
+                      {/* Team A inside List */}
                       <div className="flex items-center gap-2 truncate max-w-[40%]">
-                        <Image unoptimized src={getImg(match.eventInfo.teamAFlag)} width={16} height={16} className="rounded-full min-w-[16px]" alt={match.eventInfo.teamA} />
-                        <span className="text-xs font-semibold truncate text-primary-text">{match.eventInfo.teamA}</span>
+                        <img src={getImg(match.eventInfo.teamAFlag)} className="w-5 h-5 rounded-full object-cover border border-gray-700/40 min-w-[20px]" alt="" />
+                        <span className="text-xs font-bold truncate text-gray-200">{match.eventInfo.teamA}</span>
                       </div>
-                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wide shrink-0 ${status.type === 'live' ? 'bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse' : 'bg-blue-500/10 text-blue-400'}`}>{status.label}</span>
+                      
+                      {/* Live Badge inside List */}
+                      <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wide shrink-0 ${
+                        status.type === 'live' 
+                          ? 'bg-red-500/10 text-red-400 border border-red-500/20 animate-pulse' 
+                          : 'bg-blue-500/10 text-blue-400 border border-blue-500/10'
+                      }`}>
+                        {status.label}
+                      </span>
+                      
+                      {/* Team B inside List */}
                       <div className="flex items-center gap-2 truncate max-w-[40%] justify-end">
-                        <span className="text-xs font-semibold truncate text-primary-text text-right">{match.eventInfo.teamB}</span>
-                        <Image unoptimized src={getImg(match.eventInfo.teamBFlag)} width={16} height={16} className="rounded-full min-w-[16px]" alt={match.eventInfo.teamB} />
+                        <span className="text-xs font-bold truncate text-gray-200 text-right">{match.eventInfo.teamB}</span>
+                        <img src={getImg(match.eventInfo.teamBFlag)} className="w-5 h-5 rounded-full object-cover border border-gray-700/40 min-w-[20px]" alt="" />
                       </div>
                     </div>
                   </div>
