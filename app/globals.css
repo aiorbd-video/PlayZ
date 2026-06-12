@@ -2,37 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 🎨 ৩টি থিমের কাস্টম কালার ভেরিয়েবল লেয়ার */
-:root, [data-theme="dark"] {
-  --bg-main: #0d0f14;
-  --bg-card: #141822;
-  --bg-nav: #0d0f14;
-  --text-primary: #ffffff;
-  --text-secondary: #9ca3af;
-  --border-color: rgba(31, 41, 55, 0.6);
-}
+@layer base {
+  /* 🎨 ৩টি থিমের কাস্টম কালার ভেরিয়েবল লেয়ার */
+  :root, [data-theme="dark"] {
+    --bg-main: #0d0f14;
+    --bg-card: #141822;
+    --bg-nav: #0d0f14;
+    --text-primary: #ffffff;
+    --text-secondary: #9ca3af;
+    --border-color: rgba(31, 41, 55, 0.6);
+  }
 
-[data-theme="white"] {
-  --bg-main: #f8fafc;
-  --bg-card: #ffffff;
-  --bg-nav: #ffffff;
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --border-color: #e2e8f0;
-}
+  [data-theme="white"] {
+    --bg-main: #f8fafc;
+    --bg-card: #ffffff;
+    --bg-nav: #ffffff;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --border-color: #e2e8f0;
+  }
 
-[data-theme="moonlight"] {
-  --bg-main: #0a1128;
-  --bg-card: #101f42;
-  --bg-nav: #070d1f;
-  --text-primary: #e2e8f0;
-  --text-secondary: #8da2fb;
-  --border-color: rgba(52, 152, 219, 0.2);
-}
+  [data-theme="moonlight"] {
+    --bg-main: #0a1128;
+    --bg-card: #101f42;
+    --bg-nav: #070d1f;
+    --text-primary: #e2e8f0;
+    --text-secondary: #8da2fb;
+    --border-color: rgba(52, 152, 219, 0.2);
+  }
 
-/* 🟢 মেইন বডি ও ব্যাকগ্রাউন্ড গ্লোবাল ট্রানজিশন স্মুথ করার জন্য */
-body {
-  background-color: var(--bg-main);
-  color: var(--text-primary);
-  transition: background-color 0.3s ease, color 0.3s ease;
+  /* গ্লোবাল ট্রানজিশন স্মুথ করার জন্য */
+  body {
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
 }
