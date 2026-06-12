@@ -25,7 +25,6 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
   return 'upcoming';
 };
 
-// 🟢 ইমেজের মতো কাস্টম কাউন্টডাউন এবং লাইভ স্ট্যাটাস (Center Section)
 const MatchCountdown = memo(({ startTimeStr, status }: { startTimeStr: string, status: string }) => {
   const [time, setTime] = useState(new Date());
 
@@ -65,7 +64,6 @@ const MatchCountdown = memo(({ startTimeStr, status }: { startTimeStr: string, s
 });
 MatchCountdown.displayName = 'MatchCountdown';
 
-// 🟢 গোল আইকনের জন্য কাস্টম ইমোজি
 const getCategoryIcon = (cat: string) => {
   if (cat === 'All') return <span className="text-xl">🔄</span>;
   const lowerCat = cat.toLowerCase();
@@ -88,10 +86,8 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
       className="outline-none rounded-2xl focus:outline-none group block content-visibility-auto contain-intrinsic-size-[180px]"
       prefetch={false}
     >
-      {/* 🎨 Cyan Border ও Dark Background */}
       <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 transition-all duration-300 transform group-hover:border-[#00E5FF] group-focus:scale-[1.03] group-focus:border-[#00E5FF] shadow-lg flex flex-col justify-between h-full min-h-[160px]">
         
-        {/* ইভেন্ট টাইটেল */}
         {(eventInfo.eventCat || eventInfo.eventName) && (
           <div className="text-[13px] md:text-sm text-gray-200 font-semibold mb-5 flex items-center justify-center gap-2">
             {eventInfo.eventLogo && eventInfo.eventLogo !== "null" && (
@@ -112,9 +108,7 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
           </div>
         )}
 
-        {/* টিম ও মাঝখানের সেকশন */}
         <div className="flex justify-between items-center mt-auto">
-          {/* Team A */}
           <div className="flex flex-col items-center gap-2.5 w-[30%]">
             <div className="relative w-12 h-12 md:w-14 md:h-14 bg-black/40 border border-gray-700/50 rounded-full flex items-center justify-center overflow-hidden p-0.5">
               <Image src={getImg(eventInfo.teamAFlag)} alt="" fill sizes="(max-width: 768px) 48px, 56px" className="object-cover rounded-full" unoptimized />
@@ -122,12 +116,10 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
             <span className="font-bold text-xs md:text-sm text-gray-200 truncate w-full text-center">{eventInfo.teamA || 'Team A'}</span>
           </div>
 
-          {/* Status (Live/Time) */}
           <div className="w-[40%] flex justify-center items-center">
             <MatchCountdown startTimeStr={eventInfo.startTime} status={status} />
           </div>
 
-          {/* Team B */}
           <div className="flex flex-col items-center gap-2.5 w-[30%]">
             <div className="relative w-12 h-12 md:w-14 md:h-14 bg-black/40 border border-gray-700/50 rounded-full flex items-center justify-center overflow-hidden p-0.5">
               <Image src={getImg(eventInfo.teamBFlag)} alt="" fill sizes="(max-width: 768px) 48px, 56px" className="object-cover rounded-full" unoptimized />
@@ -189,7 +181,6 @@ export default function Home() {
     return list;
   }, [matches]);
 
-  // 🟢 ফিল্টার বাটনের জন্য ম্যাচের সংখ্যা গণনা
   const stats = useMemo(() => {
     if (!matches) return { all: 0, live: 0, recent: 0, upcoming: 0 };
     let live = 0, recent = 0, upcoming = 0;
@@ -252,7 +243,6 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-20 tv:p-8 animate-fade-in">
       
-      {/* 🟢 নেভিগেশন বার */}
       <motion.nav 
         initial={{ y: -100, opacity: 0 }} 
         animate={{ y: 0, opacity: 1 }} 
@@ -294,7 +284,6 @@ export default function Home() {
         className="max-w-7xl mx-auto px-4 mt-2"
       >
         
-        {/* 🟢 গোল ক্যাটাগরি আইকন মেনু */}
         <div className="flex items-center justify-start gap-5 md:gap-8 py-6 mb-2 overflow-x-auto scrollbar-hide scroll-smooth snap-x">
           {dynamicCategories.map((cat, i) => (
             <motion.button 
@@ -315,7 +304,6 @@ export default function Home() {
           ))}
         </div>
 
-        {/* 🟢 পিল শেপ ফিল্টার বাটন ও লাইভ কাউন্ট */}
         <div className="flex items-center gap-3 overflow-x-auto scrollbar-hide mb-8 py-1 snap-x">
           {filters.map((filter, i) => (
             <motion.button
@@ -357,3 +345,21 @@ export default function Home() {
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
         >
           {processedMatches.map((match: any) => {
+            const status = getMatchStatus(match.eventInfo?.startTime, match.eventInfo?.endTime, currentTime);
+            return <MatchCard key={match.id} match={match} status={status} />;
+          })}
+        </motion.div>
+      </motion.div>
+
+      <style dangerouslySetInnerHTML={{__html: `
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        .content-visibility-auto { content-visibility: auto; }
+        @media (min-width: 1920px) {
+          .tv\\:p-8 { padding: 2rem !important; }
+          .tv\\:text-3xl { font-size: 1.875rem !important; line-height: 2.25rem !important; }
+        }
+      `}} />
+    </main>
+  );
+}
