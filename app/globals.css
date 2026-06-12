@@ -16,9 +16,9 @@
     --accent: 262 82% 65%;
     --border-color: 240 3.7% 15.9%;
   }
+}
 
-  body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--text-primary));
-  }
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--text-primary));
 }
