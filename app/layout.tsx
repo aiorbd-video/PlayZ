@@ -1,7 +1,6 @@
 import { Metadata } from 'next';
 import './globals.css';
 import SecurityScript from './components/SecurityScript';
-import { ThemeProvider } from './context/ThemeContext'; // 🟢 থিম প্রোভাইডার ইমপোর্ট করা হলো
 import { GoogleTagManager } from '@next/third-parties/google'; // 🟢 GoogleTagManager ইমপোর্ট করা হলো
 
 export const metadata: Metadata = {
@@ -54,16 +53,13 @@ export default function RootLayout({
         <meta httpEquiv="X-Frame-Options" content="SAMEORIGIN" />
         <meta httpEquiv="X-Content-Type-Options" content="nosniff" />
       </head>
-      {/* 🟢 এখানে থিম প্রোভাইডার দিয়ে মুড়িয়ে দেওয়া হলো */}
-      <ThemeProvider>
-        <body className="selection:bg-[#3498db] selection:text-white antialiased">
-          <SecurityScript />
-          {children}
-          
-          {/* গুগল অ্যানালিটিক্স স্ক্রিপ্ট */}
-          <GoogleTagManager gtmId="G-Z517JJ7M56" />
-        </body>
-      </ThemeProvider>
+      <body className="selection:bg-accent selection:text-white antialiased">
+        <SecurityScript />
+        {children}
+        
+        {/* গুগল অ্যানালিটিক্স স্ক্রিপ্ট */}
+        <GoogleTagManager gtmId="G-Z517JJ7M56" />
+      </body>
     </html>
   );
 }
