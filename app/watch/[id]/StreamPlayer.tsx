@@ -116,7 +116,20 @@ export default function StreamPlayer({ id }: { id: string }) {
     const loadVideo = async () => {
       try {
         const playerConfig: shaka.extern.PlayerConfiguration = {
-          streaming: { bufferingGoal: 30, rebufferingGoal: 5, bufferBehind: 15, retryParameters: { maxAttempts: 7, baseDelay: 1000, backoffFactor: 2 } },
+          streaming: { 
+              bufferingGoal: 30, 
+              rebufferingGoal: 5, 
+              bufferBehind: 15, 
+              retryParameters: { 
+                  maxAttempts: 7, 
+                  baseDelay: 1000, 
+                  backoffFactor: 2,
+                  fuzzFactor: 0.5,
+                  timeout: 30000,
+                  stallTimeout: 5000,
+                  connectionTimeout: 10000
+              } 
+          },
           abr: { enabled: true, defaultBandwidthEstimate: 1000000 },
           manifest: { dash: { ignoreMinBufferTime: true } }
         };
