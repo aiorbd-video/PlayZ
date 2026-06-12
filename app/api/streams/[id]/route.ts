@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
 
+interface Match {
+  id: {
+    toString(): string;
+  };
+}
+
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const FIREBASE_URL = "https://ratul-liv-default-rtdb.asia-southeast1.firebasedatabase.app";
@@ -13,7 +19,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     // ২. ম্যাচ এপিআই থেকে টাইটেল ও ছবির ডাটা নেওয়া (মেটাডাটার ব্যাকআপের জন্য)
     const matchRes = await fetch(MATCH_API, { cache: 'no-store' });
     const matches = matchRes.ok ? await matchRes.json() : [];
-    const currentMatch = matches?.find((m: any) => m.id.toString() === id);
+    const currentMatch = matches?.find((m: Match) => m.id.toString() === id);
 
     return NextResponse.json({
       streams: streamsData || [],

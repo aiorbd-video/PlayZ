@@ -5,19 +5,36 @@ import useSWR from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
-import ThemeToggle from './components/ThemeToggle'; 
+import ThemeToggle from './components/ThemeToggle';
 
 const MATCH_API = "/api/proxy-matches";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
-const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
+interface EventInfo {
+  eventCat?: string;
+  eventName?: string;
+  eventLogo?: string;
+  teamA?: string;
+  teamB?: string;
+  teamAFlag?: string;
+  teamBFlag?: string;
+  startTime?: string;
+  endTime?: string;
+}
+
+interface Match {
+  id: string | number;
+  eventInfo?: EventInfo;
+}
+
+const fetcher = (url: string): Promise<Match[]> => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 
 const getImg = (url: string) => {
   if (!url || url === "null") return "/fallback-logo.png";
   return `${IMG_PROXY}${encodeURIComponent(url)}`;
 };
 
-const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => {
+const getMatchStatus = (startStr: string | undefined, endStr: string | undefined, currentTime: Date) => {
   if (!startStr || !endStr) return 'upcoming';
   const startTime = new Date(startStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
   const endTime = new Date(endStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
@@ -26,7 +43,7 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
   return 'upcoming';
 };
 
-const MatchCountdown = memo(({ startTimeStr }: { startTimeStr: string }) => {
+const MatchCountdown = memo(({ startTimeStr }: { startTimeStr: string | undefined }) => {
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -83,7 +100,7 @@ const getCategoryIcon = (cat: string) => {
   return <span className="text-2xl">🏆</span>;
 };
 
-const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
+const MatchCard = memo(({ match, status }: { match: Match; status: string }) => {
   const eventInfo = match.eventInfo || {};
 
   return (
@@ -111,7 +128,7 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
         <div className="flex justify-between items-center mt-auto">
           <div className="flex flex-col items-center gap-2.5 w-1/3">
             <div className="relative w-12 h-12 md:w-14 md:h-14 theme-bg-main theme-border rounded-full p-0.5 overflow-hidden">
-              <Image src={getImg(eventInfo.teamAFlag)} alt="" fill sizes="(max-width: 768px) 48px, 56px" className="object-cover rounded-full" unoptimized />
+              <Image src={getImg(eventInfo.teamAFlag!)} alt="" fill sizes="(max-width: 768px) 48px, 56px" className="object-cover rounded-full" unoptimized />
             </div>
             <span className="font-bold text-xs md:text-sm theme-text-primary truncate w-full text-center tracking-wide">{eventInfo.teamA || 'Team A'}</span>
           </div>
@@ -136,7 +153,7 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
 
           <div className="flex flex-col items-center gap-2.5 w-1/3">
             <div className="relative w-12 h-12 md:w-14 md:h-14 theme-bg-main theme-border rounded-full p-0.5 overflow-hidden">
-              <Image src={getImg(eventInfo.teamBFlag)} alt="" fill sizes="(max-width: 768px) 48px, 56px" className="object-cover rounded-full" unoptimized />
+              <Image src={getImg(eventInfo.teamBFlag!)} alt="" fill sizes="(max-width: 768px) 48px, 56px" className="object-cover rounded-full" unoptimized />
             </div>
             <span className="font-bold text-xs md:text-sm theme-text-primary truncate w-full text-center tracking-wide">{eventInfo.teamB || 'Team B'}</span>
           </div>
@@ -168,11 +185,6 @@ export default function Home() {
   const [searchInp, setSearchInp] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -181,12 +193,12 @@ export default function Home() {
     return () => clearTimeout(handler);
   }, [searchInp]);
 
-  const { data: matches, error } = useSWR(MATCH_API, fetcher, { refreshInterval: 30000 });
+  const { data: matches, error } = useSWR<Match[]>(MATCH_API, fetcher, { refreshInterval: 30000 });
 
   const dynamicCategories = useMemo(() => {
     const list = ['All'];
     if (matches && Array.isArray(matches)) {
-      const uniqueCats = new Set(matches.map((m: any) => m.eventInfo?.eventCat).filter(Boolean));
+      const uniqueCats = new Set(matches.map((m: Match) => m.eventInfo?.eventCat).filter(Boolean));
       uniqueCats.forEach(cat => list.push(cat as string));
     }
     return list;
@@ -198,7 +210,7 @@ export default function Home() {
     if (!matches) return [];
     const now = new Date();
 
-    return [...matches].filter((match: any) => {
+    return [...matches].filter((match: Match) => {
       const eventInfo = match.eventInfo || {};
       if (activeCategory !== 'All' && eventInfo.eventCat !== activeCategory) return false;
       
@@ -216,7 +228,7 @@ export default function Home() {
         );
       }
       return true;
-    }).sort((a: any, b: any) => {
+    }).sort((a: Match, b: Match) => {
       const nowTime = new Date();
       const aStart = new Date(a.eventInfo?.startTime?.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z') || 0).getTime();
       const bStart = new Date(b.eventInfo?.startTime?.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z') || 0).getTime();
@@ -224,7 +236,7 @@ export default function Home() {
       const bStatus = getMatchStatus(b.eventInfo?.startTime, b.eventInfo?.endTime, nowTime);
 
       if (activeFilter === 'All') {
-        const priority: any = { live: 1, upcoming: 2, recent: 3 };
+        const priority: { [key: string]: number } = { live: 1, upcoming: 2, recent: 3 };
         if (priority[aStatus] !== priority[bStatus]) return priority[aStatus] - priority[bStatus];
         if (aStatus === 'upcoming') return aStart - bStart; 
         return 0;
@@ -233,8 +245,6 @@ export default function Home() {
       return 0;
     });
   }, [matches, activeCategory, activeFilter, debouncedSearch]);
-
-  if (!mounted) return null;
 
   return (
     <main className="min-h-screen theme-bg-main theme-text-primary font-sans pb-20 tv:p-8 animate-fade-in transition-colors duration-300">
@@ -343,7 +353,7 @@ export default function Home() {
             layout 
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
         >
-          {processedMatches.map((match: any) => {
+          {processedMatches.map((match: Match) => {
             const now = new Date();
             const status = getMatchStatus(match.eventInfo?.startTime, match.eventInfo?.endTime, now);
             return <MatchCard key={match.id} match={match} status={status} />;

@@ -2,6 +2,7 @@ import { Metadata } from 'next';
 import './globals.css';
 import SecurityScript from './components/SecurityScript';
 import { ThemeProvider } from './context/ThemeContext'; // 🟢 থিম প্রোভাইডার ইমপোর্ট করা হলো
+import { GoogleTagManager } from '@next/third-parties/google'; // 🟢 GoogleTagManager ইমপোর্ট করা হলো
 
 export const metadata: Metadata = {
   title: {
@@ -60,19 +61,7 @@ export default function RootLayout({
           {children}
           
           {/* গুগল অ্যানালিটিক্স স্ক্রিপ্ট */}
-          <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
-          <script
-            dangerouslySetInnerHTML={{
-              __html: `
-                window.dataLayer = window.dataLayer || [];
-                function gtag(){dataLayer.push(arguments);}
-                gtag('js', new Date());
-                gtag('config', 'G-Z517JJ7M56', {
-                  page_path: window.location.pathname,
-                });
-              `,
-            }}
-          />
+          <GoogleTagManager gtmId="G-Z517JJ7M56" />
         </body>
       </ThemeProvider>
     </html>

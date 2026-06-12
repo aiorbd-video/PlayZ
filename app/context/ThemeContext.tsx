@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useState } from 'react';
 
 type Theme = 'white' | 'dark' | 'moonlight';
 
@@ -10,15 +10,16 @@ const ThemeContext = createContext<{
 } | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>('dark'); // ডিফল্ট থিম ডার্ক রাখা হলো
-
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('app-theme') as Theme;
-    if (savedTheme) {
-      setTheme(savedTheme);
-      document.documentElement.setAttribute('data-theme', savedTheme);
+  const [theme, setTheme] = useState<Theme>(() => {
+    if (typeof window !== 'undefined') {
+        const savedTheme = localStorage.getItem('app-theme') as Theme;
+        if (savedTheme) {
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            return savedTheme;
+        }
     }
-  }, []);
+    return 'dark';
+  });
 
   const changeTheme = (newTheme: Theme) => {
     setTheme(newTheme);

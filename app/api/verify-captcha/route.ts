@@ -26,6 +26,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid token" }, { status: 403 });
     }
   } catch (error) {
+    console.error("Captcha Verification Error:", error);
     return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
-  }
+}
