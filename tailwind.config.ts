@@ -8,19 +8,16 @@ const config: Config = {
   ],
   theme: {
     extend: {
-      screens: {
-        'tv': '1024px',
-      },
       colors: {
-        background: 'var(--background)',
-        'card-background': 'var(--card-background)',
-        'bottom-nav-bg': 'var(--bottom-nav-bg)',
-        'pill-bg': 'var(--pill-bg)',
-        'text-primary': 'var(--text-primary)',
-        'text-secondary': 'var(--text-secondary)',
-        'text-live': 'var(--text-live)',
-        accent: 'var(--accent)',
-        'border-color': 'var(--border-color)',
+        background: 'hsl(var(--background))',
+        'card-background': 'hsl(var(--card-background))',
+        'bottom-nav-bg': 'hsl(var(--bottom-nav-bg))',
+        'pill-bg': 'hsl(var(--pill-bg))',
+        'text-primary': 'hsl(var(--text-primary))',
+        'text-secondary': 'hsl(var(--text-secondary))',
+        'text-live': 'hsl(var(--text-live))',
+        accent: 'hsl(var(--accent))',
+        'border-color': 'hsl(var(--border-color))',
       },
       animation: {
         'fade-in': 'fadeIn 0.5s ease-out forwards',
