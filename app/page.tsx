@@ -5,7 +5,7 @@ import useSWR from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
-import ThemeToggle from './components/ThemeToggle'; // 🟢 থিম টগল বাটন
+import ThemeToggle from './components/ThemeToggle'; 
 
 const MATCH_API = "/api/proxy-matches";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
@@ -93,21 +93,13 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
       className="outline-none rounded-2xl focus:outline-none group block content-visibility-auto contain-intrinsic-size-[180px]"
       prefetch={false}
     >
-      {/* 🟢 নতুন সেফ থিম ক্লাস ব্যবহার করা হয়েছে */}
-      <div className="theme-bg-card border theme-border rounded-2xl p-5 transition-all duration-300 transform group-hover:brightness-110 group-focus:scale-[1.03] group-focus:ring-4 group-focus:ring-[#3498db]/20 shadow-md flex flex-col justify-between h-full min-h-[180px]">
+      <div className="theme-bg-card theme-border rounded-2xl p-5 transition-all duration-300 transform group-hover:brightness-110 group-focus:scale-[1.03] shadow-md flex flex-col justify-between h-full min-h-[180px]">
         
         {(eventInfo.eventCat || eventInfo.eventName) && (
           <div className="text-xs md:text-sm theme-text-secondary font-semibold mb-4 flex items-center justify-center gap-2 border-b theme-border pb-2">
             {eventInfo.eventLogo && eventInfo.eventLogo !== "null" && (
               <div className="relative w-4 h-4">
-                <Image 
-                  src={getImg(eventInfo.eventLogo)} 
-                  alt="" 
-                  fill
-                  sizes="16px"
-                  className="object-contain rounded-full"
-                  unoptimized
-                />
+                <Image src={getImg(eventInfo.eventLogo)} alt="" fill sizes="16px" className="object-contain rounded-full" unoptimized />
               </div>
             )}
             <span className="truncate max-w-[200px]">
@@ -118,7 +110,7 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
 
         <div className="flex justify-between items-center mt-auto">
           <div className="flex flex-col items-center gap-2.5 w-1/3">
-            <div className="relative w-12 h-12 md:w-14 md:h-14 theme-bg-main border theme-border rounded-full p-0.5 overflow-hidden">
+            <div className="relative w-12 h-12 md:w-14 md:h-14 theme-bg-main theme-border rounded-full p-0.5 overflow-hidden">
               <Image src={getImg(eventInfo.teamAFlag)} alt="" fill sizes="(max-width: 768px) 48px, 56px" className="object-cover rounded-full" unoptimized />
             </div>
             <span className="font-bold text-xs md:text-sm theme-text-primary truncate w-full text-center tracking-wide">{eventInfo.teamA || 'Team A'}</span>
@@ -131,19 +123,19 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
               </span>
             )}
             {status === 'upcoming' && (
-              <div className="theme-bg-main border theme-border px-2.5 py-1.5 rounded-xl flex items-center justify-center min-w-[85px]">
+              <div className="theme-bg-main theme-border px-2.5 py-1.5 rounded-xl flex items-center justify-center min-w-[85px]">
                 <MatchCountdown startTimeStr={eventInfo.startTime} />
               </div>
             )}
             {status === 'recent' && (
-              <span className="theme-bg-main theme-text-secondary border theme-border px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase">
+              <span className="theme-bg-main theme-text-secondary theme-border px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase">
                 Ended
               </span>
             )}
           </div>
 
           <div className="flex flex-col items-center gap-2.5 w-1/3">
-            <div className="relative w-12 h-12 md:w-14 md:h-14 theme-bg-main border theme-border rounded-full p-0.5 overflow-hidden">
+            <div className="relative w-12 h-12 md:w-14 md:h-14 theme-bg-main theme-border rounded-full p-0.5 overflow-hidden">
               <Image src={getImg(eventInfo.teamBFlag)} alt="" fill sizes="(max-width: 768px) 48px, 56px" className="object-cover rounded-full" unoptimized />
             </div>
             <span className="font-bold text-xs md:text-sm theme-text-primary truncate w-full text-center tracking-wide">{eventInfo.teamB || 'Team B'}</span>
@@ -159,12 +151,12 @@ MatchCard.displayName = 'MatchCard';
 
 function MatchSkeleton() {
   return (
-    <div className="theme-bg-card border theme-border rounded-2xl p-5 animate-pulse flex flex-col gap-5 h-[180px]">
-      <div className="h-4 theme-border rounded w-1/3 mx-auto"></div>
+    <div className="theme-bg-card theme-border rounded-2xl p-5 animate-pulse flex flex-col gap-5 h-[180px]">
+      <div className="h-4 theme-border rounded w-1/3 mx-auto border-b"></div>
       <div className="flex justify-between items-center px-2">
-        <div className="w-12 h-12 rounded-full bg-gray-800/40"></div>
-        <div className="w-12 h-6 bg-gray-800/40 rounded"></div>
-        <div className="w-12 h-12 rounded-full bg-gray-800/40"></div>
+        <div className="w-12 h-12 rounded-full theme-bg-main theme-border"></div>
+        <div className="w-12 h-6 theme-bg-main rounded"></div>
+        <div className="w-12 h-12 rounded-full theme-bg-main theme-border"></div>
       </div>
     </div>
   );
@@ -251,7 +243,7 @@ export default function Home() {
         initial={{ y: -100, opacity: 0 }} 
         animate={{ y: 0, opacity: 1 }} 
         transition={{ duration: 0.5 }}
-        className="p-4 theme-bg-nav/90 sticky top-0 z-50 flex items-center justify-between border-b theme-border backdrop-blur-md max-w-7xl mx-auto rounded-b-xl transition-colors duration-300"
+        className="p-4 theme-bg-nav sticky top-0 z-50 flex items-center justify-between border-b theme-border backdrop-blur-md max-w-7xl mx-auto rounded-b-xl transition-colors duration-300"
       >
         <div className="flex items-center gap-4">
           <h1 className="text-xl md:text-2xl font-black text-[#3498db] tracking-wide uppercase tv:text-3xl">All in one sports</h1>
@@ -259,7 +251,6 @@ export default function Home() {
 
         <div className="flex items-center gap-3 w-full max-w-xs justify-end">
           
-          {/* 🟢 থিম টগল বাটনটি সার্চ অফ থাকা অবস্থায় চমৎকারভাবে দেখাবে */}
           {!showSearch && <ThemeToggle />}
 
           {showSearch && (
@@ -271,7 +262,7 @@ export default function Home() {
               placeholder="Search team or event..." 
               value={searchInp}
               onChange={(e) => setSearchInp(e.target.value)}
-              className="theme-bg-card border theme-border text-sm rounded-xl px-4 py-2 w-full focus:outline-none focus:border-[#3498db] transition-all theme-text-primary"
+              className="theme-bg-card theme-border text-sm rounded-xl px-4 py-2 w-full focus:outline-none focus:border-[#3498db] transition-all theme-text-primary"
               autoFocus
             />
           )}
@@ -303,7 +294,7 @@ export default function Home() {
               className="flex flex-col items-center gap-2 cursor-pointer outline-none group min-w-[75px] snap-center focus:outline-none"
             >
               <div className={`w-14 h-14 md:w-16 md:h-16 rounded-2xl flex items-center justify-center transition-all duration-200 transform group-focus:scale-110 group-focus:ring-4 group-focus:ring-[#3498db] ${
-                activeCategory === cat ? 'bg-[#3498db]/10 border-2 border-[#3498db] shadow-lg shadow-[#3498db]/20' : 'theme-bg-card border theme-border'
+                activeCategory === cat ? 'bg-[#3498db]/10 border-2 border-[#3498db] shadow-lg shadow-[#3498db]/20' : 'theme-bg-card theme-border group-hover:brightness-110'
               }`}>
                 {getCategoryIcon(cat)}
               </div>
@@ -343,7 +334,7 @@ export default function Home() {
         )}
 
         {matches && processedMatches.length === 0 && (
-          <div className="text-center py-12 font-semibold theme-bg-card theme-text-secondary rounded-2xl border theme-border animate-fade-in">
+          <div className="text-center py-12 font-semibold theme-bg-card theme-text-secondary rounded-2xl theme-border animate-fade-in">
             No matches available matching your criteria.
           </div>
         )}
@@ -355,20 +346,3 @@ export default function Home() {
           {processedMatches.map((match: any) => {
             const now = new Date();
             const status = getMatchStatus(match.eventInfo?.startTime, match.eventInfo?.endTime, now);
-            return <MatchCard key={match.id} match={match} status={status} />;
-          })}
-        </motion.div>
-      </motion.div>
-
-      <style dangerouslySetInnerHTML={{__html: `
-        .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-        .content-visibility-auto { content-visibility: auto; }
-        @media (min-width: 1920px) {
-          .tv\\:p-8 { padding: 2rem !important; }
-          .tv\\:text-3xl { font-size: 1.875rem !important; line-height: 2.25rem !important; }
-        }
-      `}} />
-    </main>
-  );
-}
