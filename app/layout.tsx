@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 import './globals.css';
 import SecurityScript from './components/SecurityScript';
-import { GoogleAnalytics } from '@next/third-parties/google'; // 🟢 গুগল অ্যানালিটিক্স ইমপোর্ট করা হলো
+import { ThemeProvider } from './context/ThemeContext'; // 🟢 থিম প্রোভাইডার ইমপোর্ট করা হলো
 
 export const metadata: Metadata = {
   title: {
@@ -50,19 +50,31 @@ export default function RootLayout({
   return (
     <html lang="en" className="scroll-smooth">
       <head>
-        {/* ইন-অ্যাপ ব্রাউজার ব্লকিং ফিক্স */}
         <meta httpEquiv="X-Frame-Options" content="SAMEORIGIN" />
         <meta httpEquiv="X-Content-Type-Options" content="nosniff" />
       </head>
-      <body className="bg-gray-900 text-white selection:bg-[#3498db] selection:text-white antialiased">
-        {/* গ্লোবাল সিকিউরিটি স্ক্রিপ্ট */}
-        <SecurityScript />
-        {children}
-        
-        {/* 🟢 গুগল অ্যানালিটিক্স ট্র্যাকিং স্ক্রিপ্ট */}
-        {/* ⚠️ "G-Z517JJ7M56" কেটে আপনার আসল গুগল অ্যানালিটিক্স Measurement ID-টি এখানে বসিয়ে দিন */}
-        <GoogleAnalytics gaId="G-Z517JJ7M56" /> 
-      </body>
+      {/* 🟢 এখানে থিম প্রোভাইডার দিয়ে মুড়িয়ে দেওয়া হলো */}
+      <ThemeProvider>
+        <body className="selection:bg-[#3498db] selection:text-white antialiased">
+          <SecurityScript />
+          {children}
+          
+          {/* গুগল অ্যানালিটিক্স স্ক্রিপ্ট */}
+          <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', 'G-Z517JJ7M56', {
+                  page_path: window.location.pathname,
+                });
+              `,
+            }}
+          />
+        </body>
+      </ThemeProvider>
     </html>
   );
 }

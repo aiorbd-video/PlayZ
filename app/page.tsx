@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo, memo } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
-import { motion } from 'framer-motion'; //  Motion import
+import { motion } from 'framer-motion';
+import ThemeToggle from './components/ThemeToggle'; 
 
 const MATCH_API = "/api/proxy-matches";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
@@ -45,7 +46,7 @@ const MatchCountdown = memo(({ startTimeStr }: { startTimeStr: string }) => {
     const timeStr = startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     return (
       <div className="flex flex-col items-center leading-tight">
-        <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">{dateStr}</span>
+        <span className="text-[10px] theme-text-secondary font-medium uppercase tracking-wider">{dateStr}</span>
         <span className="text-xs font-bold text-[#3498db] mt-0.5">{timeStr}</span>
       </div>
     );
@@ -54,7 +55,7 @@ const MatchCountdown = memo(({ startTimeStr }: { startTimeStr: string }) => {
     const m = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
     return (
       <div className="flex flex-col items-center">
-        <span className="text-[9px] text-gray-400 uppercase tracking-widest mb-0.5">Starts In</span>
+        <span className="text-[9px] theme-text-secondary uppercase tracking-widest mb-0.5">Starts In</span>
         <span className="text-xs font-bold text-orange-400">{h}h {m}m</span>
       </div>
     );
@@ -63,7 +64,7 @@ const MatchCountdown = memo(({ startTimeStr }: { startTimeStr: string }) => {
     const s = Math.floor((diffMs % (1000 * 60)) / 1000);
     return (
       <div className="flex flex-col items-center">
-        <span className="text-[9px] text-gray-400 uppercase tracking-widest mb-0.5 animate-pulse">Starts In</span>
+        <span className="text-[9px] theme-text-secondary uppercase tracking-widest mb-0.5 animate-pulse">Starts In</span>
         <span className="text-sm font-black text-orange-500 font-mono tracking-wider">{m}m {s}s</span>
       </div>
     );
@@ -92,20 +93,13 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
       className="outline-none rounded-2xl focus:outline-none group block content-visibility-auto contain-intrinsic-size-[180px]"
       prefetch={false}
     >
-      <div className="bg-[#141822] border border-gray-800/50 rounded-2xl p-5 transition-all duration-300 transform group-hover:bg-[#1a202e] group-hover:border-[#3498db]/40 group-focus:scale-[1.03] group-focus:bg-[#1a202e] group-focus:border-[#3498db] group-focus:ring-4 group-focus:ring-[#3498db]/20 shadow-md flex flex-col justify-between h-full min-h-[180px]">
+      <div className="theme-bg-card theme-border rounded-2xl p-5 transition-all duration-300 transform group-hover:brightness-110 group-focus:scale-[1.03] shadow-md flex flex-col justify-between h-full min-h-[180px]">
         
         {(eventInfo.eventCat || eventInfo.eventName) && (
-          <div className="text-xs md:text-sm text-gray-400 font-semibold mb-4 flex items-center justify-center gap-2 border-b border-gray-800/30 pb-2">
+          <div className="text-xs md:text-sm theme-text-secondary font-semibold mb-4 flex items-center justify-center gap-2 border-b theme-border pb-2">
             {eventInfo.eventLogo && eventInfo.eventLogo !== "null" && (
               <div className="relative w-4 h-4">
-                <Image 
-                  src={getImg(eventInfo.eventLogo)} 
-                  alt="" 
-                  fill
-                  sizes="16px"
-                  className="object-contain rounded-full"
-                  unoptimized
-                />
+                <Image src={getImg(eventInfo.eventLogo)} alt="" fill sizes="16px" className="object-contain rounded-full" unoptimized />
               </div>
             )}
             <span className="truncate max-w-[200px]">
@@ -116,10 +110,10 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
 
         <div className="flex justify-between items-center mt-auto">
           <div className="flex flex-col items-center gap-2.5 w-1/3">
-            <div className="relative w-12 h-12 md:w-14 md:h-14 bg-gray-800/40 border border-gray-700/30 rounded-full p-0.5 overflow-hidden">
+            <div className="relative w-12 h-12 md:w-14 md:h-14 theme-bg-main theme-border rounded-full p-0.5 overflow-hidden">
               <Image src={getImg(eventInfo.teamAFlag)} alt="" fill sizes="(max-width: 768px) 48px, 56px" className="object-cover rounded-full" unoptimized />
             </div>
-            <span className="font-bold text-xs md:text-sm text-gray-200 truncate w-full text-center tracking-wide">{eventInfo.teamA || 'Team A'}</span>
+            <span className="font-bold text-xs md:text-sm theme-text-primary truncate w-full text-center tracking-wide">{eventInfo.teamA || 'Team A'}</span>
           </div>
 
           <div className="w-1/3 flex justify-center items-center">
@@ -129,22 +123,22 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
               </span>
             )}
             {status === 'upcoming' && (
-              <div className="bg-[#1b2230] border border-gray-800/80 px-2.5 py-1.5 rounded-xl flex items-center justify-center min-w-[85px]">
+              <div className="theme-bg-main theme-border px-2.5 py-1.5 rounded-xl flex items-center justify-center min-w-[85px]">
                 <MatchCountdown startTimeStr={eventInfo.startTime} />
               </div>
             )}
             {status === 'recent' && (
-              <span className="bg-gray-800/40 text-gray-500 border border-gray-800 px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase">
+              <span className="theme-bg-main theme-text-secondary theme-border px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase">
                 Ended
               </span>
             )}
           </div>
 
           <div className="flex flex-col items-center gap-2.5 w-1/3">
-            <div className="relative w-12 h-12 md:w-14 md:h-14 bg-gray-800/40 border border-gray-700/30 rounded-full p-0.5 overflow-hidden">
+            <div className="relative w-12 h-12 md:w-14 md:h-14 theme-bg-main theme-border rounded-full p-0.5 overflow-hidden">
               <Image src={getImg(eventInfo.teamBFlag)} alt="" fill sizes="(max-width: 768px) 48px, 56px" className="object-cover rounded-full" unoptimized />
             </div>
-            <span className="font-bold text-xs md:text-sm text-gray-200 truncate w-full text-center tracking-wide">{eventInfo.teamB || 'Team B'}</span>
+            <span className="font-bold text-xs md:text-sm theme-text-primary truncate w-full text-center tracking-wide">{eventInfo.teamB || 'Team B'}</span>
           </div>
         </div>
 
@@ -157,12 +151,12 @@ MatchCard.displayName = 'MatchCard';
 
 function MatchSkeleton() {
   return (
-    <div className="bg-[#1a1e29] border border-gray-800/40 rounded-2xl p-5 animate-pulse flex flex-col gap-5 h-[180px]">
-      <div className="h-4 bg-gray-800 rounded w-1/3 mx-auto"></div>
+    <div className="theme-bg-card theme-border rounded-2xl p-5 animate-pulse flex flex-col gap-5 h-[180px]">
+      <div className="h-4 theme-border rounded w-1/3 mx-auto border-b"></div>
       <div className="flex justify-between items-center px-2">
-        <div className="w-12 h-12 rounded-full bg-gray-800"></div>
-        <div className="w-12 h-6 bg-gray-800 rounded"></div>
-        <div className="w-12 h-12 rounded-full bg-gray-800"></div>
+        <div className="w-12 h-12 rounded-full theme-bg-main theme-border"></div>
+        <div className="w-12 h-6 theme-bg-main rounded"></div>
+        <div className="w-12 h-12 rounded-full theme-bg-main theme-border"></div>
       </div>
     </div>
   );
@@ -204,7 +198,7 @@ export default function Home() {
     if (!matches) return [];
     const now = new Date();
 
-    return matches.filter((match: any) => {
+    return [...matches].filter((match: any) => {
       const eventInfo = match.eventInfo || {};
       if (activeCategory !== 'All' && eventInfo.eventCat !== activeCategory) return false;
       
@@ -243,19 +237,22 @@ export default function Home() {
   if (!mounted) return null;
 
   return (
-    <main className="min-h-screen bg-[#0d0f14] text-white font-sans pb-20 tv:p-8 animate-fade-in">
+    <main className="min-h-screen theme-bg-main theme-text-primary font-sans pb-20 tv:p-8 animate-fade-in transition-colors duration-300">
       
       <motion.nav 
         initial={{ y: -100, opacity: 0 }} 
         animate={{ y: 0, opacity: 1 }} 
         transition={{ duration: 0.5 }}
-        className="p-4 bg-[#0d0f14]/90 sticky top-0 z-50 flex items-center justify-between border-b border-gray-900/60 backdrop-blur-md max-w-7xl mx-auto rounded-b-xl"
+        className="p-4 theme-bg-nav sticky top-0 z-50 flex items-center justify-between border-b theme-border backdrop-blur-md max-w-7xl mx-auto rounded-b-xl transition-colors duration-300"
       >
         <div className="flex items-center gap-4">
           <h1 className="text-xl md:text-2xl font-black text-[#3498db] tracking-wide uppercase tv:text-3xl">All in one sports</h1>
         </div>
 
         <div className="flex items-center gap-3 w-full max-w-xs justify-end">
+          
+          {!showSearch && <ThemeToggle />}
+
           {showSearch && (
             <motion.input 
               initial={{ width: 0, opacity: 0 }} 
@@ -265,11 +262,11 @@ export default function Home() {
               placeholder="Search team or event..." 
               value={searchInp}
               onChange={(e) => setSearchInp(e.target.value)}
-              className="bg-[#161a24] border border-gray-800 text-sm rounded-xl px-4 py-2 w-full focus:outline-none focus:border-[#3498db] transition-all text-white"
+              className="theme-bg-card theme-border text-sm rounded-xl px-4 py-2 w-full focus:outline-none focus:border-[#3498db] transition-all theme-text-primary"
               autoFocus
             />
           )}
-          <button onClick={() => { setShowSearch(!showSearch); setSearchInp(''); setDebouncedSearch(''); }} className="outline-none text-gray-300 hover:text-[#3498db] focus:text-[#3498db]">
+          <button onClick={() => { setShowSearch(!showSearch); setSearchInp(''); setDebouncedSearch(''); }} className="outline-none theme-text-secondary hover:text-[#3498db] focus:text-[#3498db]">
             {showSearch ? (
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
             ) : (
@@ -297,11 +294,11 @@ export default function Home() {
               className="flex flex-col items-center gap-2 cursor-pointer outline-none group min-w-[75px] snap-center focus:outline-none"
             >
               <div className={`w-14 h-14 md:w-16 md:h-16 rounded-2xl flex items-center justify-center transition-all duration-200 transform group-focus:scale-110 group-focus:ring-4 group-focus:ring-[#3498db] ${
-                activeCategory === cat ? 'bg-[#1e2738] border-2 border-[#3498db] shadow-lg shadow-[#3498db]/20' : 'bg-[#141822] border border-gray-800/60 group-hover:bg-[#1c2230]'
+                activeCategory === cat ? 'bg-[#3498db]/10 border-2 border-[#3498db] shadow-lg shadow-[#3498db]/20' : 'theme-bg-card theme-border group-hover:brightness-110'
               }`}>
                 {getCategoryIcon(cat)}
               </div>
-              <span className={`text-xs font-bold transition-colors ${activeCategory === cat ? 'text-[#3498db]' : 'text-gray-400 group-hover:text-white'} truncate max-w-[75px]`}>{cat}</span>
+              <span className={`text-xs font-bold transition-colors ${activeCategory === cat ? 'text-[#3498db]' : 'theme-text-secondary group-hover:theme-text-primary'} truncate max-w-[75px]`}>{cat}</span>
             </motion.button>
           ))}
         </div>
@@ -316,8 +313,8 @@ export default function Home() {
               onClick={() => setActiveFilter(filter)}
               className={`px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-all border snap-center focus:outline-none focus:ring-2 focus:ring-[#3498db] flex items-center gap-2 ${
                 activeFilter === filter
-                  ? "bg-[#1e2738] border-[#3498db] text-white shadow-md shadow-[#3498db]/10"
-                  : "bg-[#141822] border-transparent text-gray-400 hover:text-white hover:bg-[#1c2230]"
+                  ? "bg-[#3498db]/10 border-[#3498db] text-[#3498db] shadow-md shadow-[#3498db]/10"
+                  : "theme-bg-card border-transparent theme-text-secondary hover:theme-text-primary"
               }`}
             >
               {activeFilter === filter && <span className="w-1.5 h-1.5 bg-[#3498db] rounded-full animate-pulse"></span>}
@@ -337,7 +334,7 @@ export default function Home() {
         )}
 
         {matches && processedMatches.length === 0 && (
-          <div className="text-center py-12 text-gray-500 font-semibold bg-[#141822] rounded-2xl border border-gray-800/40 animate-fade-in">
+          <div className="text-center py-12 font-semibold theme-bg-card theme-text-secondary rounded-2xl theme-border animate-fade-in">
             No matches available matching your criteria.
           </div>
         )}
@@ -349,20 +346,3 @@ export default function Home() {
           {processedMatches.map((match: any) => {
             const now = new Date();
             const status = getMatchStatus(match.eventInfo?.startTime, match.eventInfo?.endTime, now);
-            return <MatchCard key={match.id} match={match} status={status} />;
-          })}
-        </motion.div>
-      </motion.div>
-
-      <style dangerouslySetInnerHTML={{__html: `
-        .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-        .content-visibility-auto { content-visibility: auto; }
-        @media (min-width: 1920px) {
-          .tv\\:p-8 { padding: 2rem !important; }
-          .tv\\:text-3xl { font-size: 1.875rem !important; line-height: 2.25rem !important; }
-        }
-      `}} />
-    </main>
-  );
-}
