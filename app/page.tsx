@@ -1,4 +1,4 @@
-'use client';
+ client';
 
 import { useState, useEffect, useMemo, memo } from 'react';
 import useSWR from 'swr';
@@ -346,3 +346,10 @@ export default function Home() {
           {processedMatches.map((match: any) => {
             const now = new Date();
             const status = getMatchStatus(match.eventInfo?.startTime, match.eventInfo?.endTime, now);
+            return <MatchCard key={match.id} match={match} status={status} />;
+            })}
+        </motion.div>
+      </motion.div>
+    </main>
+  );
+}
