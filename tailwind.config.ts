@@ -12,8 +12,13 @@ const config: Config = {
         'xs': '475px',
       },
       colors: {
-        'brand-red': 'var(--brand-red)',
-        'brand-dark': 'var(--brand-dark)',
+        'main-bg': 'var(--bg-main)',
+        'card-bg': 'var(--bg-card)',
+        'nav-bg': 'var(--bg-nav)',
+        'primary-text': 'var(--text-primary)',
+        'secondary-text': 'var(--text-secondary)',
+        'border-color': 'var(--border-color)',
+        'accent': 'var(--accent)',
       },
       animation: {
         'fade-in': 'fadeIn 1s ease-out',
