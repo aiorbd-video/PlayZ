@@ -1,4 +1,4 @@
- client';
+'use client';
 
 import { useState, useEffect, useMemo, memo } from 'react';
 import useSWR from 'swr';
