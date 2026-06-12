@@ -3,18 +3,35 @@
 @tailwind utilities;
 
 :root {
-  --main-bg: #0D1117;
-  --nav-bg: rgba(13, 17, 23, 0.7);
-  --card-bg: #161B22;
-  --primary-text: #E6EDF3;
-  --secondary-text: #8B949E;
-  --border-color: #30363D;
-  --accent: #22D3EE;
+  --background: #1E2024;
+  --card-background: #2C2F36;
+  --bottom-nav-bg: #26292E;
+  --pill-bg: #3A3E45;
+  --text-primary: #FFFFFF;
+  --text-secondary: #A0A5B1;
+  --text-live: #FF4747;
+  --accent: #00B2FF;
+  --border-color: rgba(0, 178, 255, 0.2);
 }
 
 body {
-  background-color: var(--main-bg);
-  color: var(--primary-text);
+  background-color: var(--background);
+  color: var(--text-primary);
+}
+
+@layer base {
+  html {
+    @apply scroll-smooth;
+  }
+  body {
+    @apply bg-background text-text-primary antialiased;
+  }
+}
+
+@layer components {
+  .selection-bg {
+    @apply selection:bg-accent selection:text-white;
+  }
 }
 
 @layer utilities {
@@ -25,10 +42,10 @@ body {
 
 /* Shaka Player Customizations */
 .shaka-video-container {
-    --range-color: var(--accent, #22D3EE);
+    --range-color: var(--accent, #00B2FF);
     --track-color: rgba(255, 255, 255, 0.3);
     --rail-color: rgba(255, 255, 255, 0.3);
-    --thumb-color: var(--accent, #22D3EE);
+    --thumb-color: var(--accent, #00B2FF);
     --buffer-color: rgba(255, 255, 255, 0.5);
     --hover-color: rgba(255, 255, 255, 0.2);
 }
