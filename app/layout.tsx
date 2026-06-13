@@ -150,7 +150,7 @@ export default function RootLayout({
 
         {children}
 
-        <GoogleTagManager gtmId="G-Z517JJ7M56" />
+        <GoogleTagManager gtmId="G-PWQE71BFDJ" />
       </body>
     </html>
   );
