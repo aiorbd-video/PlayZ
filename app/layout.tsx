@@ -90,9 +90,9 @@ export const metadata: Metadata = {
   images: ['https://www.ratulxlive.duckdns.org/og-image.jpg'],
 },
 
-  verification: {
-  google: 'v-ZWTYynmmRWTwdwUqXTcnYmT5q6rkBjqSark0ypkqM',
-},
+    verification: {
+    google: '0BaewLI3JQJ_V9zxXdw4gmgRhq809X2nJPLKDOvqyFA',
+  },
 
   category: 'Sports',
 
