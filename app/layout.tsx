@@ -66,33 +66,33 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    url: 'https://ratulxlive.vercel.app',
+    url: 'https://www.ratulxlive.duckdns.org',
     siteName: 'All in One Sports Web',
     title: 'All in One Sports Web | Live Sports Streaming',
     description:
       'Watch live cricket, football, WWE, UFC and premium sports events in HD quality.',
 
     images: [
-      {
-        url: '/og-image.jpg',
-        width: 1200,
-        height: 630,
-        alt: 'All in One Sports Web',
-      },
-    ],
+  {
+    url: 'https://www.ratulxlive.duckdns.org/og-image.jpg',
+    width: 1200,
+    height: 630,
+    alt: 'All in One Sports Web',
+  },
+],
   },
 
   twitter: {
-    card: 'summary_large_image',
-    title: 'All in One Sports Web',
-    description:
-      'Watch live cricket, football, WWE and premium sports events in HD quality.',
-    images: ['/og-image.jpg'],
-  },
+  card: 'summary_large_image',
+  title: 'All in One Sports Web',
+  description:
+    'Watch live cricket, football, WWE and premium sports events in HD quality.',
+  images: ['https://www.ratulxlive.duckdns.org/og-image.jpg'],
+},
 
   verification: {
-    google: 'YOUR_GOOGLE_VERIFICATION_CODE',
-  },
+  google: 'v-ZWTYynmmRWTwdwUqXTcnYmT5q6rkBjqSark0ypkqM',
+},
 
   category: 'Sports',
 
@@ -117,7 +117,7 @@ export default function RootLayout({
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     name: 'All in One Sports Web',
-    url: 'https://ratulxlive.vercel.app',
+    url: 'https://www.ratulxlive.duckdns.org',
     potentialAction: {
       '@type': 'SearchAction',
       target:
