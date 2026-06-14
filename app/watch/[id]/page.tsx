@@ -1,7 +1,12 @@
 import type { Metadata } from 'next';
 import StreamPlayer from './StreamPlayer';
 
-const SITE_URL = 'https://ratulxlive.vercel.app';
+// 🟢 API থেকে ডাটা আনার জন্য আপনার ব্যাকএন্ড লিংক
+const API_URL = 'https://ratulxlive.vercel.app';
+
+// 🟢 SEO, Canonical এবং ফেসবুক/টেলিগ্রামে শেয়ারের জন্য আপনার আসল ডোমেইন
+const SITE_URL = 'https://www.ratulxlive.duckdns.org';
+
 const IMG_PROXY = 'https://img.aiorbd.workers.dev/?url=';
 
 export async function generateMetadata(
@@ -11,8 +16,9 @@ export async function generateMetadata(
   const { id } = await params;
 
   try {
+    // 🟢 ডাটা আনার জন্য API_URL ব্যবহার করা হলো
     const res = await fetch(
-      `${SITE_URL}/api/streams/${id}`,
+      `${API_URL}/api/streams/${id}`,
       {
         cache: 'no-store',
         next: { revalidate: 60 }
@@ -141,8 +147,9 @@ export default async function Page(
   let jsonLd = null;
 
   try {
+    // 🟢 ডাটা আনার জন্য API_URL ব্যবহার করা হলো
     const res = await fetch(
-      `${SITE_URL}/api/streams/${id}`,
+      `${API_URL}/api/streams/${id}`,
       { cache: 'no-store' }
     );
 
