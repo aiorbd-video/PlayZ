@@ -25,7 +25,8 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
   return 'upcoming';
 };
 
-const MatchCountdown = memo(({ startTimeStr, status }: { startTimeStr: string, status: string }) => {
+// 🟢 ফিক্সড কাউন্টডাউন (মিনিট-সেকেন্ড কাউন্ট ও এন্ডেড স্ট্যাটাস সহ)
+const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { startTimeStr: string, endTimeStr: string, status: string }) => {
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -33,31 +34,52 @@ const MatchCountdown = memo(({ startTimeStr, status }: { startTimeStr: string, s
     return () => clearInterval(timer);
   }, []);
 
-  if (status === 'live') {
+  const startTime = startTimeStr ? new Date(startTimeStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z')) : null;
+  const endTime = endTimeStr ? new Date(endTimeStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z')) : null;
+
+  if (status === 'recent' || (endTime && time > endTime)) {
     return (
-      <div className="flex flex-col items-center justify-center gap-1">
-        <span className="text-red-500 text-lg animate-pulse">((•))</span>
-        <span className="text-red-500 text-xs font-bold tracking-wide">Live</span>
+      <div className="flex flex-col items-center justify-center">
+        <span className="text-gray-500 text-xs font-bold tracking-wide uppercase px-2 py-0.5 bg-gray-800 rounded-md">Ended</span>
       </div>
     );
   }
 
-  if (!startTimeStr) return <span className="text-gray-400 font-bold text-xs">TBA</span>;
-  const startTime = new Date(startTimeStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
+  if (status === 'live') {
+    return (
+      <div className="flex flex-col items-center justify-center gap-1">
+        <span className="text-red-500 text-lg animate-pulse">((•))</span>
+        <span className="text-red-500 text-xs font-bold tracking-wide uppercase">Live</span>
+      </div>
+    );
+  }
+
+  if (!startTime) return <span className="text-gray-400 font-bold text-xs">TBA</span>;
+  
   const diffMs = startTime.getTime() - time.getTime();
 
-  if (diffMs <= 0) return <span className="text-green-500 font-bold text-xs">Starting...</span>;
+  if (diffMs <= 0) return <span className="text-green-500 font-bold text-xs animate-pulse">Starting...</span>;
   
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const dateStr = startTime.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  const diffSecs = Math.floor((diffMs % (1000 * 60)) / 1000);
+
   const timeStr = startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  const dateStr = startTime.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   return (
     <div className="flex flex-col items-center justify-center w-full">
       <div className="text-gray-300 text-[13px] font-semibold">{timeStr}</div>
       <div className="text-[#00E5FF] text-[11px] font-semibold mt-0.5">{dateStr}</div>
-      {diffHours > 0 && (
-        <div className="text-gray-400 text-[10px] mt-2 font-medium whitespace-nowrap">Match Starting in {diffHours} Hours</div>
+      
+      {diffHours > 0 ? (
+        <div className="text-gray-400 text-[10px] mt-2 font-medium whitespace-nowrap">
+          Starting in {diffHours}h {diffMins}m
+        </div>
+      ) : (
+        <div className="text-amber-400 text-[11px] mt-2 font-bold whitespace-nowrap bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 animate-pulse">
+          Starting in {diffMins}m {diffSecs}s
+        </div>
       )}
     </div>
   );
@@ -80,13 +102,19 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
   const eventInfo = match.eventInfo || {};
 
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+    // 🟢 ফিক্সড ক্লিক অ্যানিমেশন: পিসির জন্য সলিড প্রেস ইফেক্ট
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }} 
+      animate={{ opacity: 1, y: 0 }} 
+      transition={{ duration: 0.5 }}
+      whileTap={{ scale: 0.97 }}
+    >
     <Link 
       href={`/watch/${match.id}`} 
       className="outline-none rounded-2xl focus:outline-none group block content-visibility-auto contain-intrinsic-size-[180px]"
       prefetch={false}
     >
-      <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 transition-all duration-300 transform group-hover:border-[#00E5FF] group-focus:scale-[1.03] group-focus:border-[#00E5FF] shadow-lg flex flex-col justify-between h-full min-h-[160px]">
+      <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 transition-all duration-150 transform group-hover:border-[#00E5FF] group-focus:scale-[1.03] group-focus:border-[#00E5FF] active:scale-[0.97] active:border-[#00E5FF] active:ring-2 active:ring-[#00E5FF]/30 shadow-lg flex flex-col justify-between h-full min-h-[160px]">
         
         {(eventInfo.eventCat || eventInfo.eventName) && (
           <div className="text-[13px] md:text-sm text-gray-200 font-semibold mb-5 flex items-center justify-center gap-2">
@@ -117,7 +145,7 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
           </div>
 
           <div className="w-[40%] flex justify-center items-center">
-            <MatchCountdown startTimeStr={eventInfo.startTime} status={status} />
+            <MatchCountdown startTimeStr={eventInfo.startTime} endTimeStr={eventInfo.endTime} status={status} />
           </div>
 
           <div className="flex flex-col items-center gap-2.5 w-[30%]">
@@ -159,7 +187,8 @@ export default function Home() {
 
   useEffect(() => {
     setMounted(true);
-    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+    // 🟢 গ্লোবাল টাইম রিফ্রেশ ৫ সেকেন্ড করা হয়েছে
+    const timer = setInterval(() => setCurrentTime(new Date()), 5000);
     return () => clearInterval(timer);
   }, []);
 
