@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
+import { motion } from 'framer-motion'; // পিসি ক্লিক অ্যানিমেশনের জন্য মোশন যুক্ত করা হলো
 import 'shaka-player/dist/controls.css';
 import shaka from 'shaka-player/dist/shaka-player.ui';
 
@@ -33,8 +34,8 @@ interface ApiResponse {
   streams: Stream[] | null;
 }
 
-const MATCH_API = "https://ratulxlive.vercel.app/api/proxy-matches";
-const IMG_PROXY = "https://img.aiorbd.workers.dev/?url=";
+const MATCH_API = "/api/proxy-matches"; // 🟢 ডোমেইন হার্ডকোড বাদ দিয়ে রিলেটিভ পাথ করা হলো লোকাল ও প্রোড সেফটির জন্য
+const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 
@@ -60,10 +61,16 @@ export default function StreamPlayer({ id }: { id: string }) {
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
 
+  // 🟢 ফিক্স ১: ৫ সেকেন্ড পর পর টাইম রিফ্রেশ হবে যাতে ডানপাশের লিস্টের লাইভ ব্যাজ ইনস্ট্যান্ট সিঙ্ক হয়
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+    const timer = setInterval(() => setCurrentTime(new Date()), 5000);
     return () => clearInterval(timer);
   }, []);
+
+  // 🟢 ফিক্স ২: ইউজার যখন অন্য ম্যাচে ক্লিক করবে, সার্ভার ইনডেক্স অটো রিসেট হয়ে ০ হবে (ক্র্যাশ প্রটেকশন)
+  useEffect(() => {
+    setActiveStreamIndex(0);
+  }, [id]);
 
   const { data: matches } = useSWR<Match[]>(MATCH_API, fetcher, {
     revalidateIfStale: false,
@@ -79,34 +86,45 @@ export default function StreamPlayer({ id }: { id: string }) {
   });
   const streams = apiResponse?.streams || null;
 
+  // 🟢 ফিক্স ৩: শাকাপ্লেয়ার ইনিশিয়ালাইজেশন এবং ডেসট্রাকশন একসাথে এক ইফেক্টে মার্জ করা হলো (Strict Mode Safe)
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
 
     shaka.polyfill.installAll();
-    if (shaka.Player.isBrowserSupported() && videoRef.current) {
-        const player = new shaka.Player(videoRef.current);
-        const ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
+    let player: shaka.Player | null = null;
+    let ui: shaka.ui.Overlay | null = null;
+
+    if (shaka.Player.isBrowserSupported()) {
+        player = new shaka.Player(videoRef.current);
+        ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
         
         ui.configure({
             controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'fullscreen', 'overflow_menu'],
             addSeekBar: true,
         });
         
+        // প্লেয়ার এরর লিসেনার (কোনো কারণে স্ট্রিম ফেল করলে কনসোলে ট্র্যাক করার জন্য)
+        player.addEventListener('error', (event: any) => {
+          console.error('Shaka Player Internal Error:', event.detail);
+        });
+
         setPlayerInstance(player);
         setUiInstance(ui);
     }
+
+    return () => {
+      if (ui) ui.destroy();
+      if (player) player.destroy();
+    };
   }, []);
 
   useEffect(() => {
-    return () => {
-      uiInstance?.destroy();
-      playerInstance?.destroy();
-    };
-  }, [playerInstance, uiInstance]);
-
-  useEffect(() => {
     if (!playerInstance || !streams || streams.length === 0) return;
+    
+    // সেফগার্ড ইনডেক্স চেকিং
     const currentStream = streams[activeStreamIndex] || streams[0];
+    if (!currentStream) return;
+
     const streamUrl = currentStream.link;
     const drmKeyString = currentStream.api;
 
@@ -139,21 +157,20 @@ export default function StreamPlayer({ id }: { id: string }) {
         playerInstance.configure(playerConfig);
         await playerInstance.load(streamUrl);
       } catch (e) {
-        console.error('Video Error:', e);
+        console.error('Video Loading Failed:', e);
       }
     };
     loadVideo();
   }, [playerInstance, streams, activeStreamIndex]);
 
   return (
-    // 🟢 ব্যাকগ্রাউন্ড থিম হোমপেজের মতোই ডিপ ডার্ক করা হলো
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
       
-      {/* 🟢 প্রিমিয়াম ন্যাভ বার */}
+      {/* প্রিমিয়াম ন্যাভ বার */}
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/">
-            <button className="p-2 text-gray-400 hover:text-[#00E5FF] flex items-center gap-2 group outline-none transition-colors">
+            <button className="p-2 text-gray-400 hover:text-[#00E5FF] flex items-center gap-2 group outline-none transition-colors active:scale-[0.95]">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 group-hover:-translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
@@ -182,7 +199,7 @@ export default function StreamPlayer({ id }: { id: string }) {
             <video ref={videoRef} className="w-full h-full" autoPlay playsInline />
           </div>
 
-          {/* 🟢 সার্ভার বাটন গ্রুপ (২য় ইমেজের মতো চমৎকার পিল-শেপ ডিজাইন) */}
+          {/* 🟢 সার্ভার বাটন গ্রুপ (পিসির জন্য সলিড অ্যাক্টিভ ক্লিক ফিল যুক্ত করা হলো) */}
           {streams && streams.length > 0 && (
             <div className="flex gap-2 overflow-x-auto scrollbar-hide py-4 my-2 border-b border-gray-800/40 items-center">
               <span className="text-gray-400 font-bold text-xs md:text-sm mr-2 whitespace-nowrap uppercase tracking-wider">Servers:</span>
@@ -190,10 +207,10 @@ export default function StreamPlayer({ id }: { id: string }) {
                 <button 
                   key={index} 
                   onClick={() => setActiveStreamIndex(index)} 
-                  className={`px-5 py-2 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border outline-none ${
+                  className={`px-5 py-2 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border outline-none active:scale-[0.95] duration-150 ${
                     activeStreamIndex === index 
-                      ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-md shadow-[#00E5FF]/10" 
-                      : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white"
+                      ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-md shadow-[#00E5FF]/10 ring-2 ring-[#00E5FF]/20" 
+                      : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white active:border-[#00E5FF]"
                   }`}
                 >
                   {stream.title || `Server ${index + 1}`}
@@ -202,23 +219,20 @@ export default function StreamPlayer({ id }: { id: string }) {
             </div>
           )}
 
-          {/* 🟢 কারেন্ট ম্যাচ ইনফো কার্ড (২য় ইমেজের মতো সায়ান বর্ডার থিম) */}
+          {/* কারেন্ট ম্যাচ ইনফো কার্ড */}
           {currentMatch ? (
             <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 mt-3 shadow-lg">
               <div className="text-center text-xs font-bold text-[#00E5FF] uppercase tracking-widest mb-4">
                 {currentMatch.eventInfo.eventCat} | {currentMatch.eventInfo.eventName}
               </div>
               <div className="flex justify-center items-center gap-6 sm:gap-12 py-2">
-                {/* Team A */}
                 <div className="flex items-center gap-3 w-[40%] justify-end">
                   <span className="font-bold text-sm md:text-base text-gray-200 text-right truncate">{currentMatch.eventInfo.teamA}</span>
                   <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-700/50 flex-shrink-0 relative">
                     <Image unoptimized src={getImg(currentMatch.eventInfo.teamAFlag)} fill className="object-cover" alt="" />
                   </div>
                 </div>
-                {/* VS */}
                 <span className="text-gray-400 font-black italic text-sm md:text-base px-2">VS</span>
-                {/* Team B */}
                 <div className="flex items-center gap-3 w-[40%] justify-start">
                   <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-700/50 flex-shrink-0 relative">
                     <Image unoptimized src={getImg(currentMatch.eventInfo.teamBFlag)} fill className="object-cover" alt="" />
@@ -235,7 +249,7 @@ export default function StreamPlayer({ id }: { id: string }) {
           )}
         </div>
 
-        {/* ডান সেকশন: মোর লাইভ ইভেন্টস লিস্ট (২য় ইমেজের গ্রিড ম্যাচিং) */}
+        {/* ডান সেকশন: মোর লাইভ ইভেন্টস লিস্ট (পিসি ক্লিক ফিডব্যাক `motion.div` ও `whileTap` সহ) */}
         <div className="mt-6 lg:mt-0 lg:col-span-1 max-h-[70vh] lg:max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-hide pr-1">
           <div className="flex flex-col gap-3.5">
             <span className="text-xs font-black uppercase tracking-wider text-gray-400 pl-1 mb-1">More Live Events</span>
@@ -245,22 +259,24 @@ export default function StreamPlayer({ id }: { id: string }) {
 
               return (
                 <Link href={`/watch/${match.id}`} key={match.id} className="outline-none" prefetch={false}>
-                  <div className={`bg-[#1C1E2B] border rounded-[18px] p-4 transition-all ${
-                    isCurrent 
-                      ? 'border-[#00E5FF] shadow-md shadow-[#00E5FF]/5' 
-                      : 'border-gray-800/80 hover:border-[#00E5FF]/40'
-                  }`}>
+                  {/* 🟢 ফিক্স ৪: সাইডবার কার্ডে ট্যাপ/ক্লিক ইফেক্ট যুক্ত করা হলো */}
+                  <motion.div 
+                    whileTap={{ scale: 0.97 }}
+                    className={`bg-[#1C1E2B] border rounded-[18px] p-4 transition-all duration-150 active:scale-[0.97] ${
+                      isCurrent 
+                        ? 'border-[#00E5FF] shadow-md shadow-[#00E5FF]/5 ring-2 ring-[#00E5FF]/10' 
+                        : 'border-gray-800/80 hover:border-[#00E5FF]/40 active:border-[#00E5FF]'
+                    }`}
+                  >
                     <div className="text-[11px] text-gray-400 mb-2 truncate uppercase tracking-wide">
                       {match.eventInfo.eventCat} • {match.eventInfo.eventName}
                     </div>
                     <div className="flex justify-between items-center gap-2">
-                      {/* Team A inside List */}
                       <div className="flex items-center gap-2 truncate max-w-[40%]">
                         <img src={getImg(match.eventInfo.teamAFlag)} className="w-5 h-5 rounded-full object-cover border border-gray-700/40 min-w-[20px]" alt="" />
                         <span className="text-xs font-bold truncate text-gray-200">{match.eventInfo.teamA}</span>
                       </div>
                       
-                      {/* Live Badge inside List */}
                       <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wide shrink-0 ${
                         status.type === 'live' 
                           ? 'bg-red-500/10 text-red-400 border border-red-500/20 animate-pulse' 
@@ -269,13 +285,12 @@ export default function StreamPlayer({ id }: { id: string }) {
                         {status.label}
                       </span>
                       
-                      {/* Team B inside List */}
                       <div className="flex items-center gap-2 truncate max-w-[40%] justify-end">
                         <span className="text-xs font-bold truncate text-gray-200 text-right">{match.eventInfo.teamB}</span>
                         <img src={getImg(match.eventInfo.teamBFlag)} className="w-5 h-5 rounded-full object-cover border border-gray-700/40 min-w-[20px]" alt="" />
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
                 </Link>
               );
             })}
