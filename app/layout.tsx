@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import SecurityScript from './components/SecurityScript';
 import { GoogleAnalytics } from '@next/third-parties/google';
+
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
@@ -73,24 +74,24 @@ export const metadata: Metadata = {
       'Watch live cricket, football, WWE, UFC and premium sports events in HD quality.',
 
     images: [
-  {
-    url: 'https://www.ratulxlive.duckdns.org/og-image.jpg',
-    width: 1200,
-    height: 630,
-    alt: 'All in One Sports Web',
-  },
-],
+      {
+        url: 'https://www.ratulxlive.duckdns.org/og-image.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'All in One Sports Web',
+      },
+    ],
   },
 
   twitter: {
-  card: 'summary_large_image',
-  title: 'All in One Sports Web',
-  description:
-    'Watch live cricket, football, WWE and premium sports events in HD quality.',
-  images: ['https://www.ratulxlive.duckdns.org/og-image.jpg'],
-},
+    card: 'summary_large_image',
+    title: 'All in One Sports Web',
+    description:
+      'Watch live cricket, football, WWE and premium sports events in HD quality.',
+    images: ['https://www.ratulxlive.duckdns.org/og-image.jpg'],
+  },
 
-    verification: {
+  verification: {
     google: '0BaewLI3JQJ_V9zxXdw4gmgRhq809X2nJPLKDOvqyFA',
   },
 
@@ -131,6 +132,9 @@ export default function RootLayout({
       <head>
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta httpEquiv="X-Content-Type-Options" content="nosniff" />
+        
+        {/* 🟢 ফিক্স: ট্রাফিক সোর্স ট্র্যাক করার জন্য Referrer মেটা ট্যাগ যুক্ত করা হলো */}
+        <meta name="referrer" content="no-referrer-when-downgrade" />
 
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="dns-prefetch" href="//fonts.googleapis.com" />
