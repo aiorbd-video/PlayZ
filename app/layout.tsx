@@ -1,8 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import SecurityScript from './components/SecurityScript';
-import { GoogleTagManager } from '@next/third-parties/google';
-
+import { GoogleAnalytics } from '@next/third-parties/google';
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
@@ -10,7 +9,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://ratulxlive.vercel.app'),
+  metadataBase: new URL('https://www.ratulxlive.duckdns.org'),
 
   title: {
     default: 'All in One Sports Web | Watch Live Cricket, Football & WWE HD',
@@ -47,7 +46,7 @@ export const metadata: Metadata = {
   publisher: 'All in One Sports Web',
 
   alternates: {
-    canonical: 'https://ratulxlive.vercel.app',
+    canonical: 'https://www.ratulxlive.duckdns.org',
   },
 
   robots: {
@@ -122,7 +121,7 @@ export default function RootLayout({
     potentialAction: {
       '@type': 'SearchAction',
       target:
-        'https://ratulxlive.vercel.app/search?q={search_term_string}',
+        'https://www.ratulxlive.duckdns.org/search?q={search_term_string}',
       'query-input': 'required name=search_term_string',
     },
   };
@@ -150,7 +149,7 @@ export default function RootLayout({
 
         {children}
 
-        <GoogleTagManager gtmId="G-PWQE71BFDJ" />
+        <GoogleAnalytics gaId="G-PWQE71BFDJ" />
       </body>
     </html>
   );
