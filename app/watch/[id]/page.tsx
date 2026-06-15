@@ -3,7 +3,7 @@ import StreamPlayer from './StreamPlayer';
 
 // 🟢 ফিক্স: || মুছে দেওয়া হলো
 const API_URL = process.env.API_URL;
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL;
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL as string;
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY;
 
 export async function generateMetadata(
@@ -51,7 +51,9 @@ export async function generateMetadata(
         : `${SITE_URL}/og-image.jpg`;
 
     return {
-      metadataBase: new URL(SITE_URL),
+      // 🟢 যদি SITE_URL না থাকে, তবে ডিফল্ট লিংক দিয়ে URL বানাবে
+metadataBase: new URL(SITE_URL || "https://www.ratulxlive.duckdns.org"),
+
 
       title,
       description,
