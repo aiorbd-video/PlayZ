@@ -39,9 +39,21 @@ const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.worke
 
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 
-const getImg = (url: string | undefined) => {
+// 🟢 প্রো-লেভেল সেফটি: null বা undefined থাকলে ক্র্যাশ করবে না
+const getImg = (url: string | undefined | null) => {
   if (!url || url === "null") return "/fallback-logo.png";
   return `${IMG_PROXY}${encodeURIComponent(url)}`;
+};
+
+// 🟢 সাইডবারের লিংকের জন্য ডায়নামিক Slug Generator
+const generateSlug = (teamA?: string, teamB?: string, eventName?: string, id?: string | number) => {
+  const tA = teamA || 'team';
+  const tB = teamB || 'match';
+  const event = eventName || 'live-event';
+  
+  const rawString = `${tA}-vs-${tB}-${event}`;
+  const cleanSlug = rawString.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return `${cleanSlug}-${id || '0'}`;
 };
 
 const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => {
@@ -62,10 +74,11 @@ export default function StreamPlayer({ id }: { id: string }) {
   
   const [zoomMode, setZoomMode] = useState<'contain' | 'fill' | 'cover'>('contain');
   
-  // 🟢 হালায় যেন গায়েব হয়, তার জন্য আমাদের নিজস্ব কাস্টম সেন্সর
   const [isControlsVisible, setIsControlsVisible] = useState(true);
+  // 🟢 নতুন স্টেট: সব সার্ভার ডাউন হলে ইউজারকে জানানোর জন্য
+  const [allServersDown, setAllServersDown] = useState(false); 
+  
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
-
   const streamsRef = useRef<Stream[] | null>(null);
   const activeIndexRef = useRef<number>(0);
 
@@ -93,6 +106,7 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   useEffect(() => {
     setActiveStreamIndex(0);
+    setAllServersDown(false); // নতুন ম্যাচে গেলে এরর স্টেট রিসেট হবে
   }, [id]);
 
   const triggerNextServer = () => {
@@ -102,6 +116,10 @@ export default function StreamPlayer({ id }: { id: string }) {
     if (currentStreams && currentIndex < currentStreams.length - 1) {
       console.warn(`⚠️ Switching to Backup Server ${currentIndex + 2}...`);
       setActiveStreamIndex(currentIndex + 1);
+    } else {
+      // 🟢 যদি সব সার্ভার শেষ হয়ে যায়
+      console.error("💥 All backup servers exhausted.");
+      setAllServersDown(true);
     }
   };
 
@@ -136,7 +154,7 @@ export default function StreamPlayer({ id }: { id: string }) {
   }, []);
 
   useEffect(() => {
-    if (!playerInstance || !streams || streams.length === 0) return;
+    if (!playerInstance || !streams || streams.length === 0 || allServersDown) return;
     
     const currentStream = streams[activeStreamIndex] || streams[0];
     if (!currentStream) return;
@@ -169,7 +187,7 @@ export default function StreamPlayer({ id }: { id: string }) {
       }
     };
     loadVideo();
-  }, [playerInstance, streams, activeStreamIndex]);
+  }, [playerInstance, streams, activeStreamIndex, allServersDown]);
 
   const handleZoomToggle = () => {
     setZoomMode((prev) => {
@@ -179,13 +197,9 @@ export default function StreamPlayer({ id }: { id: string }) {
     });
   };
 
-  // 🟢 ইউজার যখন স্ক্রিনে টাচ করবে বা মাউস নাড়াবে, এই ফাংশন ফায়ার হবে
   const handleUserActivity = () => {
-    setIsControlsVisible(true); // বাটন শো করাবে
-    
+    setIsControlsVisible(true);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    
-    // ৩ সেকেন্ড পর বাটনটাকে ঘাড় ধরে গায়েব করে দেবে
     hideTimerRef.current = setTimeout(() => {
       setIsControlsVisible(false);
     }, 3000);
@@ -214,8 +228,6 @@ export default function StreamPlayer({ id }: { id: string }) {
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
         <div className="lg:col-span-2 flex flex-col">
           
-          {/* 🟢 এখানে সেন্সরগুলো (onMouseMove, onTouchStart) লাগানো হয়েছে */}
-                    {/* 🟢 ফিক্স: Shaka Player ইভেন্ট চুরি করার আগেই Capture দিয়ে সিগন্যাল ধরা হলো */}
           <div 
             ref={videoContainerRef} 
             className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group"
@@ -225,15 +237,28 @@ export default function StreamPlayer({ id }: { id: string }) {
             onMouseLeave={() => setIsControlsVisible(false)}
           >
 
-            {!streams && (
+            {/* 🟢 লোডিং স্ট্যাটাস */}
+            {!streams && !allServersDown && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/90 z-10 flex-col gap-3">
                 <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-gray-400 text-sm animate-pulse">Fetching Secure Stream...</span>
+                <span className="text-gray-400 text-sm animate-pulse tracking-wider">Fetching Secure Stream...</span>
               </div>
             )}
 
-            {/* বাটনটি এখন আমাদের ৩ সেকেন্ডের টাইমারের সাথে যুক্ত */}
-            {streams && (
+            {/* 🟢 নতুন: সব সার্ভার ডাউন হলে ইউজারকে জানানোর সুন্দর এরর স্ক্রিন */}
+            {allServersDown && (
+              <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/95 z-20 flex-col gap-4 text-center p-4">
+                <span className="text-4xl">📡</span>
+                <div className="text-red-400 font-bold tracking-wide">Stream Currently Unavailable</div>
+                <p className="text-gray-400 text-sm max-w-xs">All servers for this match are currently down or the match has ended. Please try again later.</p>
+                <button onClick={() => window.location.reload()} className="mt-2 bg-[#1C1E2B] border border-gray-700 hover:border-[#00E5FF] text-white px-5 py-2 rounded-full text-xs font-bold transition-all active:scale-95">
+                  Reload Player
+                </button>
+              </div>
+            )}
+
+            {/* জুম বাটন */}
+            {streams && !allServersDown && (
               <button
                 onClick={handleZoomToggle}
                 className={`absolute top-4 right-4 z-[40] bg-black/70 hover:bg-[#00E5FF]/20 text-white hover:text-[#00E5FF] px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 border border-white/10 backdrop-blur-sm shadow-lg active:scale-95 uppercase tracking-wider transition-opacity duration-500 ease-in-out ${
@@ -265,10 +290,10 @@ export default function StreamPlayer({ id }: { id: string }) {
               {streams.map((stream, index) => (
                 <button 
                   key={index} 
-                  onClick={() => setActiveStreamIndex(index)} 
+                  onClick={() => { setActiveStreamIndex(index); setAllServersDown(false); }} 
                   className={`px-5 py-2 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border outline-none active:scale-[0.95] duration-150 ${
-                    activeStreamIndex === index 
-                      ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-md shadow-[#00E5FF]/10 ring-2 ring-[#00E5FF]/20" 
+                    activeStreamIndex === index && !allServersDown
+                      ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)] ring-1 ring-[#00E5FF]/30" 
                       : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white active:border-[#00E5FF]"
                   }`}
                 >
@@ -315,14 +340,17 @@ export default function StreamPlayer({ id }: { id: string }) {
             {matches && matches.map((match) => {
               const status = getMatchStatus(match.eventInfo.startTime, match.eventInfo.endTime, currentTime);
               const isCurrent = match.id.toString() === id;
+              
+              // 🟢 ফিক্স: সাইডবারের লিংকেও এখন ডায়নামিক এবং এসইও ফ্রেন্ডলি স্লাগ বসানো হলো
+              const slugLink = generateSlug(match.eventInfo.teamA, match.eventInfo.teamB, match.eventInfo.eventName, match.id);
 
               return (
-                <Link href={`/watch/${match.id}`} key={match.id} className="outline-none" prefetch={false}>
+                <Link href={`/watch/${slugLink}`} key={match.id} className="outline-none" prefetch={false}>
                   <motion.div 
                     whileTap={{ scale: 0.97 }}
                     className={`bg-[#1C1E2B] border rounded-[18px] p-4 transition-all duration-150 active:scale-[0.97] ${
                       isCurrent 
-                        ? 'border-[#00E5FF] shadow-md shadow-[#00E5FF]/5 ring-2 ring-[#00E5FF]/10' 
+                        ? 'border-[#00E5FF] shadow-md shadow-[#00E5FF]/5 ring-1 ring-[#00E5FF]/30' 
                         : 'border-gray-800/80 hover:border-[#00E5FF]/40 active:border-[#00E5FF]'
                     }`}
                   >
