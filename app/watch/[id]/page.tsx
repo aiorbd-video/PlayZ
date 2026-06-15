@@ -1,11 +1,10 @@
 import type { Metadata } from 'next';
 import StreamPlayer from './StreamPlayer';
 
-// 🟢 Vercel এর .env থেকে লিংকগুলো ডায়নামিকভাবে আনা হচ্ছে
-// যদি লোকালহোস্টে টেস্ট করেন, তার জন্য ডিফল্ট লিংকগুলোও ফলব্যাক হিসেবে দেওয়া থাকলো।
-const API_URL = process.env.API_URL || 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 
-const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || 
+// 🟢 ফিক্স: || মুছে দেওয়া হলো
+const API_URL = process.env.API_URL;
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL;
+const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY;
 
 export async function generateMetadata(
   { params }: { params: Promise<{ id: string }> }
