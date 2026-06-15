@@ -153,7 +153,7 @@ export default function RootLayout({
 
         {/* 🟢 ফ্লোটিং টেলিগ্রাম বাটন শুরু */}
         <a
-          href="https://t.me/All_Sports_web_Ai" // 👈 এখানে আপনার আসল টেলিগ্রাম লিংকটি বসাবেন
+          href="https://t.me/allonebd" // 👈 এখানে আপনার আসল টেলিগ্রাম লিংকটি বসাবেন
           target="_blank"
           rel="noopener noreferrer"
           className="fixed bottom-6 right-6 z-[9999] flex items-center justify-center w-14 h-14 md:w-auto md:h-auto md:px-5 md:py-3 bg-gradient-to-br from-[#0088cc] to-[#005580] text-white rounded-full shadow-[0_0_20px_rgba(0,136,204,0.6)] backdrop-blur-md border border-white/20 animate-pulse hover:animate-none hover:scale-110 transition-all duration-300 group"
