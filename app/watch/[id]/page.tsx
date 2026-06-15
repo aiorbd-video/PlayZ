@@ -1,13 +1,11 @@
 import type { Metadata } from 'next';
 import StreamPlayer from './StreamPlayer';
 
-// 🟢 API থেকে ডাটা আনার জন্য আপনার ব্যাকএন্ড লিংক
-const API_URL = 'https://ratulxlive.vercel.app';
-
-// 🟢 SEO, Canonical এবং ফেসবুক/টেলিগ্রামে শেয়ারের জন্য আপনার আসল ডোমেইন
-const SITE_URL = 'https://www.ratulxlive.duckdns.org';
-
-const IMG_PROXY = 'https://img.aiorbd.workers.dev/?url=';
+// 🟢 Vercel এর .env থেকে লিংকগুলো ডায়নামিকভাবে আনা হচ্ছে
+// যদি লোকালহোস্টে টেস্ট করেন, তার জন্য ডিফল্ট লিংকগুলোও ফলব্যাক হিসেবে দেওয়া থাকলো।
+const API_URL = process.env.API_URL || 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 
+const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || 
 
 export async function generateMetadata(
   { params }: { params: Promise<{ id: string }> }
@@ -43,15 +41,13 @@ export async function generateMetadata(
     const eventName = info.eventName || 'Live Sports';
     const category = info.eventCat || 'Sports';
 
-    const title =
-      `${teamA} vs ${teamB} Live Streaming HD | All in One Sports`;
+    // 🟢 ডায়নামিক টাইটেল এবং ডেসক্রিপশন
+    const title = `${teamA} vs ${teamB} Live Streaming HD | All in One Sports`;
+    const description = `Watch ${teamA} vs ${teamB} live streaming in HD quality. ${eventName} live online free.`;
 
-    const description =
-      `Watch ${teamA} vs ${teamB} live streaming in HD quality. ${eventName} live online free.`;
-
+    // 🟢 ডায়নামিক ইমেজ প্রক্সি লিংক
     const shareImage =
-      info.teamAFlag &&
-      info.teamAFlag !== 'null'
+      info.teamAFlag && info.teamAFlag !== 'null'
         ? `${IMG_PROXY}${encodeURIComponent(info.teamAFlag)}`
         : `${SITE_URL}/og-image.jpg`;
 
@@ -143,11 +139,10 @@ export default async function Page(
 ) {
 
   const { id } = await params;
-
   let jsonLd = null;
 
   try {
-    // 🟢 ডাটা আনার জন্য API_URL ব্যবহার করা হলো
+    // 🟢 ডাটা আনার জন্য পুনরায় API_URL ব্যবহার করা হলো
     const res = await fetch(
       `${API_URL}/api/streams/${id}`,
       { cache: 'no-store' }
@@ -156,6 +151,7 @@ export default async function Page(
     const data = await res.json();
     const info = data?.matchInfo?.eventInfo;
 
+    // 🟢 এসইও স্কিমা জেনারেট করা হচ্ছে
     if (info) {
       jsonLd = {
         "@context": "https://schema.org",
