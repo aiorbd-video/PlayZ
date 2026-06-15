@@ -121,10 +121,11 @@ export default function StreamPlayer({ id }: { id: string }) {
             addSeekBar: true,
         });
         
-        // 🟢 ফিক্স লজিক: শাকাপ্লেয়ারের কন্ট্রোল যখন হাইড/শো হবে, আমাদের বাটনও সিঙ্ক হবে
-        const controls = ui.getControls();
-        if (controls) {
+                // 🟢 ফিক্স: টাইপস্ক্রিপ্টকে ইগনোর করার জন্য "as any" ব্যবহার করা হয়েছে
+        const controls = ui.getControls() as any;
+        if (controls && typeof controls.isDisplayed === 'function') {
           setIsControlsVisible(controls.isDisplayed()); // ইনিশিয়াল স্টেট
+          
           controls.addEventListener('controlsvisibilitychange', () => {
             setIsControlsVisible(controls.isDisplayed());
           });
