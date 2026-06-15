@@ -39,13 +39,11 @@ const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.worke
 
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 
-// 🟢 প্রো-লেভেল সেফটি: null বা undefined থাকলে ক্র্যাশ করবে না
 const getImg = (url: string | undefined | null) => {
   if (!url || url === "null") return "/fallback-logo.png";
   return `${IMG_PROXY}${encodeURIComponent(url)}`;
 };
 
-// 🟢 সাইডবারের লিংকের জন্য ডায়নামিক Slug Generator
 const generateSlug = (teamA?: string, teamB?: string, eventName?: string, id?: string | number) => {
   const tA = teamA || 'team';
   const tB = teamB || 'match';
@@ -75,8 +73,8 @@ export default function StreamPlayer({ id }: { id: string }) {
   const [zoomMode, setZoomMode] = useState<'contain' | 'fill' | 'cover'>('contain');
   
   const [isControlsVisible, setIsControlsVisible] = useState(true);
-  // 🟢 নতুন স্টেট: সব সার্ভার ডাউন হলে ইউজারকে জানানোর জন্য
-  const [allServersDown, setAllServersDown] = useState(false); 
+  const [allServersDown, setAllServersDown] = useState(false);
+  const [showCopied, setShowCopied] = useState(false); 
   
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
   const streamsRef = useRef<Stream[] | null>(null);
@@ -106,7 +104,7 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   useEffect(() => {
     setActiveStreamIndex(0);
-    setAllServersDown(false); // নতুন ম্যাচে গেলে এরর স্টেট রিসেট হবে
+    setAllServersDown(false);
   }, [id]);
 
   const triggerNextServer = () => {
@@ -117,7 +115,6 @@ export default function StreamPlayer({ id }: { id: string }) {
       console.warn(`⚠️ Switching to Backup Server ${currentIndex + 2}...`);
       setActiveStreamIndex(currentIndex + 1);
     } else {
-      // 🟢 যদি সব সার্ভার শেষ হয়ে যায়
       console.error("💥 All backup servers exhausted.");
       setAllServersDown(true);
     }
@@ -205,6 +202,27 @@ export default function StreamPlayer({ id }: { id: string }) {
     }, 3000);
   };
 
+  const handleShare = async () => {
+    const matchTitle = currentMatch ? `${currentMatch.eventInfo.teamA} VS ${currentMatch.eventInfo.teamB}` : 'Live Match';
+    const shareUrl = window.location.href;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `${matchTitle} - Live Streaming`,
+          text: `Watch ${matchTitle} Live in HD on All in One Sports!`,
+          url: shareUrl,
+        });
+      } catch (error) {
+        console.log('Share canceled');
+      }
+    } else {
+      navigator.clipboard.writeText(shareUrl);
+      setShowCopied(true);
+      setTimeout(() => setShowCopied(false), 2000);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
       
@@ -237,7 +255,6 @@ export default function StreamPlayer({ id }: { id: string }) {
             onMouseLeave={() => setIsControlsVisible(false)}
           >
 
-            {/* 🟢 লোডিং স্ট্যাটাস */}
             {!streams && !allServersDown && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/90 z-10 flex-col gap-3">
                 <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin"></div>
@@ -245,7 +262,6 @@ export default function StreamPlayer({ id }: { id: string }) {
               </div>
             )}
 
-            {/* 🟢 নতুন: সব সার্ভার ডাউন হলে ইউজারকে জানানোর সুন্দর এরর স্ক্রিন */}
             {allServersDown && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/95 z-20 flex-col gap-4 text-center p-4">
                 <span className="text-4xl">📡</span>
@@ -257,7 +273,6 @@ export default function StreamPlayer({ id }: { id: string }) {
               </div>
             )}
 
-            {/* জুম বাটন */}
             {streams && !allServersDown && (
               <button
                 onClick={handleZoomToggle}
@@ -283,7 +298,6 @@ export default function StreamPlayer({ id }: { id: string }) {
             />
           </div>
 
-          {/* সার্ভার বাটন গ্রুপ */}
           {streams && streams.length > 0 && (
             <div className="flex gap-2 overflow-x-auto scrollbar-hide py-4 my-2 border-b border-gray-800/40 items-center">
               <span className="text-gray-400 font-bold text-xs md:text-sm mr-2 whitespace-nowrap uppercase tracking-wider">Servers:</span>
@@ -303,10 +317,26 @@ export default function StreamPlayer({ id }: { id: string }) {
             </div>
           )}
 
-          {/* কারেন্ট ম্যাচ ইনফো কার্ড */}
           {currentMatch ? (
-            <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 mt-3 shadow-lg">
-              <div className="text-center text-xs font-bold text-[#00E5FF] uppercase tracking-widest mb-4">
+            <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 mt-3 shadow-lg relative group">
+              
+              <button
+                onClick={handleShare}
+                className="absolute top-4 right-4 bg-gray-800/50 hover:bg-[#00E5FF]/20 text-gray-400 hover:text-[#00E5FF] p-2 rounded-full border border-gray-700/50 hover:border-[#00E5FF]/50 transition-all active:scale-95 z-10 focus:outline-none"
+                title="Share Match"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                </svg>
+              </button>
+
+              {showCopied && (
+                <div className="absolute -top-8 right-2 bg-[#00E5FF] text-black text-[10px] font-bold px-3 py-1 rounded shadow-lg animate-fade-in pointer-events-none">
+                  Link Copied!
+                </div>
+              )}
+
+              <div className="text-center text-xs font-bold text-[#00E5FF] uppercase tracking-widest mb-4 pr-8">
                 {currentMatch.eventInfo.eventCat} | {currentMatch.eventInfo.eventName}
               </div>
               <div className="flex justify-center items-center gap-6 sm:gap-12 py-2">
@@ -333,7 +363,6 @@ export default function StreamPlayer({ id }: { id: string }) {
           )}
         </div>
 
-        {/* ডান সেকশন: মোর লাইভ ইভেন্টস লিস্ট */}
         <div className="mt-6 lg:mt-0 lg:col-span-1 max-h-[70vh] lg:max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-hide pr-1">
           <div className="flex flex-col gap-3.5">
             <span className="text-xs font-black uppercase tracking-wider text-gray-400 pl-1 mb-1">More Live Events</span>
@@ -341,7 +370,6 @@ export default function StreamPlayer({ id }: { id: string }) {
               const status = getMatchStatus(match.eventInfo.startTime, match.eventInfo.endTime, currentTime);
               const isCurrent = match.id.toString() === id;
               
-              // 🟢 ফিক্স: সাইডবারের লিংকেও এখন ডায়নামিক এবং এসইও ফ্রেন্ডলি স্লাগ বসানো হলো
               const slugLink = generateSlug(match.eventInfo.teamA, match.eventInfo.teamB, match.eventInfo.eventName, match.id);
 
               return (
