@@ -57,14 +57,14 @@ export default function StreamPlayer({ id }: { id: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const [playerInstance, setPlayerInstance] = useState<shaka.Player | null>(null);
-  const [uiInstance, setUiInstance] = useState<shaka.ui.Overlay | null>(null);
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
   
   const [zoomMode, setZoomMode] = useState<'contain' | 'fill' | 'cover'>('contain');
   
-  // 🟢 ফিক্স: প্লেয়ার কন্ট্রোলের সাথে বাটন শো/হাইড করার নতুন স্টেট
+  // 🟢 হালায় যেন গায়েব হয়, তার জন্য আমাদের নিজস্ব কাস্টম সেন্সর
   const [isControlsVisible, setIsControlsVisible] = useState(true);
+  const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const streamsRef = useRef<Stream[] | null>(null);
   const activeIndexRef = useRef<number>(0);
@@ -120,16 +120,6 @@ export default function StreamPlayer({ id }: { id: string }) {
             controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'fullscreen', 'overflow_menu'],
             addSeekBar: true,
         });
-        
-                // 🟢 ফিক্স: টাইপস্ক্রিপ্টকে ইগনোর করার জন্য "as any" ব্যবহার করা হয়েছে
-        const controls = ui.getControls() as any;
-        if (controls && typeof controls.isDisplayed === 'function') {
-          setIsControlsVisible(controls.isDisplayed()); // ইনিশিয়াল স্টেট
-          
-          controls.addEventListener('controlsvisibilitychange', () => {
-            setIsControlsVisible(controls.isDisplayed());
-          });
-        }
 
         player.addEventListener('error', (event: any) => {
           console.error('Shaka Internal Stream Error:', event.detail);
@@ -137,7 +127,6 @@ export default function StreamPlayer({ id }: { id: string }) {
         });
 
         setPlayerInstance(player);
-        setUiInstance(ui);
     }
 
     return () => {
@@ -164,12 +153,7 @@ export default function StreamPlayer({ id }: { id: string }) {
               bufferingGoal: 30,
               rebufferingGoal: 5,
               bufferBehind: 15,
-              retryParameters: {
-                  maxAttempts: 5,
-                  baseDelay: 1000,
-                  backoffFactor: 2,
-                  timeout: 20000
-              }
+              retryParameters: { maxAttempts: 5, baseDelay: 1000, backoffFactor: 2, timeout: 20000 }
           },
           abr: { enabled: true, defaultBandwidthEstimate: 1000000 },
           manifest: { dash: { ignoreMinBufferTime: true } }
@@ -181,7 +165,6 @@ export default function StreamPlayer({ id }: { id: string }) {
         playerInstance.configure(playerConfig);
         await playerInstance.load(streamUrl);
       } catch (e) {
-        console.error('Initial Server Load Failed:', e);
         triggerNextServer();
       }
     };
@@ -194,6 +177,18 @@ export default function StreamPlayer({ id }: { id: string }) {
       if (prev === 'fill') return 'cover';
       return 'contain';
     });
+  };
+
+  // 🟢 ইউজার যখন স্ক্রিনে টাচ করবে বা মাউস নাড়াবে, এই ফাংশন ফায়ার হবে
+  const handleUserActivity = () => {
+    setIsControlsVisible(true); // বাটন শো করাবে
+    
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    
+    // ৩ সেকেন্ড পর বাটনটাকে ঘাড় ধরে গায়েব করে দেবে
+    hideTimerRef.current = setTimeout(() => {
+      setIsControlsVisible(false);
+    }, 3000);
   };
 
   return (
@@ -219,8 +214,15 @@ export default function StreamPlayer({ id }: { id: string }) {
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
         <div className="lg:col-span-2 flex flex-col">
           
-          {/* ভিডিও উইন্ডো কন্টেইনার */}
-          <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group">
+          {/* 🟢 এখানে সেন্সরগুলো (onMouseMove, onTouchStart) লাগানো হয়েছে */}
+          <div 
+            ref={videoContainerRef} 
+            className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group"
+            onMouseMove={handleUserActivity}
+            onTouchStart={handleUserActivity}
+            onClick={handleUserActivity}
+            onMouseLeave={() => setIsControlsVisible(false)} // মাউস সরালেই সাথে সাথে হাওয়া
+          >
             {!streams && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/90 z-10 flex-col gap-3">
                 <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin"></div>
@@ -228,11 +230,11 @@ export default function StreamPlayer({ id }: { id: string }) {
               </div>
             )}
 
-            {/* 🟢 ফিক্সড বাটন: transition-all এবং opacity লজিক যোগ করা হয়েছে */}
+            {/* বাটনটি এখন আমাদের ৩ সেকেন্ডের টাইমারের সাথে যুক্ত */}
             {streams && (
               <button
                 onClick={handleZoomToggle}
-                className={`absolute top-4 right-4 z-[40] bg-black/70 hover:bg-[#00E5FF]/20 text-white hover:text-[#00E5FF] px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 border border-white/10 backdrop-blur-sm shadow-lg active:scale-95 uppercase tracking-wider transition-all duration-300 ${
+                className={`absolute top-4 right-4 z-[40] bg-black/70 hover:bg-[#00E5FF]/20 text-white hover:text-[#00E5FF] px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 border border-white/10 backdrop-blur-sm shadow-lg active:scale-95 uppercase tracking-wider transition-opacity duration-500 ease-in-out ${
                   isControlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
                 }`}
                 title="Change Aspect Ratio"
