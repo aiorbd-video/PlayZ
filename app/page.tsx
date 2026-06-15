@@ -35,8 +35,8 @@ const generateSlug = (teamA?: string, teamB?: string, eventName?: string, id?: s
   
   const cleanSlug = rawString
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-') // স্পেস বা স্পেশাল ক্যারেক্টারকে হাইফেন (-) বানাবে
-    .replace(/^-+|-+$/g, '');    // শুরুতে বা শেষে এক্সট্রা হাইফেন থাকলে কেটে দেবে
+    .replace(/[^a-z0-9]+/g, '-') 
+    .replace(/^-+|-+$/g, '');    
 
   return `${cleanSlug}-${id || '0'}`;
 };
@@ -81,7 +81,7 @@ const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { startTimeSt
   const diffSecs = Math.floor((diffMs % (1000 * 60)) / 1000);
 
   const timeStr = startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-  const dateStr = startTime.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); // মাসটা লেখায় দেখালে সুন্দর লাগে
+  const dateStr = startTime.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); 
 
   return (
     <div className="flex flex-col items-center justify-center w-full">
@@ -154,7 +154,6 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
           )}
 
           <div className="flex justify-between items-center mt-auto">
-            {/* Team A */}
             <div className="flex flex-col items-center gap-2.5 w-[30%]">
               <div className="relative w-12 h-12 md:w-14 md:h-14 bg-black/40 border border-gray-700/50 rounded-full flex items-center justify-center overflow-hidden p-0.5 group-hover:border-[#00E5FF]/30 transition-colors">
                 <Image src={getImg(eventInfo.teamAFlag)} alt={eventInfo.teamA || 'Team A'} fill sizes="(max-width: 768px) 48px, 56px" className="object-cover rounded-full" unoptimized />
@@ -162,12 +161,10 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
               <span className="font-bold text-xs md:text-sm text-gray-200 truncate w-full text-center group-hover:text-white transition-colors">{eventInfo.teamA || 'Team A'}</span>
             </div>
 
-            {/* Countdown / Status */}
             <div className="w-[40%] flex justify-center items-center">
               <MatchCountdown startTimeStr={eventInfo.startTime} endTimeStr={eventInfo.endTime} status={status} />
             </div>
 
-            {/* Team B */}
             <div className="flex flex-col items-center gap-2.5 w-[30%]">
               <div className="relative w-12 h-12 md:w-14 md:h-14 bg-black/40 border border-gray-700/50 rounded-full flex items-center justify-center overflow-hidden p-0.5 group-hover:border-[#00E5FF]/30 transition-colors">
                 <Image src={getImg(eventInfo.teamBFlag)} alt={eventInfo.teamB || 'Team B'} fill sizes="(max-width: 768px) 48px, 56px" className="object-cover rounded-full" unoptimized />
@@ -181,7 +178,6 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
     </motion.div>
   );
 }, (prevProps, nextProps) => {
-  // মেমোরাইজেশন চেকার (শুধুমাত্র স্ট্যাটাস বা আইডি চেঞ্জ হলেই কার্ড রি-রেন্ডার হবে)
   return prevProps.match.id === nextProps.match.id && prevProps.status === nextProps.status;
 });
 MatchCard.displayName = 'MatchCard';
@@ -382,4 +378,47 @@ export default function Home() {
         </div>
 
         {/* Error State */}
-        {error && <div className="text-center py-10 text-red-400 font-medium bg-red-500/10 rounded-2xl border border-red-500/20">Failed to load live
+        {error && <div className="text-center py-10 text-red-400 font-medium bg-red-500/10 rounded-2xl border border-red-500/20">Failed to load live match data. Please refresh the page.</div>}
+        
+        {/* Loading Skeleton */}
+        {!matches && !error && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <MatchSkeleton />
+            <MatchSkeleton />
+            <MatchSkeleton />
+            <MatchSkeleton />
+          </div>
+        )}
+
+        {/* Empty State */}
+        {matches && processedMatches.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-16 text-gray-500 font-semibold bg-[#1C1E2B] rounded-[20px] border border-gray-800/40">
+            <span className="text-4xl mb-3">🕵️‍♂️</span>
+            <p>No matches available for this category or search.</p>
+          </div>
+        )}
+
+        {/* Match Grid */}
+        <motion.div 
+            layout 
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
+        >
+          {processedMatches.map((match: any) => {
+            const status = getMatchStatus(match.eventInfo?.startTime, match.eventInfo?.endTime, currentTime);
+            return <MatchCard key={match.id} match={match} status={status} />;
+          })}
+        </motion.div>
+      </motion.div>
+
+      <style dangerouslySetInnerHTML={{__html: `
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        .content-visibility-auto { content-visibility: auto; }
+        @media (min-width: 1920px) {
+          .tv\\:p-8 { padding: 2rem !important; }
+          .tv\\:text-3xl { font-size: 1.875rem !important; line-height: 2.25rem !important; }
+        }
+      `}} />
+    </main>
+  );
+}
