@@ -61,10 +61,11 @@ export default function StreamPlayer({ id }: { id: string }) {
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
   
-  // 🟢 ফিচার ১: মোবাইল স্ক্রিন জুম/স্ট্রেচ করার স্টেট ম্যানেজমেন্ট
   const [zoomMode, setZoomMode] = useState<'contain' | 'fill' | 'cover'>('contain');
+  
+  // 🟢 ফিক্স: প্লেয়ার কন্ট্রোলের সাথে বাটন শো/হাইড করার নতুন স্টেট
+  const [isControlsVisible, setIsControlsVisible] = useState(true);
 
-  // 🟢 ফিচার ২: অটো সার্ভার ফলব্যাকের জন্য স্টেবল গিট-রেফারেন্স ট্র্যাকিং
   const streamsRef = useRef<Stream[] | null>(null);
   const activeIndexRef = useRef<number>(0);
 
@@ -82,7 +83,6 @@ export default function StreamPlayer({ id }: { id: string }) {
   });
   const streams = apiResponse?.streams || null;
 
-  // রেফারেন্স ভ্যালু সব সময় লেটেস্ট ডাটার সাথে সিঙ্ক রাখা হচ্ছে
   useEffect(() => { streamsRef.current = streams; }, [streams]);
   useEffect(() => { activeIndexRef.current = activeStreamIndex; }, [activeStreamIndex]);
 
@@ -95,16 +95,13 @@ export default function StreamPlayer({ id }: { id: string }) {
     setActiveStreamIndex(0);
   }, [id]);
 
-  // 🔄 অটো-নেক্সট সার্ভার ট্রিগার ফাংশন
   const triggerNextServer = () => {
     const currentStreams = streamsRef.current;
     const currentIndex = activeIndexRef.current;
 
     if (currentStreams && currentIndex < currentStreams.length - 1) {
-      console.warn(`⚠️ Server ${currentIndex + 1} Failed! Automatically switching to Server ${currentIndex + 2}...`);
+      console.warn(`⚠️ Switching to Backup Server ${currentIndex + 2}...`);
       setActiveStreamIndex(currentIndex + 1);
-    } else {
-      console.error("💥 All streaming servers are currently unresponsive.");
     }
   };
 
@@ -124,7 +121,15 @@ export default function StreamPlayer({ id }: { id: string }) {
             addSeekBar: true,
         });
         
-        // 🟢 রানটাইমে ভিডিও বাফার ক্র্যাশ করলে অটোমেটিক ব্যাকআপ সার্ভার লোড করবে
+        // 🟢 ফিক্স লজিক: শাকাপ্লেয়ারের কন্ট্রোল যখন হাইড/শো হবে, আমাদের বাটনও সিঙ্ক হবে
+        const controls = ui.getControls();
+        if (controls) {
+          setIsControlsVisible(controls.isDisplayed()); // ইনিশিয়াল স্টেট
+          controls.addEventListener('controlsvisibilitychange', () => {
+            setIsControlsVisible(controls.isDisplayed());
+          });
+        }
+
         player.addEventListener('error', (event: any) => {
           console.error('Shaka Internal Stream Error:', event.detail);
           triggerNextServer();
@@ -176,14 +181,12 @@ export default function StreamPlayer({ id }: { id: string }) {
         await playerInstance.load(streamUrl);
       } catch (e) {
         console.error('Initial Server Load Failed:', e);
-        // 🟢 ইনিশিয়াল রিকোয়েস্টে লিংক ডেড থাকলে সাথে সাথে ব্যাকআপ সার্ভার রান করবে
         triggerNextServer();
       }
     };
     loadVideo();
   }, [playerInstance, streams, activeStreamIndex]);
 
-  // 🟢 জুম মোড লুপ হ্যান্ডেলার (Contain -> Stretch -> Zoom)
   const handleZoomToggle = () => {
     setZoomMode((prev) => {
       if (prev === 'contain') return 'fill';
@@ -224,21 +227,22 @@ export default function StreamPlayer({ id }: { id: string }) {
               </div>
             )}
 
-            {/* 🟢 নতুন ফিচার: ডাইনামিক স্ক্রিন সাইজ কন্ট্রোল বাটন (শুধুমাত্র ভিডিও লোড হলে দেখাবে) */}
+            {/* 🟢 ফিক্সড বাটন: transition-all এবং opacity লজিক যোগ করা হয়েছে */}
             {streams && (
               <button
                 onClick={handleZoomToggle}
-                className="absolute top-4 right-4 z-[40] bg-black/70 hover:bg-[#00E5FF]/20 text-white hover:text-[#00E5FF] px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 border border-white/10 backdrop-blur-sm shadow-lg transition-all active:scale-95 uppercase tracking-wider"
+                className={`absolute top-4 right-4 z-[40] bg-black/70 hover:bg-[#00E5FF]/20 text-white hover:text-[#00E5FF] px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 border border-white/10 backdrop-blur-sm shadow-lg active:scale-95 uppercase tracking-wider transition-all duration-300 ${
+                  isControlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                }`}
                 title="Change Aspect Ratio"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 8V4h4M4 16v4h4M20 8V4h-4M20 16v4h-4M12 4v16m-8-8h16" />
                 </svg>
-                {zoomMode === 'contain' ? 'Default' : zoomMode === 'fill' ? 'Stretch' : 'Zoom 100%'}
+                {zoomMode === 'contain' ? 'Default' : zoomMode === 'fill' ? 'Stretch' : 'Zoom'}
               </button>
             )}
 
-            {/* 🟢 ক্লাসের ভেতরের object-fit স্টেট অনুযায়ী চেঞ্জ হবে */}
             <video 
               ref={videoRef} 
               className={`w-full h-full transition-all duration-300 pointer-events-none ${
