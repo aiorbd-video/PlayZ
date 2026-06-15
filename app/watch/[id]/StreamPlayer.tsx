@@ -215,14 +215,16 @@ export default function StreamPlayer({ id }: { id: string }) {
         <div className="lg:col-span-2 flex flex-col">
           
           {/* 🟢 এখানে সেন্সরগুলো (onMouseMove, onTouchStart) লাগানো হয়েছে */}
+                    {/* 🟢 ফিক্স: Shaka Player ইভেন্ট চুরি করার আগেই Capture দিয়ে সিগন্যাল ধরা হলো */}
           <div 
             ref={videoContainerRef} 
             className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group"
-            onMouseMove={handleUserActivity}
-            onTouchStart={handleUserActivity}
-            onClick={handleUserActivity}
-            onMouseLeave={() => setIsControlsVisible(false)} // মাউস সরালেই সাথে সাথে হাওয়া
+            onMouseMoveCapture={handleUserActivity}
+            onTouchStartCapture={handleUserActivity}
+            onClickCapture={handleUserActivity}
+            onMouseLeave={() => setIsControlsVisible(false)}
           >
+
             {!streams && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/90 z-10 flex-col gap-3">
                 <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin"></div>
