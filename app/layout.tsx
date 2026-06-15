@@ -170,7 +170,11 @@ export default function RootLayout({
 
         {children}
 
-        <GoogleAnalytics gaId="G-FB56HC3XP6" />
+        {/* 🟢 ফিক্স: Vercel Env থেকে ডাইনামিক্যালি Google Analytics ID আনা হলো */}
+{process.env.NEXT_PUBLIC_GA_ID && (
+  <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
+)}
+
       </body>
     </html>
   );
