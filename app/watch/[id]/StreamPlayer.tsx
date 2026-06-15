@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
-import { motion } from 'framer-motion'; // পিসি ক্লিক অ্যানিমেশনের জন্য মোশন যুক্ত করা হলো
+import { motion } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
 import shaka from 'shaka-player/dist/shaka-player.ui';
 
@@ -34,7 +34,7 @@ interface ApiResponse {
   streams: Stream[] | null;
 }
 
-const MATCH_API = "/api/proxy-matches"; // 🟢 ডোমেইন হার্ডকোড বাদ দিয়ে রিলেটিভ পাথ করা হলো লোকাল ও প্রোড সেফটির জন্য
+const MATCH_API = "/api/proxy-matches";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
@@ -60,17 +60,13 @@ export default function StreamPlayer({ id }: { id: string }) {
   const [uiInstance, setUiInstance] = useState<shaka.ui.Overlay | null>(null);
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
+  
+  // 🟢 ফিচার ১: মোবাইল স্ক্রিন জুম/স্ট্রেচ করার স্টেট ম্যানেজমেন্ট
+  const [zoomMode, setZoomMode] = useState<'contain' | 'fill' | 'cover'>('contain');
 
-  // 🟢 ফিক্স ১: ৫ সেকেন্ড পর পর টাইম রিফ্রেশ হবে যাতে ডানপাশের লিস্টের লাইভ ব্যাজ ইনস্ট্যান্ট সিঙ্ক হয়
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 5000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // 🟢 ফিক্স ২: ইউজার যখন অন্য ম্যাচে ক্লিক করবে, সার্ভার ইনডেক্স অটো রিসেট হয়ে ০ হবে (ক্র্যাশ প্রটেকশন)
-  useEffect(() => {
-    setActiveStreamIndex(0);
-  }, [id]);
+  // 🟢 ফিচার ২: অটো সার্ভার ফলব্যাকের জন্য স্টেবল গিট-রেফারেন্স ট্র্যাকিং
+  const streamsRef = useRef<Stream[] | null>(null);
+  const activeIndexRef = useRef<number>(0);
 
   const { data: matches } = useSWR<Match[]>(MATCH_API, fetcher, {
     revalidateIfStale: false,
@@ -86,7 +82,32 @@ export default function StreamPlayer({ id }: { id: string }) {
   });
   const streams = apiResponse?.streams || null;
 
-  // 🟢 ফিক্স ৩: শাকাপ্লেয়ার ইনিশিয়ালাইজেশন এবং ডেসট্রাকশন একসাথে এক ইফেক্টে মার্জ করা হলো (Strict Mode Safe)
+  // রেফারেন্স ভ্যালু সব সময় লেটেস্ট ডাটার সাথে সিঙ্ক রাখা হচ্ছে
+  useEffect(() => { streamsRef.current = streams; }, [streams]);
+  useEffect(() => { activeIndexRef.current = activeStreamIndex; }, [activeStreamIndex]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    setActiveStreamIndex(0);
+  }, [id]);
+
+  // 🔄 অটো-নেক্সট সার্ভার ট্রিগার ফাংশন
+  const triggerNextServer = () => {
+    const currentStreams = streamsRef.current;
+    const currentIndex = activeIndexRef.current;
+
+    if (currentStreams && currentIndex < currentStreams.length - 1) {
+      console.warn(`⚠️ Server ${currentIndex + 1} Failed! Automatically switching to Server ${currentIndex + 2}...`);
+      setActiveStreamIndex(currentIndex + 1);
+    } else {
+      console.error("💥 All streaming servers are currently unresponsive.");
+    }
+  };
+
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
 
@@ -103,9 +124,10 @@ export default function StreamPlayer({ id }: { id: string }) {
             addSeekBar: true,
         });
         
-        // প্লেয়ার এরর লিসেনার (কোনো কারণে স্ট্রিম ফেল করলে কনসোলে ট্র্যাক করার জন্য)
+        // 🟢 রানটাইমে ভিডিও বাফার ক্র্যাশ করলে অটোমেটিক ব্যাকআপ সার্ভার লোড করবে
         player.addEventListener('error', (event: any) => {
-          console.error('Shaka Player Internal Error:', event.detail);
+          console.error('Shaka Internal Stream Error:', event.detail);
+          triggerNextServer();
         });
 
         setPlayerInstance(player);
@@ -121,7 +143,6 @@ export default function StreamPlayer({ id }: { id: string }) {
   useEffect(() => {
     if (!playerInstance || !streams || streams.length === 0) return;
     
-    // সেফগার্ড ইনডেক্স চেকিং
     const currentStream = streams[activeStreamIndex] || streams[0];
     if (!currentStream) return;
 
@@ -138,13 +159,10 @@ export default function StreamPlayer({ id }: { id: string }) {
               rebufferingGoal: 5,
               bufferBehind: 15,
               retryParameters: {
-                  maxAttempts: 7,
+                  maxAttempts: 5,
                   baseDelay: 1000,
                   backoffFactor: 2,
-                  fuzzFactor: 0.5,
-                  timeout: 30000,
-                  stallTimeout: 5000,
-                  connectionTimeout: 10000
+                  timeout: 20000
               }
           },
           abr: { enabled: true, defaultBandwidthEstimate: 1000000 },
@@ -157,16 +175,26 @@ export default function StreamPlayer({ id }: { id: string }) {
         playerInstance.configure(playerConfig);
         await playerInstance.load(streamUrl);
       } catch (e) {
-        console.error('Video Loading Failed:', e);
+        console.error('Initial Server Load Failed:', e);
+        // 🟢 ইনিশিয়াল রিকোয়েস্টে লিংক ডেড থাকলে সাথে সাথে ব্যাকআপ সার্ভার রান করবে
+        triggerNextServer();
       }
     };
     loadVideo();
   }, [playerInstance, streams, activeStreamIndex]);
 
+  // 🟢 জুম মোড লুপ হ্যান্ডেলার (Contain -> Stretch -> Zoom)
+  const handleZoomToggle = () => {
+    setZoomMode((prev) => {
+      if (prev === 'contain') return 'fill';
+      if (prev === 'fill') return 'cover';
+      return 'contain';
+    });
+  };
+
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
       
-      {/* প্রিমিয়াম ন্যাভ বার */}
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/">
@@ -185,21 +213,43 @@ export default function StreamPlayer({ id }: { id: string }) {
       </nav>
 
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
-        {/* বাম সেকশন: ভিডিও প্লেয়ার এবং ম্যাচ কার্ড ডিটেইলস */}
         <div className="lg:col-span-2 flex flex-col">
           
-          {/* ভিডিও উইন্ডো */}
-          <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container">
+          {/* ভিডিও উইন্ডো কন্টেইনার */}
+          <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group">
             {!streams && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/90 z-10 flex-col gap-3">
                 <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin"></div>
                 <span className="text-gray-400 text-sm animate-pulse">Fetching Secure Stream...</span>
               </div>
             )}
-            <video ref={videoRef} className="w-full h-full" autoPlay playsInline />
+
+            {/* 🟢 নতুন ফিচার: ডাইনামিক স্ক্রিন সাইজ কন্ট্রোল বাটন (শুধুমাত্র ভিডিও লোড হলে দেখাবে) */}
+            {streams && (
+              <button
+                onClick={handleZoomToggle}
+                className="absolute top-4 right-4 z-[40] bg-black/70 hover:bg-[#00E5FF]/20 text-white hover:text-[#00E5FF] px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 border border-white/10 backdrop-blur-sm shadow-lg transition-all active:scale-95 uppercase tracking-wider"
+                title="Change Aspect Ratio"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 8V4h4M4 16v4h4M20 8V4h-4M20 16v4h-4M12 4v16m-8-8h16" />
+                </svg>
+                {zoomMode === 'contain' ? 'Default' : zoomMode === 'fill' ? 'Stretch' : 'Zoom 100%'}
+              </button>
+            )}
+
+            {/* 🟢 ক্লাসের ভেতরের object-fit স্টেট অনুযায়ী চেঞ্জ হবে */}
+            <video 
+              ref={videoRef} 
+              className={`w-full h-full transition-all duration-300 pointer-events-none ${
+                zoomMode === 'fill' ? 'object-fill' : zoomMode === 'cover' ? 'object-cover' : 'object-contain'
+              }`} 
+              autoPlay 
+              playsInline 
+            />
           </div>
 
-          {/* 🟢 সার্ভার বাটন গ্রুপ (পিসির জন্য সলিড অ্যাক্টিভ ক্লিক ফিল যুক্ত করা হলো) */}
+          {/* সার্ভার বাটন গ্রুপ */}
           {streams && streams.length > 0 && (
             <div className="flex gap-2 overflow-x-auto scrollbar-hide py-4 my-2 border-b border-gray-800/40 items-center">
               <span className="text-gray-400 font-bold text-xs md:text-sm mr-2 whitespace-nowrap uppercase tracking-wider">Servers:</span>
@@ -249,7 +299,7 @@ export default function StreamPlayer({ id }: { id: string }) {
           )}
         </div>
 
-        {/* ডান সেকশন: মোর লাইভ ইভেন্টস লিস্ট (পিসি ক্লিক ফিডব্যাক `motion.div` ও `whileTap` সহ) */}
+        {/* ডান সেকশন: মোর লাইভ ইভেন্টস লিস্ট */}
         <div className="mt-6 lg:mt-0 lg:col-span-1 max-h-[70vh] lg:max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-hide pr-1">
           <div className="flex flex-col gap-3.5">
             <span className="text-xs font-black uppercase tracking-wider text-gray-400 pl-1 mb-1">More Live Events</span>
@@ -259,7 +309,6 @@ export default function StreamPlayer({ id }: { id: string }) {
 
               return (
                 <Link href={`/watch/${match.id}`} key={match.id} className="outline-none" prefetch={false}>
-                  {/* 🟢 ফিক্স ৪: সাইডবার কার্ডে ট্যাপ/ক্লিক ইফেক্ট যুক্ত করা হলো */}
                   <motion.div 
                     whileTap={{ scale: 0.97 }}
                     className={`bg-[#1C1E2B] border rounded-[18px] p-4 transition-all duration-150 active:scale-[0.97] ${
