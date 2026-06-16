@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import StreamPlayer from './StreamPlayer';
 
-// 🟢 ফিক্স: || মুছে দেওয়া হলো
 const API_URL = process.env.API_URL;
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL as string;
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY;
@@ -12,13 +11,13 @@ export async function generateMetadata(
 
   const { id } = await params;
 
-  // 🟢 ম্যাজিক: সুন্দর লিংক থেকে আসল আইডিটা কেটে বের করা হচ্ছে
+  // 🟢 সুন্দর লিংক থেকে আসল আইডিটা কেটে বের করা হচ্ছে
   const realId = id.includes('-') ? id.split('-').pop() : id;
 
   try {
-    // 🟢 ডাটা আনার জন্য API_URL এবং realId ব্যবহার করা হলো
+    // 🟢 ফিক্স: API_URL এর বদলে SITE_URL ব্যবহার করা হলো, কারণ /api/streams রাউটটি Vercel-এর নিজের ভেতরেই আছে
     const res = await fetch(
-      `${API_URL}/api/streams/${realId}`,
+      `${SITE_URL}/api/streams/${realId}`,
       {
         cache: 'no-store',
         next: { revalidate: 60 }
@@ -41,11 +40,9 @@ export async function generateMetadata(
     const eventName = info.eventName || 'Live Sports';
     const category = info.eventCat || 'Sports';
 
-    // 🟢 এসইও টাইটেল ও ডেসক্রিপশন আরও স্ট্রং এবং আকর্ষণীয় করা হলো
     const title = `${teamA} vs ${teamB} Live Stream | ${eventName} - All in One Sports`;
     const description = `Watch ${teamA} vs ${teamB} live streaming in HD. Don't miss the ${eventName} (${category}) match today! Fast, free, and mobile-friendly.`;
 
-    // 🟢 ডায়নামিক ইমেজ প্রক্সি লিংক
     const shareImage =
       info.teamAFlag && info.teamAFlag !== 'null'
         ? `${IMG_PROXY}${encodeURIComponent(info.teamAFlag)}`
@@ -68,7 +65,7 @@ export async function generateMetadata(
         'live streaming'
       ],
       alternates: {
-        canonical: `${SITE_URL}/watch/${id}` // 🟢 গুগলের জন্য সুন্দর লিংকটাই রাখা হলো
+        canonical: `${SITE_URL}/watch/${id}`
       },
       robots: {
         index: true,
@@ -121,14 +118,14 @@ export default async function Page(
 
   const { id } = await params;
   
-  // 🟢 আসল আইডি বের করা
+  // 🟢 সুন্দর লিংক থেকে আসল আইডি ফিল্টার করা হচ্ছে
   const realId = id.includes('-') ? id.split('-').pop() : id;
   let jsonLd = null;
 
   try {
-    // 🟢 ডাটা আনার জন্য পুনরায় API_URL এবং realId ব্যবহার করা হলো
+    // 🟢 ফিক্স: এখানেও ইন্টারনাল এপিআই রিকোয়েস্ট সাকসেস করার জন্য SITE_URL ব্যবহার করা হলো
     const res = await fetch(
-      `${API_URL}/api/streams/${realId}`,
+      `${SITE_URL}/api/streams/${realId}`,
       { cache: 'no-store' }
     );
 
@@ -136,7 +133,6 @@ export default async function Page(
       const data = await res.json();
       const info = data?.matchInfo?.eventInfo;
 
-      // 🟢 গুগল এসইও-এর জন্য অ্যাডভান্সড স্কিমা (Schema.org)
       if (info) {
         jsonLd = {
           "@context": "https://schema.org",
@@ -145,9 +141,8 @@ export default async function Page(
           "sport": info.eventCat || "Sports",
           "description": `${info.eventName} Live Streaming HD`,
           "eventStatus": "https://schema.org/EventScheduled",
-          // স্ট্রিং ডেটকে ISO ফরমেটে রূপান্তর করে দেওয়া হলো গুগলের জন্য
           "startDate": info.startTime ? new Date(info.startTime.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z')).toISOString() : undefined,
-          "url": `${SITE_URL}/watch/${id}`, // সুন্দর লিংকটাই থাকবে
+          "url": `${SITE_URL}/watch/${id}`,
           "organizer": {
             "@type": "Organization",
             "name": "All in One Sports Web",
@@ -173,7 +168,7 @@ export default async function Page(
       )}
 
       <div className="max-w-7xl mx-auto">
-        {/* 🟢 StreamPlayer-কে আসল আইডিটা দেওয়া হলো, যাতে সাইডবারে লাইভ কার্ড ঠিকমতো ম্যাচ করে */}
+        {/* 🟢 StreamPlayer-কে আসল আইডি দেওয়া হলো যাতে প্লেয়ার ইন্টারনাল লজিক ও সাইডবার ঠিকঠাক ট্র্যাক করতে পারে */}
         <StreamPlayer id={realId as string} />
       </div>
 
