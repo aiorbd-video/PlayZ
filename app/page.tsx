@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
 
-const MATCH_API = "/api/proxy-matches"; // এটাকে আবার আগের মতো করে দিন
+const MATCH_API = "/api/proxy-matches"; 
 
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
@@ -26,7 +26,6 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
   return 'upcoming';
 };
 
-// 🟢 প্রো-লেভেল এসইও ফ্রেন্ডলি Slug Generator (Null Safe)
 const generateSlug = (teamA?: string, teamB?: string, eventName?: string, id?: string | number) => {
   const tA = teamA || 'team';
   const tB = teamB || 'match';
@@ -42,7 +41,6 @@ const generateSlug = (teamA?: string, teamB?: string, eventName?: string, id?: s
   return `${cleanSlug}-${id || '0'}`;
 };
 
-// 🟢 ফিক্সড কাউন্টডাউন কম্পোনেন্ট
 const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { startTimeStr: string, endTimeStr: string, status: string }) => {
   const [time, setTime] = useState(new Date());
 
@@ -115,7 +113,16 @@ const getCategoryIcon = (cat: string) => {
   return <span className="text-2xl">🏆</span>;
 };
 
-// 🟢 মেমোরাইজড ম্যাচ কার্ড (পারফরম্যান্স বুস্টেড)
+// 🟢 টিভি চ্যানেলের জন্য প্রিমিয়াম লোডিং স্কেলিটন
+function ChannelSkeleton() {
+  return (
+    <div className="flex flex-col items-center gap-2 animate-pulse snap-center">
+      <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-gray-800/80 border-2 border-gray-700/50"></div>
+      <div className="w-12 h-2 bg-gray-800 rounded mt-1"></div>
+    </div>
+  );
+}
+
 const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
   const eventInfo = match.eventInfo || {};
   const slugLink = generateSlug(eventInfo.teamA, eventInfo.teamB, eventInfo.eventName, match.id);
@@ -219,6 +226,10 @@ export default function Home() {
   }, [searchInp]);
 
   const { data: matches, error } = useSWR(MATCH_API, fetcher, { refreshInterval: 30000 });
+  
+  // 🟢 টিভি চ্যানেলের ডাটা ফেচ করা হচ্ছে
+  const { data: channelData, error: channelError } = useSWR('/api/channels', fetcher, { refreshInterval: 60000 });
+  const channels = channelData?.channels || [];
 
   const dynamicCategories = useMemo(() => {
     const list = ['All'];
@@ -336,8 +347,49 @@ export default function Home() {
         className="max-w-7xl mx-auto px-4 mt-2"
       >
         
+        {/* 🟢 Live Sports TV Section (Horizontal Scroll) */}
+        {(!channelData && !channelError) && (
+          <div className="mb-6 mt-4">
+            <h2 className="text-xs md:text-sm font-black text-gray-500 uppercase tracking-widest mb-3 pl-1 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-gray-600 animate-pulse"></span> Loading TV...
+            </h2>
+            <div className="flex items-center gap-4 overflow-hidden py-2">
+              <ChannelSkeleton /><ChannelSkeleton /><ChannelSkeleton /><ChannelSkeleton /><ChannelSkeleton />
+            </div>
+          </div>
+        )}
+
+        {channels && channels.length > 0 && (
+          <div className="mb-4 mt-4">
+            <h2 className="text-xs md:text-sm font-black text-[#00E5FF] uppercase tracking-widest mb-3 pl-1 flex items-center gap-2">
+              <span className="text-red-500 animate-pulse drop-shadow-[0_0_5px_rgba(239,68,68,0.8)]">●</span> Live Sports TV
+            </h2>
+            <div className="flex items-center gap-4 overflow-x-auto scrollbar-hide py-2 snap-x">
+              {channels.map((ch: any) => (
+                <Link key={ch.id} href={`/tv/${ch.id}`} className="snap-center group outline-none" prefetch={false}>
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-[#1C1E2B] border-2 border-gray-800 flex items-center justify-center p-1 group-hover:border-[#00E5FF] group-hover:shadow-[0_0_15px_rgba(0,229,255,0.4)] transition-all duration-300 active:scale-95 overflow-hidden relative">
+                      <Image 
+                        src={getImg(ch.logo)} 
+                        alt={ch.name} 
+                        fill
+                        sizes="(max-width: 768px) 64px, 80px"
+                        className="object-cover rounded-full p-0.5" 
+                        unoptimized 
+                      />
+                    </div>
+                    <span className="text-[10px] md:text-xs font-bold text-gray-400 group-hover:text-white truncate w-16 md:w-20 text-center transition-colors tracking-wide">
+                      {ch.name}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Categories Section */}
-        <div className="flex items-center justify-start gap-5 md:gap-8 py-6 mb-2 overflow-x-auto scrollbar-hide scroll-smooth snap-x">
+        <div className="flex items-center justify-start gap-5 md:gap-8 py-6 mb-2 overflow-x-auto scrollbar-hide scroll-smooth snap-x border-t border-gray-800/50">
           {dynamicCategories.map((cat, i) => (
             <motion.button 
               key={cat} 
