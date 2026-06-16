@@ -32,6 +32,7 @@ interface Match {
 
 interface ApiResponse {
   streams: Stream[] | null;
+  matchInfo?: Match | null; // 🟢 ফিক্স: API থেকে সরাসরি ম্যাচ ইনফো রিসিভ করার টাইপ অ্যাড করা হলো
 }
 
 const MATCH_API = "/api/proxy-matches";
@@ -80,19 +81,24 @@ export default function StreamPlayer({ id }: { id: string }) {
   const streamsRef = useRef<Stream[] | null>(null);
   const activeIndexRef = useRef<number>(0);
 
-  const { data: matches } = useSWR<Match[]>(MATCH_API, fetcher, {
+  // 🟢 ফিক্স ১: সাইডবারের ডাটা সরাসরি fetch করে সেফটি চেক করা হচ্ছে
+  const { data: rawMatches } = useSWR(MATCH_API, fetcher, {
     revalidateIfStale: false,
     revalidateOnFocus: false,
     revalidateOnReconnect: false
   });
   
-  const currentMatch = matches?.find((m) => m.id.toString() === id);
-  
+  // যদি ডাটা Array না হয়ে Error Object হয়, তবে অ্যাপ ক্র্যাশ ঠেকানোর জন্য null করে দেবে
+  const matches: Match[] | null = Array.isArray(rawMatches) ? rawMatches : null;
+
   const { data: apiResponse } = useSWR<ApiResponse>(`/api/streams/${id}`, fetcher, { 
     refreshInterval: 10000,
     revalidateOnFocus: false
   });
   const streams = apiResponse?.streams || null;
+
+  // 🟢 ফিক্স ২: সাইডবার ক্র্যাশ করলেও ওপরে যেন নাম দেখায়, তার জন্য apiResponse থেকে ডাটা নেওয়া হচ্ছে
+  const currentMatch = apiResponse?.matchInfo || (matches ? matches.find((m) => m.id.toString() === id) : null);
 
   useEffect(() => { streamsRef.current = streams; }, [streams]);
   useEffect(() => { activeIndexRef.current = activeStreamIndex; }, [activeStreamIndex]);
@@ -366,6 +372,22 @@ export default function StreamPlayer({ id }: { id: string }) {
         <div className="mt-6 lg:mt-0 lg:col-span-1 max-h-[70vh] lg:max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-hide pr-1">
           <div className="flex flex-col gap-3.5">
             <span className="text-xs font-black uppercase tracking-wider text-gray-400 pl-1 mb-1">More Live Events</span>
+            
+            {/* 🟢 ফিক্স ৩: ডাটা লোড হওয়ার সময় বা এরর আসলে ক্র্যাশ না করে সুন্দর মেসেজ বা স্কেলিটন দেখাবে */}
+            {!rawMatches && (
+              <>
+                <div className="h-[75px] bg-[#1C1E2B] rounded-[18px] animate-pulse border border-gray-800/60"></div>
+                <div className="h-[75px] bg-[#1C1E2B] rounded-[18px] animate-pulse border border-gray-800/60"></div>
+                <div className="h-[75px] bg-[#1C1E2B] rounded-[18px] animate-pulse border border-gray-800/60"></div>
+              </>
+            )}
+
+            {rawMatches && !matches && (
+              <div className="text-center py-6 px-2 text-red-400 text-xs bg-[#1C1E2B] rounded-[18px] border border-red-500/20 shadow-inner">
+                ⚠️ Sidebar data unavailable.
+              </div>
+            )}
+
             {matches && matches.map((match) => {
               const status = getMatchStatus(match.eventInfo.startTime, match.eventInfo.endTime, currentTime);
               const isCurrent = match.id.toString() === id;
