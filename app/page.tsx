@@ -30,10 +30,7 @@ const generateSlug = (teamA?: string, teamB?: string, eventName?: string, id?: s
   const tB = teamB || 'match';
   const event = eventName || 'live-event';
   const rawString = `${tA}-vs-${tB}-${event}`;
-  const cleanSlug = rawString
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+  const cleanSlug = rawString.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');    
   return `${cleanSlug}-${id || '0'}`;
 };
 
@@ -96,10 +93,9 @@ const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { startTimeSt
 });
 MatchCountdown.displayName = 'MatchCountdown';
 
-// 🟢 আপডেটেড আইকন ক্যাটাগরি
 const getCategoryIcon = (cat: string) => {
-  if (cat === 'Sports') return <span className="text-2xl animate-pulse">📺</span>;
   if (cat === 'Live Events') return <span className="text-xl">🏟️</span>;
+  if (cat === 'Sports') return <span className="text-2xl animate-pulse">📺</span>;
   if (cat === 'M3U') return <span className="text-2xl animate-pulse">📡</span>;
   
   const lowerCat = cat.toLowerCase();
@@ -112,7 +108,6 @@ const getCategoryIcon = (cat: string) => {
   return <span className="text-2xl">🏆</span>;
 };
 
-// 🟢 টিভি চ্যানেলের জন্য প্রিমিয়াম লোডিং স্কেলিটন
 function ChannelSkeleton() {
   return (
     <div className="flex flex-col items-center gap-2 animate-pulse snap-center">
@@ -122,17 +117,20 @@ function ChannelSkeleton() {
   );
 }
 
-// 🟢 M3U এবং Sports চ্যানেলের জন্য সুন্দর কার্ড
-const ChannelCard = memo(({ channel }: { channel: any }) => {
+const ChannelCard = memo(({ channel, isPlaylist }: { channel: any, isPlaylist?: boolean }) => {
+  const linkHref = isPlaylist ? `/playlist/${channel.id}` : `/tv/${channel.id}`;
+
   return (
     <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }} whileTap={{ scale: 0.95 }}>
-      <Link href={`/tv/${channel.id}`} className="outline-none block" prefetch={false}>
+      <Link href={linkHref} className="outline-none block" prefetch={false}>
         <div className="bg-[#1C1E2B] border border-gray-800/80 rounded-[20px] p-5 flex flex-col items-center justify-center gap-3 transition-all duration-300 hover:border-[#00E5FF]/60 hover:shadow-[0_4px_20px_rgba(0,229,255,0.1)] active:border-[#00E5FF] h-full min-h-[140px] group">
           <div className="w-16 h-16 rounded-full bg-black/40 border border-gray-700/50 p-1 flex items-center justify-center overflow-hidden transition-transform group-hover:scale-110">
             <Image src={getImg(channel.logo)} alt={channel.name} width={60} height={60} className="object-contain rounded-full" unoptimized />
           </div>
           <span className="font-bold text-sm text-gray-200 group-hover:text-white text-center truncate w-full">{channel.name}</span>
-          <span className="text-[10px] px-3 py-1 bg-red-500/10 text-red-500 border border-red-500/20 rounded-full animate-pulse tracking-widest uppercase font-bold">Watch</span>
+          <span className="text-[10px] px-3 py-1 bg-[#00E5FF]/10 text-[#00E5FF] border border-[#00E5FF]/20 rounded-full animate-pulse tracking-widest uppercase font-bold">
+            {isPlaylist ? "Open List" : "Watch"}
+          </span>
         </div>
       </Link>
     </motion.div>
@@ -140,7 +138,6 @@ const ChannelCard = memo(({ channel }: { channel: any }) => {
 });
 ChannelCard.displayName = 'ChannelCard';
 
-// 🟢 লাইভ ইভেন্ট/ম্যাচের জন্য কার্ড
 const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
   const eventInfo = match.eventInfo || {};
   const slugLink = generateSlug(eventInfo.teamA, eventInfo.teamB, eventInfo.eventName, match.id);
@@ -202,14 +199,8 @@ function MatchSkeleton() {
         <div className="w-12 h-12 rounded-full bg-gray-800"></div>
       </div>
     </div>
-  );
-}
-
-// ==========================================
-// 🛑 ১ম অংশ শেষ। এরপর থেকে ২য় অংশ শুরু হবে!
-// ==========================================
-export default function Home() {
-  // 🟢 ডিফল্ট ক্যাটাগরি 'Live Events' রাখা হলো (যেখানে সব ম্যাচ দেখাবে)
+  );export default function Home() {
+  // 🟢 ডিফল্ট ক্যাটাগরি 'Live Events' রাখা হলো যাতে শুরুতে সব লাইভ ম্যাচ দেখায়
   const [activeCategory, setActiveCategory] = useState('Live Events'); 
   const [activeFilter, setActiveFilter] = useState('All');
   const [searchInp, setSearchInp] = useState('');
@@ -231,16 +222,16 @@ export default function Home() {
 
   const { data: matches, error } = useSWR(MATCH_API, fetcher, { refreshInterval: 30000 });
   
-  // 🟢 কাস্টম চ্যানেল ও M3U এর ডাটা ফেচ করা
+  // 🟢 কাস্টম স্পোর্টস চ্যানেল এবং M3U প্লেলিস্টের ডাটা আলাদা ফায়ারবেস এপিআই থেকে আনা হচ্ছে
   const { data: channelData } = useSWR('/api/channels', fetcher, { refreshInterval: 60000 });
   const { data: m3uData } = useSWR('/api/m3u', fetcher, { refreshInterval: 60000 });
   
   const channels = channelData?.channels || [];
   const m3uChannels = m3uData?.channels || [];
 
-  // 🟢 ক্যাটাগরির সিরিয়াল: Live Events -> Sports -> M3U -> বাকি সব
+  // 🟢 ক্যাটাগরির সুনির্দিষ্ট অর্ডার: Sports -> Live Events -> M3U -> বাকি সব ডায়নামিক ক্যাটাগরি
   const dynamicCategories = useMemo(() => {
-    const list = ['Live Events', 'Sports', 'M3U']; 
+    const list = ['Sports', 'Live Events', 'M3U']; 
     if (matches && Array.isArray(matches)) {
       const uniqueCats = new Set(matches.map((m: any) => m.eventInfo?.eventCat).filter(Boolean));
       uniqueCats.forEach(cat => {
@@ -274,7 +265,7 @@ export default function Home() {
     return [...matches].filter((match: any) => {
       const eventInfo = match.eventInfo || {};
       
-      // 🟢 Live Events সিলেক্ট থাকলে সব ম্যাচ দেখাবে, অন্যথায় শুধু নির্দিষ্ট ক্যাটাগরি (যেমন: Cricket) দেখাবে
+      // 🟢 'Live Events' সিলেক্ট থাকলে সব ম্যাচ দেখাবে। অন্য ডায়নামিক ক্যাটাগরি (যেমন: Cricket) সিলেক্ট থাকলে শুধু সেই ম্যাচ ফিল্টার হবে।
       if (activeCategory !== 'Live Events' && eventInfo.eventCat !== activeCategory) return false;
       
       const status = getMatchStatus(eventInfo.startTime, eventInfo.endTime, currentTime);
@@ -324,7 +315,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-20 tv:p-8">
       
-      {/* 🟢 নেভিগেশন বার ও সার্চ */}
+      {/* 🟢 ন্যাভিগেশন বার এবং সার্চ ইনপুট */}
       <motion.nav initial={{ y: -50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.4 }} className="p-4 bg-[#11131A]/90 sticky top-0 z-50 flex items-center justify-between border-b border-gray-800/60 backdrop-blur-md max-w-7xl mx-auto">
         <div className="flex items-center gap-4">
           <h1 className="text-xl md:text-2xl font-black text-[#00E5FF] tracking-wide uppercase tv:text-3xl drop-shadow-[0_0_10px_rgba(0,229,255,0.3)]">All In One Sports</h1>
@@ -341,7 +332,7 @@ export default function Home() {
 
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 0.1 }} className="max-w-7xl mx-auto px-4 mt-2">
         
-        {/* 🟢 ক্যাটাগরি বাটন সেকশন */}
+        {/* 🟢 হরাইজন্টাল স্ক্রল ক্যাটাগরি বাটন সেকশন */}
         <div className="flex items-center justify-start gap-5 md:gap-8 py-6 mb-2 overflow-x-auto scrollbar-hide scroll-smooth snap-x">
           {dynamicCategories.map((cat, i) => (
             <motion.button key={cat} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.3, delay: i * 0.05 }} onClick={() => { setActiveCategory(cat); setActiveFilter('All'); }} className="flex flex-col items-center gap-2 cursor-pointer outline-none group min-w-[65px] snap-center focus:outline-none">
@@ -353,7 +344,7 @@ export default function Home() {
           ))}
         </div>
 
-        {/* 🟢 ম্যাচ ফিল্টার (Sports এবং M3U পেজে লুকানো থাকবে) */}
+        {/* 🟢 ম্যাচ লাইভ ফিল্টার বার (Sports এবং M3U পেজে এই ফিল্টারটি লুকানো থাকবে) */}
         {(activeCategory !== 'Sports' && activeCategory !== 'M3U') && (
           <div className="flex items-center gap-3 overflow-x-auto scrollbar-hide mb-8 py-1 snap-x">
             {filters.map((filter, i) => (
@@ -364,7 +355,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* 🟢 ১. কাস্টম স্পোর্টস চ্যানেল গ্রিড (যখন 'Sports' সিলেক্ট করা হয়) */}
+        {/* 🟢 ১. কাস্টম স্পোর্টস চ্যানেল গ্রিড (যখন 'Sports' ক্যাটাগরি সক্রিয় করা হয়) */}
         {activeCategory === 'Sports' && (
           <motion.div layout className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-5 mt-4">
             {!channelData && <><ChannelSkeleton /><ChannelSkeleton /><ChannelSkeleton /></>}
@@ -377,20 +368,20 @@ export default function Home() {
           </motion.div>
         )}
 
-        {/* 🟢 ২. M3U চ্যানেল গ্রিড (যখন 'M3U' সিলেক্ট করা হয়) */}
+        {/* 🟢 ২. M3U প্লেলিস্ট চ্যানেল গ্রিড (যখন 'M3U' ক্যাটাগরি সক্রিয় করা হয়) */}
         {activeCategory === 'M3U' && (
           <motion.div layout className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-5 mt-4">
             {!m3uData && <><ChannelSkeleton /><ChannelSkeleton /><ChannelSkeleton /></>}
             {filteredM3uChannels.length === 0 && m3uData && (
                <div className="col-span-full flex flex-col items-center justify-center py-16 text-gray-500 font-semibold bg-[#1C1E2B] rounded-[20px] border border-gray-800/40">
-                 <span className="text-4xl mb-3">📡</span><p>No M3U Channels available right now.</p>
+                 <span className="text-4xl mb-3">📡</span><p>No M3U Playlists available right now.</p>
                </div>
             )}
-            {filteredM3uChannels.map((ch: any) => <ChannelCard key={ch.id} channel={ch} />)}
+            {filteredM3uChannels.map((ch: any) => <ChannelCard key={ch.id} channel={ch} isPlaylist={true} />)}
           </motion.div>
         )}
 
-        {/* 🟢 ৩. লাইভ ইভেন্ট/ম্যাচ গ্রিড (Live Events এবং অন্য ক্যাটাগরিগুলো) */}
+        {/* 🟢 ৩. লাইভ ইভেন্ট/ম্যাচ গ্রিড (Live Events এবং অন্য সব ডায়নামিক ক্যাটাগরির জন্য) */}
         {(activeCategory !== 'Sports' && activeCategory !== 'M3U') && (
           <>
             {error && <div className="text-center py-10 text-red-400 font-medium bg-red-500/10 rounded-2xl border border-red-500/20">Failed to load live match data. Please refresh the page.</div>}
@@ -399,7 +390,7 @@ export default function Home() {
             )}
             {matches && processedMatches.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16 text-gray-500 font-semibold bg-[#1C1E2B] rounded-[20px] border border-gray-800/40">
-                <span className="text-4xl mb-3">🕵️‍♂️</span><p>No matches available for this category.</p>
+                <span className="text-4xl mb-3">🕵️‍♂️</span><p>No live events available for this category.</p>
               </div>
             )}
             <motion.div layout className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -423,4 +414,6 @@ export default function Home() {
       `}} />
     </main>
   );
+}
+
 }
