@@ -6,7 +6,8 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
 
-const MATCH_API = "https://ratulxadia-ratulloveadia.hf.space/get-data/categories/live-events.txt";
+const MATCH_API = "/api/proxy-matches"; // এটাকে আবার আগের মতো করে দিন
+
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
