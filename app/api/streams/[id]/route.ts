@@ -9,19 +9,24 @@ interface Match {
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   
-  const FIREBASE_URL = "https://ratul-liv-default-rtdb.asia-southeast1.firebasedatabase.app";
-  
-  // 🟢 আপনার সেট করা API_URL (https://ratulxadia-ratulloveadia.hf.space) নিচ্ছি
+  // 🟢 ফিক্স: ফায়ারবেস লিংক সরাসরি কোডে না রেখে Vercel Environment Variable থেকে আনা হচ্ছে
+  const FIREBASE_URL = process.env.FIREBASE_DB_URL;
   const HF_BASE_URL = process.env.API_URL || "https://ratulxadia-ratulloveadia.hf.space"; 
+
+  // সেফটি চেক: যদি সিন্দুকে লিংক সেট করা না থাকে
+  if (!FIREBASE_URL) {
+    console.error("🚨 FIREBASE_DB_URL is not set in Vercel Environment Variables");
+    return NextResponse.json({ error: "Database configuration missing" }, { status: 500 });
+  }
 
   try {
     // ১. ফায়ারবেস থেকে লাইভ স্ট্রিম লিংক নেওয়া
-    const res = await fetch(`${FIREBASE_URL}/live-streams/${id}.json`, { cache: 'no-store' });
+    const cleanDbUrl = FIREBASE_URL.endsWith('/') ? FIREBASE_URL.slice(0, -1) : FIREBASE_URL;
+    const res = await fetch(`${cleanDbUrl}/live-streams/${id}.json`, { cache: 'no-store' });
     const streamsData = res.ok ? await res.json() : null;
 
     // ২. Hugging Face-এর বেজ লিংকের সাথে ফাইলের পাথ সেফলি জোড়া লাগানো হচ্ছে
     let currentMatch = null;
-    
     const cleanBaseUrl = HF_BASE_URL.endsWith('/') ? HF_BASE_URL.slice(0, -1) : HF_BASE_URL;
     const FULL_DATA_URL = `${cleanBaseUrl}/get-data/categories/live-events.txt`;
 
