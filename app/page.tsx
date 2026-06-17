@@ -458,6 +458,7 @@ export default function Home() {
                </div>
             )}
             {filteredM3uChannels.map((ch: any) => <ChannelCard key={ch.id} channel={ch} isPlaylist={true} />)}
+
           </motion.div>
         )}
 
