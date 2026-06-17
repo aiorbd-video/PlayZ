@@ -15,6 +15,22 @@ export default function PlaylistPage() {
   const [searchInp, setSearchInp] = useState('');
   const [playlistChannels, setPlaylistChannels] = useState<any[]>([]);
 
+  // 🟢 কাস্টম প্রোটেকশন: রাইট ক্লিক এবং F12 ব্লক করার স্ক্রিপ্ট
+  useEffect(() => {
+    const blockInspect = (e: MouseEvent) => e.preventDefault();
+    const blockKeys = (e: KeyboardEvent) => {
+      if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'C' || e.key === 'J'))) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('contextmenu', blockInspect);
+    document.addEventListener('keydown', blockKeys);
+    return () => {
+      document.removeEventListener('contextmenu', blockInspect);
+      document.removeEventListener('keydown', blockKeys);
+    };
+  }, []);
+
   const { data: m3uData } = useSWR('/api/m3u', fetcher);
   const playlistInfo = m3uData?.channels?.find((c: any) => c.id === id);
 
@@ -23,7 +39,6 @@ export default function PlaylistPage() {
     (url: string) => fetch(url).then(res => res.text()), 
     { revalidateOnFocus: false, dedupingInterval: 300000 }
   );
-  
 
   useEffect(() => {
     if (!rawM3uText) return;
@@ -52,7 +67,7 @@ export default function PlaylistPage() {
   }, [playlistChannels, searchInp]);
 
   return (
-    <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
+    <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10 select-none">
       <nav className="p-4 bg-[#1C1E2B] sticky top-0 z-50 border-b border-[#2A8496]/30 shadow-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button onClick={() => router.back()} className="text-[#00E5FF] font-bold flex items-center gap-2 outline-none cursor-pointer">
@@ -73,21 +88,23 @@ export default function PlaylistPage() {
         />
 
         <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12 gap-3 md:gap-4">
-          {filteredChannels.map((ch, idx) => (
-            <motion.div key={idx} whileTap={{ scale: 0.95 }} className="w-full">
-              <Link href={`/play?url=${encodeURIComponent(ch.link)}&title=${encodeURIComponent(ch.name)}&playlistId=${id}`} className="outline-none block h-full">
-                <div className="bg-[#1C1E2B] border border-[#2A8496]/50 rounded-xl p-2 md:p-3 flex flex-col items-center justify-center aspect-[4/5] hover:border-[#00E5FF] hover:shadow-[0_0_15px_rgba(0,229,255,0.2)] transition-all group overflow-hidden">
-                  
-                  {/* 🟢 ইমেজ সাইজ ফিক্সড করা হলো, যাতে কোনোভাবেই স্ক্রিন ব্রেক না করে */}
-                  <div className="w-[50px] h-[50px] md:w-[70px] md:h-[70px] rounded-full bg-white flex items-center justify-center overflow-hidden mb-2 shadow-inner border border-gray-300 transition-transform group-hover:scale-110">
-                    <SmartImage src={ch.logo} alt={ch.name} width={80} height={80} className="object-contain p-1" />
+          {filteredChannels.map((ch, idx) => {
+            // 🟢 লিংকটিকে ক্রিপ্টিক টোকেনে রূপান্তর করা হচ্ছে
+            const secureToken = btoa(unescape(encodeURIComponent(ch.link)));
+            
+            return (
+              <motion.div key={idx} whileTap={{ scale: 0.95 }} className="w-full">
+                <Link href={`/play?stream=${secureToken}&title=${encodeURIComponent(ch.name)}&playlistId=${id}`} className="outline-none block h-full">
+                  <div className="bg-[#1C1E2B] border border-[#2A8496]/50 rounded-xl p-2 md:p-3 flex flex-col items-center justify-center aspect-[4/5] hover:border-[#00E5FF] hover:shadow-[0_0_15px_rgba(0,229,255,0.2)] transition-all group overflow-hidden">
+                    <div className="w-[50px] h-[50px] md:w-[70px] md:h-[70px] rounded-full bg-white flex items-center justify-center overflow-hidden mb-2 shadow-inner border border-gray-300 transition-transform group-hover:scale-110">
+                      <SmartImage src={ch.logo} alt={ch.name} width={80} height={80} className="object-contain p-1" />
+                    </div>
+                    <span className="font-semibold text-[10px] sm:text-xs md:text-sm text-gray-200 text-center truncate w-full px-1">{ch.name}</span>
                   </div>
-                  
-                  <span className="font-semibold text-[10px] sm:text-xs md:text-sm text-gray-200 text-center truncate w-full px-1">{ch.name}</span>
-                </div>
-              </Link>
-            </motion.div>
-          ))}
+                </Link>
+              </motion.div>
+            );
+          })}
         </div>
       </div>
     </main>
