@@ -103,6 +103,7 @@ MatchCountdown.displayName = 'MatchCountdown';
 
 const getCategoryIcon = (cat: string) => {
   if (cat === 'All') return <span className="text-xl">🔄</span>;
+  if (cat === 'Live Events') return <span className="text-xl">🏟️</span>;
   if (cat === 'Sports') return <span className="text-2xl animate-pulse">📺</span>;
   if (cat === 'M3U') return <span className="text-2xl animate-pulse">📡</span>;
   const lowerCat = cat.toLowerCase();
@@ -114,6 +115,17 @@ const getCategoryIcon = (cat: string) => {
   if (lowerCat.includes('basketball')) return <span className="text-2xl">🏀</span>;
   return <span className="text-2xl">🏆</span>;
 };
+
+// 🟢 চ্যানেল লোডিং স্কেলিটন (যেটার জন্য এরর খাচ্ছিলেন)
+function ChannelSkeleton() {
+  return (
+    <div className="bg-[#1C1E2B] border border-gray-800/60 rounded-[20px] p-5 animate-pulse flex flex-col items-center justify-center gap-4 h-full min-h-[160px]">
+      <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-gray-800/80 border border-gray-700/50"></div>
+      <div className="h-4 bg-gray-800 rounded w-3/4"></div>
+      <div className="w-16 h-5 bg-gray-800 rounded-full mt-1"></div>
+    </div>
+  );
+}
 
 // 🟢 আপনার ডিজাইনের সাথে মিল রেখে নতুন চ্যানেল কার্ড
 const ChannelCard = memo(({ channel, isPlaylist }: { channel: any, isPlaylist?: boolean }) => {
@@ -204,12 +216,16 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
 });
 MatchCard.displayName = 'MatchCard';
 
-Skeleton() {
+// 🟢 ম্যাচ লোডিং স্কেলিটন
+function MatchSkeleton() {
   return (
-    <div className="bg-[#1C1E2B] border border-gray-800/60 rounded-[20px] p-5 animate-pulse flex flex-col items-center justify-center gap-4 h-full min-h-[160px]">
-      <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-gray-800/80 border border-gray-700/50"></div>
-      <div className="h-4 bg-gray-800 rounded w-3/4"></div>
-      <div className="w-16 h-5 bg-gray-800 rounded-full mt-1"></div>
+    <div className="bg-[#1C1E2B] border border-gray-800/60 rounded-[20px] p-5 animate-pulse flex flex-col gap-5 h-[160px]">
+      <div className="h-3 bg-gray-800 rounded w-2/3 mx-auto mt-2"></div>
+      <div className="flex justify-between items-center px-2 mt-auto">
+        <div className="w-12 h-12 rounded-full bg-gray-800"></div>
+        <div className="w-16 h-8 bg-gray-800 rounded"></div>
+        <div className="w-12 h-12 rounded-full bg-gray-800"></div>
+      </div>
     </div>
   );
 }
@@ -238,7 +254,6 @@ export default function Home() {
 
   const { data: matches, error } = useSWR(MATCH_API, fetcher, { refreshInterval: 30000 });
   
-  // 🟢 চ্যানেল ডাটা আনা হচ্ছে
   const { data: channelData } = useSWR('/api/channels', fetcher, { refreshInterval: 60000 });
   const { data: m3uData } = useSWR('/api/m3u', fetcher, { refreshInterval: 60000 });
   
@@ -489,4 +504,3 @@ export default function Home() {
     </main>
   );
 }
-
