@@ -46,11 +46,13 @@ function PlayerContent() {
         }
     }
 
-    if (!shaka.ui.Controls.panels.bottom.customButtons) {
+    // 🟢 কাস্টম বাটন অলরেডি রেজিস্টার্ড থাকলে যেন ক্র্যাশ না করে তার জন্য try-catch প্রোটেকশন
+    try {
         shaka.ui.Controls.registerElement('stretch', {
             create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
         });
-        shaka.ui.Controls.panels.bottom.customButtons = true;
+    } catch (e) {
+        console.log("Stretch button already registered, skipping safely.");
     }
 
     ui.configure({
@@ -168,7 +170,6 @@ function PlayerContent() {
   );
 }
 
-// 🟢 এই ডিফল্ট এক্সপোর্টটি নিচে না থাকায় আগেরবার এরর এসেছিল
 export default function PlayPage() {
   return (
     <Suspense fallback={
