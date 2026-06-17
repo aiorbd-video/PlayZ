@@ -49,11 +49,13 @@ export default function TvPlayer() {
         }
     }
 
-    if (!shaka.ui.Controls.panels.bottom.customButtons) {
+    // 🟢 কাস্টম বাটন অলরেডি রেজিস্টার্ড থাকলে যেন ক্র্যাশ না করে তার জন্য try-catch প্রোটেকশন
+    try {
         shaka.ui.Controls.registerElement('stretch', {
             create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
         });
-        shaka.ui.Controls.panels.bottom.customButtons = true;
+    } catch (e) {
+        console.log("Stretch button already registered, skipping safely.");
     }
 
     ui.configure({
@@ -132,7 +134,6 @@ export default function TvPlayer() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {filteredChannels.map((ch: any) => (
               <motion.div key={ch.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileTap={{ scale: 0.95 }}>
-                {/* 🟢 এখানে replace যোগ করা হয়েছে */}
                 <Link replace href={`/tv/${ch.id}`} className="outline-none block">
                   <div className={`bg-[#1C1E2B] border rounded-[20px] p-5 flex flex-col items-center justify-center gap-3 transition-all duration-300 hover:border-[#00E5FF]/60 hover:shadow-[0_4px_20px_rgba(0,229,255,0.1)] h-full min-h-[140px] group ${ch.id === id ? 'border-[#00E5FF] ring-1 ring-[#00E5FF]/30' : 'border-gray-800/80'}`}>
                     <div className="w-14 h-14 rounded-full bg-black/40 border border-gray-700/50 p-1 flex items-center justify-center overflow-hidden transition-transform group-hover:scale-110 relative">
