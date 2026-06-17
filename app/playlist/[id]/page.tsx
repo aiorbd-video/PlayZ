@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
-import Link from 'next/link'; // 🟢 ইম্পোর্ট ফিক্সড: next/link ব্যবহার করা হয়েছে
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { fetcher } from '../../utils/helpers';
 import { SmartImage } from '../../components/Cards';
@@ -76,9 +76,12 @@ export default function PlaylistPage() {
             <motion.div key={idx} whileTap={{ scale: 0.95 }} className="w-full">
               <Link href={`/play?url=${encodeURIComponent(ch.link)}&title=${encodeURIComponent(ch.name)}&playlistId=${id}`} className="outline-none block h-full">
                 <div className="bg-[#1C1E2B] border border-[#2A8496]/50 rounded-xl p-2 md:p-3 flex flex-col items-center justify-center aspect-[4/5] hover:border-[#00E5FF] hover:shadow-[0_0_15px_rgba(0,229,255,0.2)] transition-all group overflow-hidden">
+                  
+                  {/* 🟢 ইমেজ সাইজ ফিক্সড করা হলো, যাতে কোনোভাবেই স্ক্রিন ব্রেক না করে */}
                   <div className="w-[50px] h-[50px] md:w-[70px] md:h-[70px] rounded-full bg-white flex items-center justify-center overflow-hidden mb-2 shadow-inner border border-gray-300 transition-transform group-hover:scale-110">
-                    <SmartImage src={ch.logo} alt={ch.name} fill className="object-contain p-1" />
+                    <SmartImage src={ch.logo} alt={ch.name} width={80} height={80} className="object-contain p-1" />
                   </div>
+                  
                   <span className="font-semibold text-[10px] sm:text-xs md:text-sm text-gray-200 text-center truncate w-full px-1">{ch.name}</span>
                 </div>
               </Link>
