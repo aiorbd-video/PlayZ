@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, Suspense, useMemo } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import Link from 'next/link'; // 🟢 ইম্পোর্ট ফিক্সড: next/link ব্যবহার করা হয়েছে
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
 
@@ -23,6 +23,7 @@ function PlayerContent() {
   const [searchInp, setSearchInp] = useState('');
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
 
+  // ১. শাকা প্লেয়ার এবং কাস্টম স্ট্রেচ বাটন সেটআপ
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || typeof window === 'undefined') return;
 
@@ -68,22 +69,13 @@ function PlayerContent() {
     };
   }, []);
 
+  // ২. ভিডিও স্ট্রিম লোড করা
   useEffect(() => {
     if (!playerInstance || !streamUrl) return;
     playerInstance.load(streamUrl).catch((e: any) => console.error("Stream Load Error", e));
   }, [playerInstance, streamUrl]);
 
-  useEffect(() => {
-    if (!playlistId) return;
-    fetch('/api/m3u')
-      .then(res => res.json())
-      .then(data => {
-        const playlistInfo = data?.channels?.find((c: any) => c.id === id);
-        // Fallback or data matching logic
-      }).catch(err => console.error(err));
-  }, [playlistId]);
-
-  // SWR/fetch fallbacks for player content parsing
+  // ৩. ব্যাকগ্রাউন্ডে M3U প্লেলিস্টের বাকি চ্যানেল পার্স করা (এরর ফিক্সড এখানে)
   useEffect(() => {
     if (!playlistId) return;
     fetch('/api/m3u')
@@ -97,6 +89,7 @@ function PlayerContent() {
               const lines = text.split('\n');
               const parsedChannels = [];
               let currentChannel: any = {};
+
               for (let line of lines) {
                 line = line.trim();
                 if (line.startsWith('#EXTINF')) {
@@ -151,7 +144,6 @@ function PlayerContent() {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {filteredChannels.map((ch, index) => (
                 <motion.div key={index} initial={{ opacity: 0 }} animate={{ opacity: 1 }} whileTap={{ scale: 0.95 }}>
-                  {/* 🟢 ফিক্সড লজিক: router.replace ব্যবহার করা হয়েছে, যা প্লেয়ারের ভেতরের হিস্ট্রি জমাবে না */}
                   <button onClick={() => router.replace(`/play?url=${encodeURIComponent(ch.link)}&title=${encodeURIComponent(ch.name)}&playlistId=${playlistId}`)} className="outline-none text-left w-full">
                     <div className={`bg-[#1C1E2B] border rounded-[20px] p-5 flex flex-col items-center justify-center gap-3 transition-all duration-300 hover:border-[#00E5FF]/60 hover:shadow-[0_4px_20px_rgba(0,229,255,0.1)] h-full min-h-[140px] group ${ch.link === streamUrl ? 'border-[#00E5FF] ring-1 ring-[#00E5FF]/30' : 'border-gray-800/80'}`}>
                       <div className="w-14 h-14 rounded-full bg-black/40 border border-gray-700/50 p-1 flex items-center justify-center overflow-hidden transition-transform group-hover:scale-110 relative">
@@ -169,7 +161,10 @@ function PlayerContent() {
       </div>
 
       <style dangerouslySetInnerHTML={{__html: `
-        .shaka-stretch-button { background: transparent; border: none; color: white; font-size: 20px; cursor: pointer; padding: 5px; opacity: 0.8; transition: opacity 0.2s; }
+        .shaka-stretch-button {
+           background: transparent; border: none; color: white; font-size: 20px;
+           cursor: pointer; padding: 5px; opacity: 0.8; transition: opacity 0.2s;
+        }
         .shaka-stretch-button:hover { opacity: 1; }
       `}} />
     </main>
