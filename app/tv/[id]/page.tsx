@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { useParams, useRouter } from 'next/navigation'; // 🟢 useRouter ইম্পোর্ট করা হলো
+import { useParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { motion } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
@@ -11,7 +11,7 @@ import { SmartImage } from '../../components/Cards';
 
 export default function TvPlayer() {
   const params = useParams();
-  const router = useRouter(); // 🟢 router ইনস্ট্যান্স তৈরি করা হলো
+  const router = useRouter();
   const id = params.id as string;
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -21,10 +21,27 @@ export default function TvPlayer() {
   const [searchInp, setSearchInp] = useState('');
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
 
+  // 🟢 ১. কাস্টম প্রোটেকশন: রাইট ক্লিক এবং F12 (Inspect Element) সম্পূর্ণ ব্লক
+  useEffect(() => {
+    const blockInspect = (e: MouseEvent) => e.preventDefault();
+    const blockKeys = (e: KeyboardEvent) => {
+      if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'C' || e.key === 'J'))) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('contextmenu', blockInspect);
+    document.addEventListener('keydown', blockKeys);
+    return () => {
+      document.removeEventListener('contextmenu', blockInspect);
+      document.removeEventListener('keydown', blockKeys);
+    };
+  }, []);
+
   const { data } = useSWR('/api/channels', fetcher);
   const channels = data?.channels || [];
   const channel = channels.find((c: any) => c.id === id);
 
+  // ২. শাকা প্লেয়ার ও কাস্টম Stretch বাটন সেটআপ
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || typeof window === 'undefined') return;
 
@@ -54,7 +71,7 @@ export default function TvPlayer() {
             create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
         });
     } catch (e) {
-        console.log("Stretch button already registered, skipping safely.");
+        console.log("Stretch button safely initialized.");
     }
 
     ui.configure({
@@ -70,6 +87,7 @@ export default function TvPlayer() {
     };
   }, []);
 
+  // ৩. ভিডিও এবং DRM লোড লজিক
   useEffect(() => {
     if (!playerInstance || !channel) return;
     const streamUrl = channel.link;
@@ -98,9 +116,9 @@ export default function TvPlayer() {
   }, [channels, searchInp]);
 
   return (
-    <main className="min-h-screen bg-[#11131A] text-white font-sans pb-20">
+    <main className="min-h-screen bg-[#11131A] text-white font-sans pb-20 select-none">
       
-      {/* 🟢 নেভিগেশন বার - ব্যাক বাটন ফিক্স করা হয়েছে */}
+      {/* নেভিগেশন বার - ব্যাক বাটন ধাপে ধাপে কাজ করবে */}
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button onClick={() => router.back()} className="text-[#00E5FF] font-bold flex items-center gap-2 outline-none cursor-pointer">
@@ -122,6 +140,7 @@ export default function TvPlayer() {
           </div>
         </div>
 
+        {/* নিচের চ্যানেল গ্রিড */}
         <div className="max-w-7xl mx-auto mt-10 border-t border-gray-800/60 pt-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <h2 className="text-xs md:text-sm font-black text-[#00E5FF] uppercase tracking-widest pl-1 flex items-center gap-2">
@@ -133,10 +152,11 @@ export default function TvPlayer() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {filteredChannels.map((ch: any) => (
               <motion.div key={ch.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileTap={{ scale: 0.95 }}>
+                {/* 🟢 ফিক্সড লজিক: এখানে router.replace ব্যবহার করা হয়েছে, যাতে প্লেয়ারের ভেতরের হিস্ট্রি লুপ না হয় */}
                 <button onClick={() => router.replace(`/tv/${ch.id}`)} className="outline-none block w-full text-left">
                   <div className={`bg-[#1C1E2B] border rounded-[20px] p-5 flex flex-col items-center justify-center gap-3 transition-all duration-300 hover:border-[#00E5FF]/60 hover:shadow-[0_4px_20px_rgba(0,229,255,0.1)] h-full min-h-[140px] group ${ch.id === id ? 'border-[#00E5FF] ring-1 ring-[#00E5FF]/30' : 'border-gray-800/80'}`}>
                     <div className="w-14 h-14 rounded-full bg-black/40 border border-gray-700/50 p-1 flex items-center justify-center overflow-hidden transition-transform group-hover:scale-110 relative">
-                      <SmartImage src={ch.logo} alt={ch.name} fill className="object-contain p-0.5" />
+                      <SmartImage src={ch.logo} alt={ch.name} width={80} height={80} className="object-contain p-0.5" />
                     </div>
                     <span className="font-bold text-xs md:text-sm text-gray-200 group-hover:text-white text-center truncate w-full">{ch.name}</span>
                     {ch.id === id && <span className="text-[9px] px-2 py-0.5 bg-[#00E5FF]/20 text-[#00E5FF] rounded-full font-bold">Playing</span>}
@@ -149,10 +169,7 @@ export default function TvPlayer() {
       </div>
 
       <style dangerouslySetInnerHTML={{__html: `
-        .shaka-stretch-button {
-           background: transparent; border: none; color: white; font-size: 20px;
-           cursor: pointer; padding: 5px; opacity: 0.8; transition: opacity 0.2s;
-        }
+        .shaka-stretch-button { background: transparent; border: none; color: white; font-size: 20px; cursor: pointer; padding: 5px; opacity: 0.8; transition: opacity 0.2s; }
         .shaka-stretch-button:hover { opacity: 1; }
       `}} />
     </main>
