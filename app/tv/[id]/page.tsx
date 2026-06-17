@@ -6,7 +6,7 @@ import useSWR from 'swr';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
-
+ 
 import { fetcher } from '../../utils/helpers';
 import { SmartImage } from '../../components/Cards';
 
