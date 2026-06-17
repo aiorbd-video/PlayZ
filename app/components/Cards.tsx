@@ -11,13 +11,13 @@ export const SmartImage = memo(({ src, alt, fill, width, height, className }: an
   const [imgSrc, setImgSrc] = useState(originalSrc);
   const [errorCount, setErrorCount] = useState(0);
 
+  // 🟢 Next.js Image conflict ফিক্স: fill থাকলে width/height পাঠানো যাবে না
+  const imageProps = fill ? { fill: true } : { width: width || 80, height: height || 80 };
+
   return (
     <Image
       src={imgSrc}
       alt={alt || "Logo"}
-      fill={fill}
-      width={width}
-      height={height}
       className={className}
       unoptimized
       onError={() => {
@@ -28,6 +28,7 @@ export const SmartImage = memo(({ src, alt, fill, width, height, className }: an
           setImgSrc("/fallback-logo.png");
         }
       }}
+      {...imageProps}
     />
   );
 });
