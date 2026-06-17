@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState, Suspense, useMemo } from 'react';
-import { useSearchParams } from 'next/navigation';
-import Link from 'next/link';
+import { useSearchParams, useRouter } from 'next/navigation'; // 🟢 useRouter ইম্পোর্ট করা হলো
+import Link from 'next/navigation';
 import { motion } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
 
@@ -10,6 +10,7 @@ import { SmartImage } from '../components/Cards';
 
 function PlayerContent() {
   const searchParams = useSearchParams();
+  const router = useRouter(); // 🟢 router ইনস্ট্যান্স তৈরি করা হলো
   const streamUrl = searchParams.get('url');
   const title = searchParams.get('title') || 'Live TV';
   const playlistId = searchParams.get('playlistId');
@@ -46,7 +47,6 @@ function PlayerContent() {
         }
     }
 
-    // 🟢 কাস্টম বাটন অলরেডি রেজিস্টার্ড থাকলে যেন ক্র্যাশ না করে তার জন্য try-catch প্রোটেকশন
     try {
         shaka.ui.Controls.registerElement('stretch', {
             create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
@@ -112,12 +112,12 @@ function PlayerContent() {
 
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-20">
+      
+      {/* 🟢 নেভিগেশন বার - ব্যাক বাটন ফিক্স করা হয়েছে */}
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md flex items-center justify-between">
-        <Link href="/" className="outline-none">
-          <button className="text-[#00E5FF] font-bold flex items-center gap-2 outline-none">
-            <span>&larr;</span> Back
-          </button>
-        </Link>
+        <button onClick={() => router.back()} className="text-[#00E5FF] font-bold flex items-center gap-2 outline-none cursor-pointer">
+          <span>&larr;</span> Back
+        </button>
         <span className="font-bold truncate max-w-xs text-[#00E5FF]">{title}</span>
         <div className="w-10"></div>
       </nav>
@@ -143,7 +143,7 @@ function PlayerContent() {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {filteredChannels.map((ch, index) => (
                 <motion.div key={index} initial={{ opacity: 0 }} animate={{ opacity: 1 }} whileTap={{ scale: 0.95 }}>
-                  <Link replace href={`/play?url=${encodeURIComponent(ch.link)}&title=${encodeURIComponent(ch.name)}&playlistId=${playlistId}`} className="outline-none">
+                  <button onClick={() => router.replace(`/play?url=${encodeURIComponent(ch.link)}&title=${encodeURIComponent(ch.name)}&playlistId=${playlistId}`)} className="outline-none text-left w-full">
                     <div className={`bg-[#1C1E2B] border rounded-[20px] p-5 flex flex-col items-center justify-center gap-3 transition-all duration-300 hover:border-[#00E5FF]/60 hover:shadow-[0_4px_20px_rgba(0,229,255,0.1)] h-full min-h-[140px] group ${ch.link === streamUrl ? 'border-[#00E5FF] ring-1 ring-[#00E5FF]/30' : 'border-gray-800/80'}`}>
                       <div className="w-14 h-14 rounded-full bg-black/40 border border-gray-700/50 p-1 flex items-center justify-center overflow-hidden transition-transform group-hover:scale-110 relative">
                          <SmartImage src={ch.logo} alt={ch.name} fill className="object-contain p-0.5" />
@@ -151,7 +151,7 @@ function PlayerContent() {
                       <span className="font-bold text-xs md:text-sm text-gray-200 group-hover:text-white text-center truncate w-full">{ch.name}</span>
                       {ch.link === streamUrl && <span className="text-[9px] px-2 py-0.5 bg-[#00E5FF]/20 text-[#00E5FF] rounded-full font-bold">Playing</span>}
                     </div>
-                  </Link>
+                  </button>
                 </motion.div>
               ))}
             </div>
