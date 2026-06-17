@@ -111,7 +111,8 @@ export default function PlaylistPage() {
           {filteredChannels.map((ch, index) => (
             <motion.div key={index} initial={{ opacity: 0 }} animate={{ opacity: 1 }} whileTap={{ scale: 0.95 }}>
               {/* 🟢 প্লে করার জন্য ইউনিভার্সাল প্লেয়ার পেজে পাঠানো হচ্ছে */}
-              <Link href={`/play?url=${encodeURIComponent(ch.link)}&title=${encodeURIComponent(ch.name)}`} className="outline-none">
+              <Link href={`/play?url=${encodeURIComponent(ch.link)}&title=${encodeURIComponent(ch.name)}&playlistId=${id}`} className="outline-none">
+
                 <div className="bg-[#1C1E2B] border border-gray-800/80 rounded-xl p-4 flex flex-col items-center gap-3 hover:border-[#00E5FF]/50 transition-colors">
                   <div className="w-14 h-14 rounded-full bg-black/40 flex items-center justify-center overflow-hidden p-1">
                      <Image src={getImg(ch.logo)} alt={ch.name} width={50} height={50} className="object-contain" unoptimized />
