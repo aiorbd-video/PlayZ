@@ -3,22 +3,16 @@
 import { useEffect, useRef, useState, Suspense, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
 import { motion } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
 
-const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
-
-const getImg = (url: string | undefined | null) => {
-  if (!url || url === "null" || url === "") return "/fallback-logo.png";
-  return `${IMG_PROXY}${encodeURIComponent(url)}`;
-};
+import { SmartImage } from '../components/Cards'; // 🟢 SmartImage ইম্পোর্ট করা হলো অপটিমাইজেশনের জন্য
 
 function PlayerContent() {
   const searchParams = useSearchParams();
   const streamUrl = searchParams.get('url');
   const title = searchParams.get('title') || 'Live TV';
-  const playlistId = searchParams.get('playlistId'); // 🟢 প্লেলিস্ট আইডি রিড করা হচ্ছে
+  const playlistId = searchParams.get('playlistId');
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
@@ -26,8 +20,10 @@ function PlayerContent() {
   
   const [playlistChannels, setPlaylistChannels] = useState<any[]>([]);
   const [searchInp, setSearchInp] = useState('');
+  
+  // 🟢 Stretch/Zoom লজিকের জন্য State
+  const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
 
-  // 🟢 ১. প্লেয়ার সেটআপ লজিক
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || typeof window === 'undefined') return;
 
@@ -37,8 +33,36 @@ function PlayerContent() {
     let player = new shaka.Player(videoRef.current);
     let ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
     
+    // 🟢 কাস্টম Stretch বাটন যোগ করার লজিক
+    class StretchButton extends shaka.ui.Element {
+        constructor(parent: HTMLElement, controls: any) {
+            super(parent, controls);
+            const button = document.createElement('button');
+            button.className = 'shaka-stretch-button material-icons-round shaka-tooltip';
+            button.innerHTML = 'aspect_ratio';
+            button.setAttribute('aria-label', 'Toggle Fit');
+            
+            button.addEventListener('click', () => {
+                setObjectFit(prev => {
+                    if (prev === 'contain') return 'cover';
+                    if (prev === 'cover') return 'fill';
+                    return 'contain';
+                });
+            });
+            parent.appendChild(button);
+        }
+    }
+
+    if (!shaka.ui.Controls.panels.bottom.customButtons) {
+        shaka.ui.Controls.registerElement('stretch', {
+            create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
+        });
+        shaka.ui.Controls.panels.bottom.customButtons = true;
+    }
+
     ui.configure({
-      controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'fullscreen'],
+      controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'stretch', 'fullscreen'],
+      addSeekBar: true,
     });
 
     setPlayerInstance(player);
@@ -54,11 +78,9 @@ function PlayerContent() {
     playerInstance.load(streamUrl).catch((e: any) => console.error("Stream Load Error", e));
   }, [playerInstance, streamUrl]);
 
-  // 🟢 ২. প্লেলিস্ট আইডি থাকলে ওই M3U ফাইলের বাকি সব চ্যানেল ব্যাকগ্রাউন্ডে পার্স (Parse) করার লজিক
   useEffect(() => {
     if (!playlistId) return;
 
-    // প্রথমে ফায়ারবেস থেকে ওই নির্দিষ্ট m3u প্লেলিস্টের আসল রিমোট লিংকটি আনবে
     fetch('/api/m3u')
       .then(res => res.json())
       .then(data => {
@@ -111,12 +133,27 @@ function PlayerContent() {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 mt-6">
-        <div ref={videoContainerRef} className="w-full max-w-5xl mx-auto aspect-video relative bg-black shadow-2xl rounded-[20px] overflow-hidden shaka-video-container border border-gray-800/80">
+        
+        {/* 🟢 প্লেয়ার কন্টেইনার */}
+        <div ref={videoContainerRef} className="w-full max-w-5xl mx-auto aspect-video relative bg-black shadow-2xl rounded-[20px] overflow-hidden shaka-video-container border border-gray-800/80 group">
           {!streamUrl && <div className="absolute inset-0 flex items-center justify-center font-bold text-red-500">Invalid or Missing Stream URL</div>}
-          <video ref={videoRef} className="w-full h-full object-contain" autoPlay playsInline />
+          
+          <video 
+            ref={videoRef} 
+            // 🟢 স্ট্যাট অনুযায়ী স্টাইল চেঞ্জ হবে
+            className="w-full h-full transition-all duration-300" 
+            style={{ objectFit: objectFit }}
+            autoPlay 
+            playsInline 
+          />
+          
+          {/* 🟢 Stretch স্ট্যাটাস দেখানোর জন্য ছোট্ট ব্যাজ (যেমন: Fit/Fill) */}
+          <div className="absolute top-4 left-4 bg-black/60 px-2 py-1 rounded text-xs font-bold text-white opacity-0 group-hover:opacity-100 transition-opacity z-50">
+             {objectFit === 'contain' ? 'Fit Screen' : objectFit === 'cover' ? 'Zoom (Crop)' : 'Stretch'}
+          </div>
         </div>
 
-        {/* 🟢 নতুন সেকশন: প্লেলিস্টের অন্য সব শত শত চ্যানেল নিচে দেখাবে সার্চ বার সহ! */}
+        {/* 🟢 প্লেলিস্ট চ্যানেল গ্রিড */}
         {playlistChannels.length > 0 && (
           <div className="max-w-7xl mx-auto mt-10 border-t border-gray-800/60 pt-8">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -138,7 +175,8 @@ function PlayerContent() {
                   <Link href={`/play?url=${encodeURIComponent(ch.link)}&title=${encodeURIComponent(ch.name)}&playlistId=${playlistId}`} className="outline-none">
                     <div className={`bg-[#1C1E2B] border rounded-[20px] p-5 flex flex-col items-center justify-center gap-3 transition-all duration-300 hover:border-[#00E5FF]/60 hover:shadow-[0_4px_20px_rgba(0,229,255,0.1)] h-full min-h-[140px] group ${ch.link === streamUrl ? 'border-[#00E5FF] ring-1 ring-[#00E5FF]/30' : 'border-gray-800/80'}`}>
                       <div className="w-14 h-14 rounded-full bg-black/40 border border-gray-700/50 p-1 flex items-center justify-center overflow-hidden transition-transform group-hover:scale-110 relative">
-                         <Image src={getImg(ch.logo)} alt={ch.name} fill className="object-contain rounded-full p-0.5" unoptimized />
+                         {/* 🟢 SmartImage ব্যবহার করা হলো */}
+                         <SmartImage src={ch.logo} alt={ch.name} fill className="object-contain p-0.5" />
                       </div>
                       <span className="font-bold text-xs md:text-sm text-gray-200 group-hover:text-white text-center truncate w-full">{ch.name}</span>
                       {ch.link === streamUrl && <span className="text-[9px] px-2 py-0.5 bg-[#00E5FF]/20 text-[#00E5FF] rounded-full font-bold">Playing</span>}
@@ -150,6 +188,21 @@ function PlayerContent() {
           </div>
         )}
       </div>
+
+      <style dangerouslySetInnerHTML={{__html: `
+        /* 🟢 কাস্টম আইকনের জন্য CSS */
+        .shaka-stretch-button {
+           background: transparent;
+           border: none;
+           color: white;
+           font-size: 20px;
+           cursor: pointer;
+           padding: 5px;
+           opacity: 0.8;
+           transition: opacity 0.2s;
+        }
+        .shaka-stretch-button:hover { opacity: 1; }
+      `}} />
     </main>
   );
 }
