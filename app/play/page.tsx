@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
 
-import { SmartImage } from '../components/Cards'; // 🟢 SmartImage ইম্পোর্ট করা হলো অপটিমাইজেশনের জন্য
+import { SmartImage } from '../components/Cards';
 
 function PlayerContent() {
   const searchParams = useSearchParams();
@@ -20,8 +20,6 @@ function PlayerContent() {
   
   const [playlistChannels, setPlaylistChannels] = useState<any[]>([]);
   const [searchInp, setSearchInp] = useState('');
-  
-  // 🟢 Stretch/Zoom লজিকের জন্য State
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
 
   useEffect(() => {
@@ -33,7 +31,6 @@ function PlayerContent() {
     let player = new shaka.Player(videoRef.current);
     let ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
     
-    // 🟢 কাস্টম Stretch বাটন যোগ করার লজিক
     class StretchButton extends shaka.ui.Element {
         constructor(parent: HTMLElement, controls: any) {
             super(parent, controls);
@@ -43,11 +40,7 @@ function PlayerContent() {
             button.setAttribute('aria-label', 'Toggle Fit');
             
             button.addEventListener('click', () => {
-                setObjectFit(prev => {
-                    if (prev === 'contain') return 'cover';
-                    if (prev === 'cover') return 'fill';
-                    return 'contain';
-                });
+                setObjectFit(prev => prev === 'contain' ? 'cover' : prev === 'cover' ? 'fill' : 'contain');
             });
             parent.appendChild(button);
         }
@@ -80,7 +73,6 @@ function PlayerContent() {
 
   useEffect(() => {
     if (!playlistId) return;
-
     fetch('/api/m3u')
       .then(res => res.json())
       .then(data => {
@@ -102,9 +94,7 @@ function PlayerContent() {
                   currentChannel.name = nameSplit[nameSplit.length - 1].trim();
                 } else if (line.startsWith('http')) {
                   currentChannel.link = line;
-                  if (currentChannel.name) {
-                     parsedChannels.push(currentChannel);
-                  }
+                  if (currentChannel.name) parsedChannels.push(currentChannel);
                   currentChannel = {};
                 }
               }
@@ -115,15 +105,13 @@ function PlayerContent() {
   }, [playlistId]);
 
   const filteredChannels = useMemo(() => {
-    return playlistChannels.filter(ch => 
-      ch.name.toLowerCase().includes(searchInp.toLowerCase()
-    ));
+    return playlistChannels.filter(ch => ch.name.toLowerCase().includes(searchInp.toLowerCase()));
   }, [playlistChannels, searchInp]);
 
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-20">
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md flex items-center justify-between">
-        <Link href="#" onClick={(e) => { e.preventDefault(); window.history.back(); }}>
+        <Link href="/" className="outline-none">
           <button className="text-[#00E5FF] font-bold flex items-center gap-2 outline-none">
             <span>&larr;</span> Back
           </button>
@@ -133,49 +121,30 @@ function PlayerContent() {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 mt-6">
-        
-        {/* 🟢 প্লেয়ার কন্টেইনার */}
         <div ref={videoContainerRef} className="w-full max-w-5xl mx-auto aspect-video relative bg-black shadow-2xl rounded-[20px] overflow-hidden shaka-video-container border border-gray-800/80 group">
           {!streamUrl && <div className="absolute inset-0 flex items-center justify-center font-bold text-red-500">Invalid or Missing Stream URL</div>}
-          
-          <video 
-            ref={videoRef} 
-            // 🟢 স্ট্যাট অনুযায়ী স্টাইল চেঞ্জ হবে
-            className="w-full h-full transition-all duration-300" 
-            style={{ objectFit: objectFit }}
-            autoPlay 
-            playsInline 
-          />
-          
-          {/* 🟢 Stretch স্ট্যাটাস দেখানোর জন্য ছোট্ট ব্যাজ (যেমন: Fit/Fill) */}
+          <video ref={videoRef} className="w-full h-full transition-all duration-300" style={{ objectFit: objectFit }} autoPlay playsInline />
           <div className="absolute top-4 left-4 bg-black/60 px-2 py-1 rounded text-xs font-bold text-white opacity-0 group-hover:opacity-100 transition-opacity z-50">
              {objectFit === 'contain' ? 'Fit Screen' : objectFit === 'cover' ? 'Zoom (Crop)' : 'Stretch'}
           </div>
         </div>
 
-        {/* 🟢 প্লেলিস্ট চ্যানেল গ্রিড */}
         {playlistChannels.length > 0 && (
           <div className="max-w-7xl mx-auto mt-10 border-t border-gray-800/60 pt-8">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               <h2 className="text-xs md:text-sm font-black text-[#00E5FF] uppercase tracking-widest pl-1 flex items-center gap-2">
                 <span className="text-red-500 animate-pulse">●</span> Playlist Channels ({playlistChannels.length})
               </h2>
-              <input 
-                type="text" 
-                placeholder="Quick search channel..."
-                value={searchInp}
-                onChange={(e) => setSearchInp(e.target.value)}
-                className="bg-[#1C1E2B] border border-gray-800 rounded-xl px-4 py-2 text-xs w-full sm:max-w-xs focus:outline-none focus:border-[#00E5FF] text-white shadow-inner"
-              />
+              <input type="text" placeholder="Quick search channel..." value={searchInp} onChange={(e) => setSearchInp(e.target.value)} className="bg-[#1C1E2B] border border-gray-800 rounded-xl px-4 py-2 text-xs w-full sm:max-w-xs focus:outline-none focus:border-[#00E5FF] text-white shadow-inner" />
             </div>
             
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {filteredChannels.map((ch, index) => (
                 <motion.div key={index} initial={{ opacity: 0 }} animate={{ opacity: 1 }} whileTap={{ scale: 0.95 }}>
-                  <Link href={`/play?url=${encodeURIComponent(ch.link)}&title=${encodeURIComponent(ch.name)}&playlistId=${playlistId}`} className="outline-none">
+                  {/* 🟢 এখানে replace যোগ করা হয়েছে */}
+                  <Link replace href={`/play?url=${encodeURIComponent(ch.link)}&title=${encodeURIComponent(ch.name)}&playlistId=${playlistId}`} className="outline-none">
                     <div className={`bg-[#1C1E2B] border rounded-[20px] p-5 flex flex-col items-center justify-center gap-3 transition-all duration-300 hover:border-[#00E5FF]/60 hover:shadow-[0_4px_20px_rgba(0,229,255,0.1)] h-full min-h-[140px] group ${ch.link === streamUrl ? 'border-[#00E5FF] ring-1 ring-[#00E5FF]/30' : 'border-gray-800/80'}`}>
                       <div className="w-14 h-14 rounded-full bg-black/40 border border-gray-700/50 p-1 flex items-center justify-center overflow-hidden transition-transform group-hover:scale-110 relative">
-                         {/* 🟢 SmartImage ব্যবহার করা হলো */}
                          <SmartImage src={ch.logo} alt={ch.name} fill className="object-contain p-0.5" />
                       </div>
                       <span className="font-bold text-xs md:text-sm text-gray-200 group-hover:text-white text-center truncate w-full">{ch.name}</span>
@@ -190,32 +159,12 @@ function PlayerContent() {
       </div>
 
       <style dangerouslySetInnerHTML={{__html: `
-        /* 🟢 কাস্টম আইকনের জন্য CSS */
         .shaka-stretch-button {
-           background: transparent;
-           border: none;
-           color: white;
-           font-size: 20px;
-           cursor: pointer;
-           padding: 5px;
-           opacity: 0.8;
-           transition: opacity 0.2s;
+           background: transparent; border: none; color: white; font-size: 20px;
+           cursor: pointer; padding: 5px; opacity: 0.8; transition: opacity 0.2s;
         }
         .shaka-stretch-button:hover { opacity: 1; }
       `}} />
     </main>
-  );
-}
-
-export default function PlayPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-[#11131A] flex flex-col items-center justify-center text-[#00E5FF]">
-         <div className="w-12 h-12 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin mb-4"></div>
-         <p className="animate-pulse font-bold">Loading Player...</p>
-      </div>
-    }>
-      <PlayerContent />
-    </Suspense>
   );
 }
