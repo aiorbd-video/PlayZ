@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import useSWR from 'swr';
 import { motion } from 'framer-motion';
 
-// 🟢 আলাদা করা ফাইলগুলো থেকে ফাংশন ও কার্ড ইমপোর্ট করা হচ্ছে
+// আলাদা করা ফাইলগুলো থেকে ফাংশন ও কার্ড ইমপোর্ট করা হচ্ছে
 import { MATCH_API, fetcher, getMatchStatus, getCategoryIcon } from './utils/helpers';
 import { ChannelCard, MatchCard } from './components/Cards';
 
@@ -17,11 +17,27 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
 
+  // 🟢 ১. ক্লায়েন্ট সাইড মাউন্ট এবং LocalStorage থেকে লাস্ট অ্যাক্টিভ ট্যাব লোড করার লজিক
   useEffect(() => {
     setMounted(true);
+    
+    // ব্রাউজারে আগে কোনো ট্যাব সিলেক্ট করা ছিল কি না তা চেক করবে
+    const savedTab = localStorage.getItem('activeTab');
+    if (savedTab && ['Sports', 'Live Events', 'Categories'].includes(savedTab)) {
+      setActiveTab(savedTab as any);
+    }
+
     const timer = setInterval(() => setCurrentTime(new Date()), 5000);
     return () => clearInterval(timer);
   }, []);
+
+  // 🟢 ২. ট্যাব চেঞ্জ করার সাথে সাথে LocalStorage-এ সেভ করার কাস্টম ফাংশন
+  const handleTabChange = (tab: 'Sports' | 'Live Events' | 'Categories') => {
+    setActiveTab(tab);
+    setSearchInp('');
+    setShowSearch(false);
+    localStorage.setItem('activeTab', tab); // ব্রাউজার মেমোরিতে সেভ থাকবে
+  };
 
   const handleShare = async () => {
     try {
@@ -131,10 +147,11 @@ export default function Home() {
               <h1 className="text-xl md:text-2xl font-bold text-[#00E5FF] tracking-wide uppercase">All In One Reborn</h1>
             </div>
 
+            {/* Desktop Tabs */}
             <div className="hidden md:flex items-center gap-2 bg-[#11131A] p-1 rounded-full border border-gray-800/80 shadow-inner">
-              <button onClick={() => { setActiveTab('Sports'); setSearchInp(''); }} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${activeTab === 'Sports' ? 'bg-[#2A2D3E] text-[#00E5FF] shadow-md' : 'text-gray-400 hover:text-gray-200'}`}>Sports</button>
-              <button onClick={() => { setActiveTab('Live Events'); setSearchInp(''); }} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${activeTab === 'Live Events' ? 'bg-[#3A3C52] text-white shadow-md ring-1 ring-[#00E5FF]/50' : 'text-gray-400 hover:text-gray-200'}`}>Live Events</button>
-              <button onClick={() => { setActiveTab('Categories'); setSearchInp(''); }} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${activeTab === 'Categories' ? 'bg-[#2A2D3E] text-[#00E5FF] shadow-md' : 'text-gray-400 hover:text-gray-200'}`}>Playlists</button>
+              <button onClick={() => handleTabChange('Sports')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${activeTab === 'Sports' ? 'bg-[#2A2D3E] text-[#00E5FF] shadow-md' : 'text-gray-400 hover:text-gray-200'}`}>Sports</button>
+              <button onClick={() => handleTabChange('Live Events')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${activeTab === 'Live Events' ? 'bg-[#3A3C52] text-white shadow-md ring-1 ring-[#00E5FF]/50' : 'text-gray-400 hover:text-gray-200'}`}>Live Events</button>
+              <button onClick={() => handleTabChange('Categories')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${activeTab === 'Categories' ? 'bg-[#2A2D3E] text-[#00E5FF] shadow-md' : 'text-gray-400 hover:text-gray-200'}`}>Playlists</button>
             </div>
 
             <div className="flex items-center gap-4 text-gray-300">
@@ -151,7 +168,7 @@ export default function Home() {
             <div className="flex items-center gap-4 md:gap-6 overflow-x-auto scrollbar-hide pb-4 pt-2 snap-x">
               {dynamicCategories.map((cat) => (
                 <button key={cat} onClick={() => { setActiveCategory(cat); setActiveFilter('All'); }} className="flex flex-col items-center gap-1.5 md:gap-2 min-w-[55px] md:min-w-[70px] snap-center outline-none group">
-                  <div className={`w-14 h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center text-2xl md:text-3xl transition-all border ${activeCategory === cat ? 'border-[#00E5FF] bg-[#1C1E2B] shadow-[0_0_15px_rgba(0,229,255,0.3)] scale-110' : 'border-gray-700 bg-[#1C1E2B] group-hover:border-gray-500 group-hover:bg-gray-800'}`}>
+                  <div className={`w-12 h-12 md:w-16 md:h-16 rounded-full flex items-center justify-center transition-all border ${activeCategory === cat ? 'border-[#00E5FF] bg-[#1C1E2B] shadow-[0_0_15px_rgba(0,229,255,0.3)] scale-110' : 'border-gray-700 bg-[#1C1E2B] group-hover:border-gray-500 group-hover:bg-gray-800'}`}>
                     {getCategoryIcon(cat)}
                   </div>
                   <span className={`text-[10px] md:text-xs font-bold ${activeCategory === cat ? 'text-[#00E5FF]' : 'text-gray-400 group-hover:text-gray-200'}`}>{cat}</span>
@@ -199,24 +216,25 @@ export default function Home() {
         )}
       </div>
 
+      {/* Mobile Bottom Navigation */}
       <div className="md:hidden fixed bottom-0 left-0 w-full bg-[#1C1E2B] border-t border-gray-800/80 pb-safe z-[60]">
         <div className="max-w-md mx-auto flex justify-between items-center h-[60px] px-6 relative">
           
-          <button onClick={() => { setActiveTab('Sports'); setSearchInp(''); setShowSearch(false); }} className={`flex flex-col items-center justify-center w-16 gap-1 outline-none transition-colors ${activeTab === 'Sports' ? 'text-[#00E5FF]' : 'text-gray-500 hover:text-gray-300'}`}>
+          <button onClick={() => handleTabChange('Sports')} className={`flex flex-col items-center justify-center w-16 gap-1 outline-none transition-colors ${activeTab === 'Sports' ? 'text-[#00E5FF]' : 'text-gray-500 hover:text-gray-300'}`}>
             <div className={`p-1.5 rounded-full ${activeTab === 'Sports' ? 'bg-[#2A2D3E] shadow-inner' : 'bg-transparent'}`}>
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             </div>
             <span className="text-[10px] font-bold">Sports</span>
           </button>
 
-          <button onClick={() => { setActiveTab('Live Events'); setSearchInp(''); setShowSearch(false); }} className={`flex flex-col items-center justify-center w-20 gap-1 outline-none transition-colors ${activeTab === 'Live Events' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
+          <button onClick={() => handleTabChange('Live Events')} className={`flex flex-col items-center justify-center w-20 gap-1 outline-none transition-colors ${activeTab === 'Live Events' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
             <div className={`p-1.5 rounded-full px-4 ${activeTab === 'Live Events' ? 'bg-[#3A3C52] border border-[#2A8496]/50' : 'bg-transparent'}`}>
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.521 14.279l-1.042-1.042M18.479 14.279l1.042-1.042M8.343 11.457l-1.042-1.042M15.657 11.457l1.042-1.042M12 15a3 3 0 100-6 3 3 0 000 6z" /></svg>
             </div>
             <span className="text-[10px] font-bold">Live Events</span>
           </button>
 
-          <button onClick={() => { setActiveTab('Categories'); setSearchInp(''); setShowSearch(false); }} className={`flex flex-col items-center justify-center w-16 gap-1 outline-none transition-colors ${activeTab === 'Categories' ? 'text-[#00E5FF]' : 'text-gray-500 hover:text-gray-300'}`}>
+          <button onClick={() => handleTabChange('Categories')} className={`flex flex-col items-center justify-center w-16 gap-1 outline-none transition-colors ${activeTab === 'Categories' ? 'text-[#00E5FF]' : 'text-gray-500 hover:text-gray-300'}`}>
              <div className={`p-1.5 rounded-full ${activeTab === 'Categories' ? 'bg-[#2A2D3E] shadow-inner' : 'bg-transparent'}`}>
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
             </div>
