@@ -2,12 +2,13 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import useSWR from 'swr';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { MATCH_API, fetcher, getMatchStatus, getCategoryIcon } from './utils/helpers';
 import { ChannelCard, MatchCard } from './components/Cards';
 
 export default function Home() {
-  // 🟢 কোনো LocalStorage নেই, সবসময় ডিফল্ট 'Live Events' থাকবে
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<'Sports' | 'Live Events' | 'Categories'>('Live Events');
   const [activeCategory, setActiveCategory] = useState('All'); 
   const [activeFilter, setActiveFilter] = useState('All');
@@ -16,16 +17,29 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
 
+  // 🟢 ১. ব্রাউজার ব্যাক/ফরওয়ার্ড হিস্ট্রি ট্র্যাক করার লজিক (ধাপে ধাপে ব্যাক করার জন্য)
   useEffect(() => {
     setMounted(true);
-    const timer = setInterval(() => setCurrentTime(new Date()), 5000);
-    return () => clearInterval(timer);
+
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab') || 'Live Events';
+      if (tab === 'Sports' || tab === 'Live Events' || tab === 'Categories') {
+        setActiveTab(tab as any);
+      }
+    };
+
+    handlePopState(); // মাউন্ট হওয়ার সময় রান হবে
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
+  // 🟢 ২. ট্যাব চেঞ্জ হলে ব্রাউজার হিস্ট্রি স্ট্যাকে পুশ করার ফাংশন
   const handleTabChange = (tab: 'Sports' | 'Live Events' | 'Categories') => {
     setActiveTab(tab);
     setSearchInp('');
     setShowSearch(false);
+    router.push(`/?tab=${encodeURIComponent(tab)}`); // ধাপে ধাপে ব্যাক ট্র্যাকিং ইউআরএল
   };
 
   const handleShare = async () => {
@@ -204,9 +218,9 @@ export default function Home() {
         )}
       </div>
 
+      {/* Mobile Menu */}
       <div className="md:hidden fixed bottom-0 left-0 w-full bg-[#1C1E2B] border-t border-gray-800/80 pb-safe z-[60]">
         <div className="max-w-md mx-auto flex justify-between items-center h-[60px] px-6 relative">
-          
           <button onClick={() => handleTabChange('Sports')} className={`flex flex-col items-center justify-center w-16 gap-1 outline-none transition-colors ${activeTab === 'Sports' ? 'text-[#00E5FF]' : 'text-gray-500 hover:text-gray-300'}`}>
             <div className={`p-1.5 rounded-full ${activeTab === 'Sports' ? 'bg-[#2A2D3E] shadow-inner' : 'bg-transparent'}`}>
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
@@ -227,7 +241,6 @@ export default function Home() {
             </div>
             <span className="text-[10px] font-bold">Categories</span>
           </button>
-
         </div>
       </div>
 
@@ -235,10 +248,7 @@ export default function Home() {
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
-        a[href*="t.me"], a[href*="telegram"], .telegram-widget, .floating-btn {
-          bottom: 85px !important;
-          z-index: 50 !important;
-        }
+        a[href*="t.me"], a[href*="telegram"], .telegram-widget, .floating-btn { bottom: 85px !important; z-index: 50 !important; }
       `}} />
     </main>
   );
