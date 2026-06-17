@@ -18,10 +18,10 @@ export default function PlaylistPage() {
   const { data: m3uData } = useSWR('/api/m3u', fetcher);
   const playlistInfo = m3uData?.channels?.find((c: any) => c.id === id);
 
-  // 🟢 SWR Caching: প্লেলিস্টের কাঁচা ডাটা মেমোরিতে সেভ করে রাখবে, ফলে ব্যাক করলে জিরো লোডিং টাইম লাগবে
+  // 🟢 SWR Caching: TypeScript-এর এরর ফিক্স করা হয়েছে (url: string)
   const { data: rawM3uText } = useSWR(
     playlistInfo?.link || null, 
-    (url) => fetch(url).then(res => res.text()), 
+    (url: string) => fetch(url).then(res => res.text()), 
     { revalidateOnFocus: false, dedupingInterval: 300000 }
   );
 
