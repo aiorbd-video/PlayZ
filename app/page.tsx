@@ -201,7 +201,7 @@ export default function Home() {
     try {
       if (navigator.share) {
         await navigator.share({
-          title: 'GHD Sports - All In One',
+          title: 'All In One Reborn| Bangladesh Fastest Live Sports Network',
           url: window.location.href,
         });
       } else {
@@ -303,7 +303,7 @@ export default function Home() {
         ) : (
           <>
             <div className="flex items-center gap-3">
-              <h1 className="text-xl md:text-2xl font-bold text-[#00E5FF] tracking-wide uppercase">GHD Sports</h1>
+              <h1 className="text-xl md:text-2xl font-bold text-[#00E5FF] tracking-wide uppercase">All in one </h1>
             </div>
 
             <div className="hidden md:flex items-center gap-2 bg-[#11131A] p-1 rounded-full border border-gray-800/80 shadow-inner">
