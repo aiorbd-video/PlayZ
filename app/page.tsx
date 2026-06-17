@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import useSWR from 'swr';
 import { motion } from 'framer-motion';
+
+// 🟢 আলাদা করা ফাইলগুলো থেকে ফাংশন ও কার্ড ইমপোর্ট করা হচ্ছে
 import { MATCH_API, fetcher, getMatchStatus, getCategoryIcon } from './utils/helpers';
 import { ChannelCard, MatchCard } from './components/Cards';
 
@@ -25,7 +27,7 @@ export default function Home() {
     try {
       if (navigator.share) {
         await navigator.share({
-          title: 'GHD Sports - All In One',
+          title: 'All In One Reborn - Live Sports',
           url: window.location.href,
         });
       } else {
@@ -33,7 +35,7 @@ export default function Home() {
         alert('Link copied to clipboard!');
       }
     } catch (err) {
-      console.log('Share error', err);
+      console.log('Share canceled or error', err);
     }
   };
 
@@ -126,7 +128,7 @@ export default function Home() {
         ) : (
           <>
             <div className="flex items-center gap-3">
-              <h1 className="text-xl md:text-2xl font-bold text-[#00E5FF] tracking-wide uppercase">GHD Sports</h1>
+              <h1 className="text-xl md:text-2xl font-bold text-[#00E5FF] tracking-wide uppercase">All In One Reborn</h1>
             </div>
 
             <div className="hidden md:flex items-center gap-2 bg-[#11131A] p-1 rounded-full border border-gray-800/80 shadow-inner">
