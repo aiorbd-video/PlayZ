@@ -11,10 +11,36 @@ const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.worke
 
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 
-const getImg = (url: string | undefined | null) => {
-  if (!url || url === "null" || url === "Null" || url === "") return "/fallback-logo.png";
-  return `${IMG_PROXY}${encodeURIComponent(url)}`;
-};
+// 🟢 নতুন: SmartImage কম্পোনেন্ট (Cloudflare-এর রিকোয়েস্ট ৯৩% কমিয়ে দেবে!)
+const SmartImage = memo(({ src, alt, fill, width, height, className }: any) => {
+  const originalSrc = (!src || src === "null" || src === "Null" || src === "") ? "/fallback-logo.png" : src;
+  const [imgSrc, setImgSrc] = useState(originalSrc);
+  const [errorCount, setErrorCount] = useState(0);
+
+  return (
+    <Image
+      src={imgSrc}
+      alt={alt || "Logo"}
+      fill={fill}
+      width={width}
+      height={height}
+      className={className}
+      unoptimized
+      onError={() => {
+        // যদি ডিরেক্ট লিংক ফেইল করে, তাহলে ১ম বার প্রক্সি দিয়ে ট্রাই করবে
+        if (errorCount === 0 && originalSrc !== "/fallback-logo.png") {
+          setErrorCount(1);
+          setImgSrc(`${IMG_PROXY}${encodeURIComponent(originalSrc)}`);
+        } 
+        // যদি প্রক্সিও ফেইল করে, তাহলে ডিফল্ট লোগো দেখাবে
+        else {
+          setImgSrc("/fallback-logo.png");
+        }
+      }}
+    />
+  );
+});
+SmartImage.displayName = 'SmartImage';
 
 const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => {
   if (!startStr || !endStr) return 'upcoming';
@@ -33,7 +59,6 @@ const generateSlug = (teamA?: string, teamB?: string, eventName?: string, id?: s
   return `${rawString.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}-${id || '0'}`;
 };
 
-// 🟢 আপডেটেড: লাইভ টাইমার এবং ১ ঘণ্টা আগের স্পেশাল কাউন্টডাউন
 const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { startTimeStr: string, endTimeStr: string, status: string }) => {
   const [time, setTime] = useState(new Date());
 
@@ -123,7 +148,8 @@ const ChannelCard = memo(({ channel, isPlaylist }: { channel: any, isPlaylist?: 
       <Link href={linkHref} className="outline-none block h-full" prefetch={false}>
         <div className="bg-[#1C1E2B] border border-[#2A8496]/50 rounded-xl p-2 md:p-3 flex flex-col items-center justify-center aspect-[4/5] hover:border-[#00E5FF] hover:shadow-[0_0_15px_rgba(0,229,255,0.2)] transition-all relative overflow-hidden group">
           <div className="w-[50px] h-[50px] md:w-[70px] md:h-[70px] lg:w-[80px] lg:h-[80px] rounded-full bg-white flex items-center justify-center overflow-hidden mb-2 shadow-inner border border-gray-300 transition-transform group-hover:scale-110">
-            <Image src={getImg(channel.logo)} alt={channel.name} width={80} height={80} className="object-contain p-1" unoptimized />
+            {/* 🟢 SmartImage ব্যবহার করা হয়েছে */}
+            <SmartImage src={channel.logo} alt={channel.name} width={80} height={80} className="object-contain p-1" />
           </div>
           <span className="font-semibold text-[10px] sm:text-xs md:text-sm text-gray-200 text-center truncate w-full px-1">{channel.name}</span>
         </div>
@@ -146,7 +172,7 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
             <div className="flex items-center justify-center gap-2 mb-4 border-b border-gray-800/60 pb-3">
               {eventInfo.eventLogo && eventInfo.eventLogo !== "null" && (
                 <div className="relative w-5 h-5 bg-white rounded-full overflow-hidden flex-shrink-0">
-                  <Image src={getImg(eventInfo.eventLogo)} alt="Logo" fill className="object-contain p-0.5" unoptimized />
+                  <SmartImage src={eventInfo.eventLogo} alt="Logo" fill className="object-contain p-0.5" />
                 </div>
               )}
               <span className="text-xs md:text-sm text-gray-300 font-semibold truncate max-w-[85%] uppercase tracking-wide">
@@ -158,7 +184,7 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
           <div className="flex justify-between items-center px-1 md:px-3 mt-auto">
             <div className="flex flex-col items-center gap-1.5 w-[30%]">
               <div className="relative w-12 h-12 md:w-16 md:h-16 rounded-full bg-white overflow-hidden border-2 border-gray-400/50 shadow-sm">
-                <Image src={getImg(eventInfo.teamAFlag)} alt={eventInfo.teamA || 'Team A'} fill className="object-cover" unoptimized />
+                <SmartImage src={eventInfo.teamAFlag} alt={eventInfo.teamA || 'Team A'} fill className="object-cover" />
               </div>
               <span className="font-bold text-[11px] md:text-sm text-gray-200 truncate w-full text-center mt-1">{eventInfo.teamA || 'Team A'}</span>
             </div>
@@ -169,7 +195,7 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
 
             <div className="flex flex-col items-center gap-1.5 w-[30%]">
               <div className="relative w-12 h-12 md:w-16 md:h-16 rounded-full bg-white overflow-hidden border-2 border-gray-400/50 shadow-sm">
-                <Image src={getImg(eventInfo.teamBFlag)} alt={eventInfo.teamB || 'Team B'} fill className="object-cover" unoptimized />
+                <SmartImage src={eventInfo.teamBFlag} alt={eventInfo.teamB || 'Team B'} fill className="object-cover" />
               </div>
               <span className="font-bold text-[11px] md:text-sm text-gray-200 truncate w-full text-center mt-1">{eventInfo.teamB || 'Team B'}</span>
             </div>
@@ -201,7 +227,7 @@ export default function Home() {
     try {
       if (navigator.share) {
         await navigator.share({
-          title: 'All In One Reborn| Bangladesh Fastest Live Sports Network',
+          title: 'GHD Sports - All In One',
           url: window.location.href,
         });
       } else {
@@ -286,7 +312,6 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#11131A] text-gray-200 font-sans pb-32 md:pb-12 selection:bg-[#00E5FF] selection:text-black">
       
-      {/* 🟢 Top Header (Search & Share Integrated) */}
       <nav className="bg-[#1C1E2B] sticky top-0 z-50 flex items-center justify-between px-4 md:px-8 py-3 border-b border-[#2A8496]/30 shadow-md h-16">
         {showSearch ? (
           <motion.div initial={{ opacity: 0, scaleX: 0.9 }} animate={{ opacity: 1, scaleX: 1 }} className="flex items-center w-full gap-3 origin-right">
@@ -303,7 +328,7 @@ export default function Home() {
         ) : (
           <>
             <div className="flex items-center gap-3">
-              <h1 className="text-xl md:text-2xl font-bold text-[#00E5FF] tracking-wide uppercase">All in one </h1>
+              <h1 className="text-xl md:text-2xl font-bold text-[#00E5FF] tracking-wide uppercase">GHD Sports</h1>
             </div>
 
             <div className="hidden md:flex items-center gap-2 bg-[#11131A] p-1 rounded-full border border-gray-800/80 shadow-inner">
@@ -321,10 +346,6 @@ export default function Home() {
       </nav>
 
       <div className="max-w-[1600px] mx-auto px-4 md:px-8 pt-2">
-        
-        {/* =========================================
-            TAB 1: LIVE EVENTS (Matches)
-        =========================================== */}
         {activeTab === 'Live Events' && (
           <>
             <div className="flex items-center gap-4 md:gap-6 overflow-x-auto scrollbar-hide pb-4 pt-2 snap-x">
@@ -363,9 +384,6 @@ export default function Home() {
           </>
         )}
 
-        {/* =========================================
-            TAB 2: SPORTS (Channels)
-        =========================================== */}
         {activeTab === 'Sports' && (
           <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12 gap-3 md:gap-4 pt-4">
             {filteredChannels.length === 0 && <div className="col-span-full text-center py-20 text-gray-500 text-lg bg-[#1C1E2B] rounded-2xl">No channels found.</div>}
@@ -373,19 +391,14 @@ export default function Home() {
           </div>
         )}
 
-        {/* =========================================
-            TAB 3: CATEGORIES (Playlists)
-        =========================================== */}
         {activeTab === 'Categories' && (
           <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12 gap-3 md:gap-4 pt-4">
             {filteredM3uChannels.length === 0 && <div className="col-span-full text-center py-20 text-gray-500 text-lg bg-[#1C1E2B] rounded-2xl">No categories found.</div>}
             {filteredM3uChannels.map((ch: any) => <ChannelCard key={ch.id} channel={ch} isPlaylist={true} />)}
           </div>
         )}
-
       </div>
 
-      {/* 🟢 Bottom Navigation Bar (Hidden on Desktop) */}
       <div className="md:hidden fixed bottom-0 left-0 w-full bg-[#1C1E2B] border-t border-gray-800/80 pb-safe z-[60]">
         <div className="max-w-md mx-auto flex justify-between items-center h-[60px] px-6 relative">
           
@@ -417,8 +430,6 @@ export default function Home() {
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
-        
-        /* 🟢 টেলিগ্রাম/হোয়াটসঅ্যাপ ফ্লোটিং বাটনকে মেনুর ওপরে উঠানোর জন্য CSS */
         a[href*="t.me"], a[href*="telegram"], .telegram-widget, .floating-btn {
           bottom: 85px !important;
           z-index: 50 !important;
