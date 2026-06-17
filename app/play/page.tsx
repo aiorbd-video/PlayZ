@@ -141,7 +141,6 @@ function PlayerContent() {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {filteredChannels.map((ch, index) => (
                 <motion.div key={index} initial={{ opacity: 0 }} animate={{ opacity: 1 }} whileTap={{ scale: 0.95 }}>
-                  {/* 🟢 এখানে replace যোগ করা হয়েছে */}
                   <Link replace href={`/play?url=${encodeURIComponent(ch.link)}&title=${encodeURIComponent(ch.name)}&playlistId=${playlistId}`} className="outline-none">
                     <div className={`bg-[#1C1E2B] border rounded-[20px] p-5 flex flex-col items-center justify-center gap-3 transition-all duration-300 hover:border-[#00E5FF]/60 hover:shadow-[0_4px_20px_rgba(0,229,255,0.1)] h-full min-h-[140px] group ${ch.link === streamUrl ? 'border-[#00E5FF] ring-1 ring-[#00E5FF]/30' : 'border-gray-800/80'}`}>
                       <div className="w-14 h-14 rounded-full bg-black/40 border border-gray-700/50 p-1 flex items-center justify-center overflow-hidden transition-transform group-hover:scale-110 relative">
@@ -166,5 +165,19 @@ function PlayerContent() {
         .shaka-stretch-button:hover { opacity: 1; }
       `}} />
     </main>
+  );
+}
+
+// 🟢 এই ডিফল্ট এক্সপোর্টটি নিচে না থাকায় আগেরবার এরর এসেছিল
+export default function PlayPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-[#11131A] flex flex-col items-center justify-center text-[#00E5FF]">
+         <div className="w-12 h-12 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin mb-4"></div>
+         <p className="animate-pulse font-bold">Loading Player...</p>
+      </div>
+    }>
+      <PlayerContent />
+    </Suspense>
   );
 }
