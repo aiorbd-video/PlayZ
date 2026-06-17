@@ -33,7 +33,6 @@ const generateSlug = (teamA?: string, teamB?: string, eventName?: string, id?: s
   return `${rawString.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}-${id || '0'}`;
 };
 
-// 🟢 হুবহু অ্যাপের মত কাউন্টডাউন ও স্ট্যাটাস
 const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { startTimeStr: string, endTimeStr: string, status: string }) => {
   const [time, setTime] = useState(new Date());
 
@@ -51,7 +50,7 @@ const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { startTimeSt
   if (status === 'live') {
     return (
       <div className="flex flex-col items-center justify-center gap-1">
-        <span className="text-red-500 text-lg animate-pulse">((•))</span>
+        <span className="text-red-500 text-lg md:text-xl animate-pulse drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]">((•))</span>
         <span className="text-red-500 text-[10px] md:text-xs font-bold tracking-wide uppercase">Live</span>
       </div>
     );
@@ -70,17 +69,16 @@ const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { startTimeSt
 
   return (
     <div className="flex flex-col items-center justify-center w-full">
-      <div className="text-gray-200 text-sm font-bold tracking-wide">{timeStr}</div>
-      <div className="text-[#00E5FF] text-[10px] font-bold mt-0.5">{dateStr}</div>
-      <div className="text-gray-300 text-[10px] mt-2 font-semibold">
-        Match Starting in {diffHours > 0 ? `${diffHours} Hours` : `${diffMins} Minutes`}
+      <div className="text-gray-200 text-sm md:text-base font-bold tracking-wide">{timeStr}</div>
+      <div className="text-[#00E5FF] text-[10px] md:text-xs font-bold mt-0.5">{dateStr}</div>
+      <div className="text-gray-300 text-[10px] md:text-xs mt-2 font-semibold">
+        Starting in {diffHours > 0 ? `${diffHours} Hours` : `${diffMins} Minutes`}
       </div>
     </div>
   );
 });
 MatchCountdown.displayName = 'MatchCountdown';
 
-// 🟢 ক্যাটাগরি আইকন (অ্যাপের মত)
 const getCategoryIcon = (cat: string) => {
   if (cat === 'All') return "🎧";
   const lowerCat = cat.toLowerCase();
@@ -93,18 +91,18 @@ const getCategoryIcon = (cat: string) => {
   return "🏆";
 };
 
-// 🟢 ৪-কলামের স্কয়ার চ্যানেল কার্ড (Image 2 & 3 এর মত)
+// 🟢 Channel Card (Responsive App-like Square)
 const ChannelCard = memo(({ channel, isPlaylist }: { channel: any, isPlaylist?: boolean }) => {
   const linkHref = isPlaylist ? `/playlist/${channel.id}` : `/tv/${channel.id}`;
 
   return (
-    <motion.div whileTap={{ scale: 0.95 }}>
-      <Link href={linkHref} className="outline-none block" prefetch={false}>
-        <div className="bg-[#1C1E2B] border border-[#2A8496]/50 rounded-xl p-2 flex flex-col items-center justify-center aspect-[4/5] hover:border-[#00E5FF] transition-colors relative overflow-hidden">
-          <div className="w-[50px] h-[50px] sm:w-[60px] sm:h-[60px] rounded-full bg-white flex items-center justify-center overflow-hidden mb-2 shadow-inner border border-gray-300">
-            <Image src={getImg(channel.logo)} alt={channel.name} width={50} height={50} className="object-contain p-1" unoptimized />
+    <motion.div whileTap={{ scale: 0.95 }} className="w-full">
+      <Link href={linkHref} className="outline-none block h-full" prefetch={false}>
+        <div className="bg-[#1C1E2B] border border-[#2A8496]/50 rounded-xl p-2 md:p-3 flex flex-col items-center justify-center aspect-[4/5] hover:border-[#00E5FF] hover:shadow-[0_0_15px_rgba(0,229,255,0.2)] transition-all relative overflow-hidden group">
+          <div className="w-[50px] h-[50px] md:w-[70px] md:h-[70px] lg:w-[80px] lg:h-[80px] rounded-full bg-white flex items-center justify-center overflow-hidden mb-2 shadow-inner border border-gray-300 transition-transform group-hover:scale-110">
+            <Image src={getImg(channel.logo)} alt={channel.name} width={80} height={80} className="object-contain p-1" unoptimized />
           </div>
-          <span className="font-semibold text-[10px] sm:text-xs text-gray-200 text-center truncate w-full px-1">{channel.name}</span>
+          <span className="font-semibold text-[10px] sm:text-xs md:text-sm text-gray-200 text-center truncate w-full px-1">{channel.name}</span>
         </div>
       </Link>
     </motion.div>
@@ -112,51 +110,46 @@ const ChannelCard = memo(({ channel, isPlaylist }: { channel: any, isPlaylist?: 
 });
 ChannelCard.displayName = 'ChannelCard';
 
-// 🟢 হুবহু অ্যাপের মত লাইভ ম্যাচ কার্ড (Image 1 এর মত)
+// 🟢 Match Card (Responsive Grid Ready)
 const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
   const eventInfo = match.eventInfo || {};
   const slugLink = generateSlug(eventInfo.teamA, eventInfo.teamB, eventInfo.eventName, match.id);
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileTap={{ scale: 0.98 }}>
-      <Link href={`/watch/${slugLink}`} className="outline-none block mb-3" prefetch={false}>
-        <div className="bg-[#1C1E2B] border border-[#2A8496]/70 rounded-[16px] p-3 transition-colors hover:border-[#00E5FF]">
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileTap={{ scale: 0.98 }} className="h-full">
+      <Link href={`/watch/${slugLink}`} className="outline-none block h-full" prefetch={false}>
+        <div className="bg-[#1C1E2B] border border-[#2A8496]/70 rounded-[16px] p-4 transition-all hover:border-[#00E5FF] hover:shadow-[0_4px_20px_rgba(0,229,255,0.15)] h-full flex flex-col justify-between">
           
-          {/* Top Row: League Info */}
           {(eventInfo.eventCat || eventInfo.eventName) && (
-            <div className="flex items-center justify-center gap-1.5 mb-3 border-b border-gray-800/50 pb-2">
+            <div className="flex items-center justify-center gap-2 mb-4 border-b border-gray-800/60 pb-3">
               {eventInfo.eventLogo && eventInfo.eventLogo !== "null" && (
-                <div className="relative w-4 h-4 bg-white rounded-full overflow-hidden flex-shrink-0">
+                <div className="relative w-5 h-5 bg-white rounded-full overflow-hidden flex-shrink-0">
                   <Image src={getImg(eventInfo.eventLogo)} alt="Logo" fill className="object-contain p-0.5" unoptimized />
                 </div>
               )}
-              <span className="text-[11px] text-gray-300 font-semibold truncate max-w-[90%] uppercase">
+              <span className="text-xs md:text-sm text-gray-300 font-semibold truncate max-w-[85%] uppercase tracking-wide">
                 {[eventInfo.eventCat, eventInfo.eventName].filter(Boolean).join(' | ')}
               </span>
             </div>
           )}
 
-          {/* Middle Row: Teams & Score/Time */}
-          <div className="flex justify-between items-center px-2">
-            {/* Team A */}
-            <div className="flex flex-col items-center gap-1 w-[30%]">
-              <div className="relative w-10 h-10 rounded-full bg-white overflow-hidden border border-gray-400 shadow-sm">
+          <div className="flex justify-between items-center px-1 md:px-3 mt-auto">
+            <div className="flex flex-col items-center gap-1.5 w-[30%]">
+              <div className="relative w-12 h-12 md:w-16 md:h-16 rounded-full bg-white overflow-hidden border-2 border-gray-400/50 shadow-sm">
                 <Image src={getImg(eventInfo.teamAFlag)} alt={eventInfo.teamA || 'Team A'} fill className="object-cover" unoptimized />
               </div>
-              <span className="font-bold text-[10px] sm:text-xs text-gray-200 truncate w-full text-center mt-1">{eventInfo.teamA || 'Team A'}</span>
+              <span className="font-bold text-[11px] md:text-sm text-gray-200 truncate w-full text-center mt-1">{eventInfo.teamA || 'Team A'}</span>
             </div>
 
-            {/* Center: Time or Live */}
             <div className="w-[40%] flex flex-col justify-center items-center">
               <MatchCountdown startTimeStr={eventInfo.startTime} endTimeStr={eventInfo.endTime} status={status} />
             </div>
 
-            {/* Team B */}
-            <div className="flex flex-col items-center gap-1 w-[30%]">
-              <div className="relative w-10 h-10 rounded-full bg-white overflow-hidden border border-gray-400 shadow-sm">
+            <div className="flex flex-col items-center gap-1.5 w-[30%]">
+              <div className="relative w-12 h-12 md:w-16 md:h-16 rounded-full bg-white overflow-hidden border-2 border-gray-400/50 shadow-sm">
                 <Image src={getImg(eventInfo.teamBFlag)} alt={eventInfo.teamB || 'Team B'} fill className="object-cover" unoptimized />
               </div>
-              <span className="font-bold text-[10px] sm:text-xs text-gray-200 truncate w-full text-center mt-1">{eventInfo.teamB || 'Team B'}</span>
+              <span className="font-bold text-[11px] md:text-sm text-gray-200 truncate w-full text-center mt-1">{eventInfo.teamB || 'Team B'}</span>
             </div>
           </div>
 
@@ -188,7 +181,6 @@ export default function Home() {
   const channels = channelData?.channels || [];
   const m3uChannels = m3uData?.channels || [];
 
-  // Live Events Categories
   const dynamicCategories = useMemo(() => {
     const list = ['All'];
     if (matches && Array.isArray(matches)) {
@@ -253,69 +245,75 @@ export default function Home() {
   if (!mounted) return null;
 
   return (
-    <main className="min-h-screen bg-[#11131A] text-gray-200 font-sans pb-24 selection:bg-[#00E5FF] selection:text-black">
+    <main className="min-h-screen bg-[#11131A] text-gray-200 font-sans pb-24 md:pb-10 selection:bg-[#00E5FF] selection:text-black">
       
-      {/* 🟢 Top Header (Fixed) */}
-      <nav className="bg-[#1C1E2B] sticky top-0 z-50 flex items-center justify-between px-4 py-3 border-b border-[#2A8496]/30 shadow-md">
-        <div className="flex items-center gap-4">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
-          <h1 className="text-xl font-semibold text-gray-100">{activeTab === 'Live Events' ? 'GHD Sports' : activeTab}</h1>
+      {/* 🟢 Top Header (Responsive: Adds Desktop Tabs) */}
+      <nav className="bg-[#1C1E2B] sticky top-0 z-50 flex items-center justify-between px-4 md:px-8 py-3 border-b border-[#2A8496]/30 shadow-md">
+        <div className="flex items-center gap-3 md:gap-4">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-300 md:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+          <h1 className="text-xl md:text-2xl font-bold text-[#00E5FF] tracking-wide uppercase">All In One</h1>
         </div>
-        <div className="flex items-center gap-4 text-gray-300">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+
+        {/* Desktop Tabs (Hidden on Mobile) */}
+        <div className="hidden md:flex items-center gap-2 bg-[#11131A] p-1 rounded-full border border-gray-800/80 shadow-inner">
+          <button onClick={() => { setActiveTab('Sports'); setSearchInp(''); }} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${activeTab === 'Sports' ? 'bg-[#2A2D3E] text-[#00E5FF] shadow-md' : 'text-gray-400 hover:text-gray-200'}`}>Sports</button>
+          <button onClick={() => { setActiveTab('Live Events'); setSearchInp(''); }} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${activeTab === 'Live Events' ? 'bg-[#3A3C52] text-white shadow-md ring-1 ring-[#00E5FF]/50' : 'text-gray-400 hover:text-gray-200'}`}>Live Events</button>
+          <button onClick={() => { setActiveTab('Categories'); setSearchInp(''); }} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${activeTab === 'Categories' ? 'bg-[#2A2D3E] text-[#00E5FF] shadow-md' : 'text-gray-400 hover:text-gray-200'}`}>Playlists</button>
+        </div>
+
+        <div className="flex items-center gap-3 md:gap-5 text-gray-300">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 md:h-6 md:w-6 hover:text-[#00E5FF] cursor-pointer transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 md:h-6 md:w-6 hover:text-[#00E5FF] cursor-pointer transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" /></svg>
         </div>
       </nav>
 
       {/* 🟢 Search Input (Global) */}
-      <div className="px-4 py-3">
+      <div className="max-w-[1600px] mx-auto px-4 md:px-8 py-4">
         <input 
           type="text" 
-          placeholder="Search..." 
+          placeholder={`Search ${activeTab.toLowerCase()}...`} 
           value={searchInp}
           onChange={(e) => setSearchInp(e.target.value)}
-          className="w-full bg-[#1C1E2B] border border-gray-700/50 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-[#00E5FF] text-white"
+          className="w-full bg-[#1C1E2B] border border-gray-700/50 rounded-xl px-5 py-3 text-sm md:text-base focus:outline-none focus:border-[#00E5FF] focus:ring-1 focus:ring-[#00E5FF]/30 text-white shadow-inner transition-all"
         />
       </div>
 
-      <div className="max-w-7xl mx-auto px-4">
+      <div className="max-w-[1600px] mx-auto px-4 md:px-8">
         
         {/* =========================================
             TAB 1: LIVE EVENTS (Matches)
         =========================================== */}
         {activeTab === 'Live Events' && (
           <>
-            {/* Top Categories Scroll (All, Cricket, Football...) */}
-            <div className="flex items-center gap-4 overflow-x-auto scrollbar-hide pb-4 pt-2 snap-x">
+            <div className="flex items-center gap-4 md:gap-6 overflow-x-auto scrollbar-hide pb-4 pt-2 snap-x">
               {dynamicCategories.map((cat) => (
-                <button key={cat} onClick={() => { setActiveCategory(cat); setActiveFilter('All'); }} className="flex flex-col items-center gap-1 min-w-[50px] snap-center outline-none group">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl transition-all border ${activeCategory === cat ? 'border-[#00E5FF] bg-[#1C1E2B] shadow-[0_0_10px_rgba(0,229,255,0.3)]' : 'border-gray-700 bg-[#1C1E2B] group-hover:border-gray-500'}`}>
+                <button key={cat} onClick={() => { setActiveCategory(cat); setActiveFilter('All'); }} className="flex flex-col items-center gap-1.5 md:gap-2 min-w-[55px] md:min-w-[70px] snap-center outline-none group">
+                  <div className={`w-14 h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center text-2xl md:text-3xl transition-all border ${activeCategory === cat ? 'border-[#00E5FF] bg-[#1C1E2B] shadow-[0_0_15px_rgba(0,229,255,0.3)] scale-110' : 'border-gray-700 bg-[#1C1E2B] group-hover:border-gray-500 group-hover:bg-gray-800'}`}>
                     {getCategoryIcon(cat)}
                   </div>
-                  <span className={`text-[10px] font-semibold ${activeCategory === cat ? 'text-white' : 'text-gray-400'}`}>{cat}</span>
+                  <span className={`text-[10px] md:text-xs font-bold ${activeCategory === cat ? 'text-[#00E5FF]' : 'text-gray-400 group-hover:text-gray-200'}`}>{cat}</span>
                 </button>
               ))}
             </div>
 
-            {/* Filter Pills (All, Live, Recent, Upcoming) */}
-            <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-4 mb-2">
+            <div className="flex items-center gap-2.5 md:gap-4 overflow-x-auto scrollbar-hide pb-5 mb-2 mt-2">
               {filters.map((f) => (
-                <button key={f.id} onClick={() => setActiveFilter(f.id)} className={`px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors flex items-center gap-1 border ${activeFilter === f.id ? 'bg-[#1C1E2B] border-[#00E5FF] text-white' : 'bg-transparent border-gray-600 text-gray-400 hover:text-white hover:border-gray-400'}`}>
+                <button key={f.id} onClick={() => setActiveFilter(f.id)} className={`px-5 py-2 md:py-2.5 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all flex items-center gap-1.5 border ${activeFilter === f.id ? 'bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)]' : 'bg-[#11131A] border-gray-700 text-gray-400 hover:text-white hover:border-gray-500'}`}>
                   {f.id === 'All' && activeFilter === 'All' && <span className="text-[#00E5FF]">✓</span>}
                   {f.label}
                 </button>
               ))}
             </div>
 
-            {/* Match List */}
+            {/* 🟢 Responsive Grid For Match Cards (Desktop: 2, 3 or 4 columns) */}
             {!matches ? (
-              <div className="animate-pulse space-y-3"><div className="h-32 bg-[#1C1E2B] rounded-xl border border-gray-800"></div><div className="h-32 bg-[#1C1E2B] rounded-xl border border-gray-800"></div></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                 {[1,2,3,4].map(i => <div key={i} className="h-40 bg-[#1C1E2B] rounded-2xl border border-gray-800 animate-pulse"></div>)}
+              </div>
             ) : processedMatches.length === 0 ? (
-              <div className="text-center py-10 text-gray-500 text-sm">No matches found.</div>
+              <div className="text-center py-20 text-gray-500 text-lg font-semibold bg-[#1C1E2B] rounded-2xl border border-gray-800/50">No matches found.</div>
             ) : (
-              <div className="flex flex-col gap-0">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 md:gap-5">
                 {processedMatches.map((match: any) => (
                   <MatchCard key={match.id} match={match} status={getMatchStatus(match.eventInfo?.startTime, match.eventInfo?.endTime, currentTime)} />
                 ))}
@@ -325,50 +323,50 @@ export default function Home() {
         )}
 
         {/* =========================================
-            TAB 2: SPORTS (Custom Channels)
+            TAB 2: SPORTS (Channels - Responsive Grid)
         =========================================== */}
         {activeTab === 'Sports' && (
-          <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2 pt-2">
-            {filteredChannels.length === 0 && <div className="col-span-full text-center py-10 text-gray-500">No channels found.</div>}
+          <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12 gap-3 md:gap-4 pt-4">
+            {filteredChannels.length === 0 && <div className="col-span-full text-center py-20 text-gray-500 text-lg bg-[#1C1E2B] rounded-2xl">No channels found.</div>}
             {filteredChannels.map((ch: any) => <ChannelCard key={ch.id} channel={ch} />)}
           </div>
         )}
 
         {/* =========================================
-            TAB 3: CATEGORIES (M3U Playlists)
+            TAB 3: CATEGORIES (Playlists - Responsive Grid)
         =========================================== */}
         {activeTab === 'Categories' && (
-          <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-2 pt-2">
-            {filteredM3uChannels.length === 0 && <div className="col-span-full text-center py-10 text-gray-500">No categories found.</div>}
+          <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12 gap-3 md:gap-4 pt-4">
+            {filteredM3uChannels.length === 0 && <div className="col-span-full text-center py-20 text-gray-500 text-lg bg-[#1C1E2B] rounded-2xl">No categories found.</div>}
             {filteredM3uChannels.map((ch: any) => <ChannelCard key={ch.id} channel={ch} isPlaylist={true} />)}
           </div>
         )}
 
       </div>
 
-      {/* 🟢 Bottom Navigation Bar (Fixed) */}
-      <div className="fixed bottom-0 left-0 w-full bg-[#1C1E2B] border-t border-gray-800/80 pb-safe z-50">
+      {/* 🟢 Bottom Navigation Bar (Hidden on Desktop/Tablet md:hidden) */}
+      <div className="md:hidden fixed bottom-0 left-0 w-full bg-[#1C1E2B] border-t border-gray-800/80 pb-safe z-50">
         <div className="max-w-md mx-auto flex justify-between items-center h-[60px] px-6">
           
-          <button onClick={() => { setActiveTab('Sports'); setSearchInp(''); }} className={`flex flex-col items-center justify-center w-16 gap-1 outline-none transition-colors ${activeTab === 'Sports' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
-            <div className={`p-1.5 rounded-full ${activeTab === 'Sports' ? 'bg-[#2A2D3E]' : 'bg-transparent'}`}>
+          <button onClick={() => { setActiveTab('Sports'); setSearchInp(''); }} className={`flex flex-col items-center justify-center w-16 gap-1 outline-none transition-colors ${activeTab === 'Sports' ? 'text-[#00E5FF]' : 'text-gray-500 hover:text-gray-300'}`}>
+            <div className={`p-1.5 rounded-full ${activeTab === 'Sports' ? 'bg-[#2A2D3E] shadow-inner' : 'bg-transparent'}`}>
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             </div>
-            <span className="text-[10px] font-semibold">Sports</span>
+            <span className="text-[10px] font-bold">Sports</span>
           </button>
 
           <button onClick={() => { setActiveTab('Live Events'); setSearchInp(''); }} className={`flex flex-col items-center justify-center w-20 gap-1 outline-none transition-colors ${activeTab === 'Live Events' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
-            <div className={`p-1.5 rounded-full px-4 ${activeTab === 'Live Events' ? 'bg-[#3A3C52]' : 'bg-transparent'}`}>
+            <div className={`p-1.5 rounded-full px-4 ${activeTab === 'Live Events' ? 'bg-[#3A3C52] border border-[#2A8496]/50' : 'bg-transparent'}`}>
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.521 14.279l-1.042-1.042M18.479 14.279l1.042-1.042M8.343 11.457l-1.042-1.042M15.657 11.457l1.042-1.042M12 15a3 3 0 100-6 3 3 0 000 6z" /></svg>
             </div>
-            <span className="text-[10px] font-semibold">Live Events</span>
+            <span className="text-[10px] font-bold">Live Events</span>
           </button>
 
-          <button onClick={() => { setActiveTab('Categories'); setSearchInp(''); }} className={`flex flex-col items-center justify-center w-16 gap-1 outline-none transition-colors ${activeTab === 'Categories' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}>
-             <div className={`p-1.5 rounded-full ${activeTab === 'Categories' ? 'bg-[#2A2D3E]' : 'bg-transparent'}`}>
+          <button onClick={() => { setActiveTab('Categories'); setSearchInp(''); }} className={`flex flex-col items-center justify-center w-16 gap-1 outline-none transition-colors ${activeTab === 'Categories' ? 'text-[#00E5FF]' : 'text-gray-500 hover:text-gray-300'}`}>
+             <div className={`p-1.5 rounded-full ${activeTab === 'Categories' ? 'bg-[#2A2D3E] shadow-inner' : 'bg-transparent'}`}>
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
             </div>
-            <span className="text-[10px] font-semibold">Categories</span>
+            <span className="text-[10px] font-bold">Categories</span>
           </button>
 
         </div>
