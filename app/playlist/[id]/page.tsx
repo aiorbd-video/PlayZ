@@ -1,123 +1,89 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useState, useMemo, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import Link from 'next/link';
-import Image from 'next/image';
 import { motion } from 'framer-motion';
-
-const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
-
-const fetcher = (url: string) => fetch(url).then(res => res.json());
-
-const getImg = (url: string | undefined | null) => {
-  if (!url || url === "null" || url === "") return "/fallback-logo.png";
-  return `${IMG_PROXY}${encodeURIComponent(url)}`;
-};
+import { fetcher } from '../../utils/helpers';
+import { SmartImage } from '../../components/Cards';
 
 export default function PlaylistPage() {
-  const { id } = useParams();
-  const { data, error } = useSWR('/api/m3u', fetcher);
-  
-  const [channels, setChannels] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const params = useParams();
+  const router = useRouter();
+  const id = params.id as string;
   const [searchInp, setSearchInp] = useState('');
+  const [playlistChannels, setPlaylistChannels] = useState<any[]>([]);
 
-  const playlistInfo = data?.channels?.find((c: any) => c.id === id);
+  const { data: m3uData } = useSWR('/api/m3u', fetcher);
+  const playlistInfo = m3uData?.channels?.find((c: any) => c.id === id);
 
-  useEffect(() => {
-    if (!data) return;
-    if (playlistInfo && playlistInfo.link) {
-      // 🟢 M3U ফাইল স্ক্যানার
-      fetch(playlistInfo.link)
-        .then(res => res.text())
-        .then(text => {
-          const lines = text.split('\n');
-          const parsedChannels = [];
-          let currentChannel: any = {};
-
-          for (let line of lines) {
-            line = line.trim();
-            if (line.startsWith('#EXTINF')) {
-              // লোগো খুঁজবে (tvg-logo)
-              const logoMatch = line.match(/tvg-logo="([^"]+)"/);
-              if (logoMatch) currentChannel.logo = logoMatch[1];
-              
-              // নাম খুঁজবে
-              const nameSplit = line.split(',');
-              currentChannel.name = nameSplit[nameSplit.length - 1].trim();
-            } else if (line.startsWith('http')) {
-              currentChannel.link = line;
-              if(currentChannel.name) {
-                 parsedChannels.push(currentChannel);
-              }
-              currentChannel = {}; // Reset for next
-            }
-          }
-          setChannels(parsedChannels);
-          setLoading(false);
-        })
-        .catch(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
-  }, [data, playlistInfo]);
-
-  const filteredChannels = channels.filter(ch => 
-    ch.name.toLowerCase().includes(searchInp.toLowerCase())
+  // 🟢 SWR Caching: প্লেলিস্টের কাঁচা ডাটা মেমোরিতে সেভ করে রাখবে, ফলে ব্যাক করলে জিরো লোডিং টাইম লাগবে
+  const { data: rawM3uText } = useSWR(
+    playlistInfo?.link || null, 
+    (url) => fetch(url).then(res => res.text()), 
+    { revalidateOnFocus: false, dedupingInterval: 300000 }
   );
 
+  useEffect(() => {
+    if (!rawM3uText) return;
+    const lines = rawM3uText.split('\n');
+    const parsedChannels = [];
+    let currentChannel: any = {};
+
+    for (let line of lines) {
+      line = line.trim();
+      if (line.startsWith('#EXTINF')) {
+        const logoMatch = line.match(/tvg-logo="([^"]+)"/);
+        if (logoMatch) currentChannel.logo = logoMatch[1];
+        const nameSplit = line.split(',');
+        currentChannel.name = nameSplit[nameSplit.length - 1].trim();
+      } else if (line.startsWith('http')) {
+        currentChannel.link = line;
+        if (currentChannel.name) parsedChannels.push(currentChannel);
+        currentChannel = {};
+      }
+    }
+    setPlaylistChannels(parsedChannels);
+  }, [rawM3uText]);
+
+  const filteredChannels = useMemo(() => {
+    return playlistChannels.filter(ch => ch.name.toLowerCase().includes(searchInp.toLowerCase()));
+  }, [playlistChannels, searchInp]);
+
   return (
-    <main className="min-h-screen bg-[#11131A] text-white font-sans pb-20">
-      <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
+    <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
+      
+      {/* 🟢 নেভিগেশন বার - router.back() ব্যবহার করা হয়েছে */}
+      <nav className="p-4 bg-[#1C1E2B] sticky top-0 z-50 border-b border-[#2A8496]/30 shadow-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link href="/">
-            <button className="p-2 text-gray-400 hover:text-[#00E5FF] flex items-center gap-2 outline-none">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-              </svg>
-              <span className="font-bold hidden sm:inline">Back</span>
-            </button>
-          </Link>
-          <span className="font-bold text-[#00E5FF] truncate max-w-[150px] sm:max-w-xs">{playlistInfo?.name || "Loading..."}</span>
-          <div className="w-10"></div>
+          <button onClick={() => router.back()} className="text-[#00E5FF] font-bold flex items-center gap-2 outline-none cursor-pointer">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+          </button>
+          <span className="text-lg font-bold text-[#00E5FF] truncate">{playlistInfo?.name || "Loading..."}</span>
+          <div className="w-6"></div>
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-4 mt-6">
-        <div className="mb-6">
-          <input 
-            type="text" 
-            placeholder={`Search from ${channels.length || '...'} channels...`}
-            value={searchInp}
-            onChange={(e) => setSearchInp(e.target.value)}
-            className="bg-[#1C1E2B] border border-gray-800 rounded-xl px-4 py-3 w-full focus:outline-none focus:border-[#00E5FF] text-white"
-          />
-        </div>
+      <div className="max-w-[1600px] mx-auto px-4 md:px-8 mt-6">
+        <input
+          type="text"
+          placeholder={`Search from ${playlistChannels.length || '...'} channels...`}
+          value={searchInp}
+          onChange={(e) => setSearchInp(e.target.value)}
+          className="w-full max-w-md bg-[#1C1E2B] border border-gray-700/50 rounded-xl px-5 py-3 text-sm focus:outline-none focus:border-[#00E5FF] text-white shadow-inner mb-6"
+        />
 
-        {loading && (
-          <div className="flex flex-col items-center justify-center py-20 text-[#00E5FF]">
-            <div className="w-12 h-12 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p className="animate-pulse font-bold">Scanning M3U Playlist...</p>
-          </div>
-        )}
-
-        {!loading && filteredChannels.length === 0 && (
-          <div className="text-center py-10 text-gray-500 font-bold">No channels found.</div>
-        )}
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {filteredChannels.map((ch, index) => (
-            <motion.div key={index} initial={{ opacity: 0 }} animate={{ opacity: 1 }} whileTap={{ scale: 0.95 }}>
-              {/* 🟢 প্লে করার জন্য ইউনিভার্সাল প্লেয়ার পেজে পাঠানো হচ্ছে */}
-              <Link href={`/play?url=${encodeURIComponent(ch.link)}&title=${encodeURIComponent(ch.name)}&playlistId=${id}`} className="outline-none">
-
-                <div className="bg-[#1C1E2B] border border-gray-800/80 rounded-xl p-4 flex flex-col items-center gap-3 hover:border-[#00E5FF]/50 transition-colors">
-                  <div className="w-14 h-14 rounded-full bg-black/40 flex items-center justify-center overflow-hidden p-1">
-                     <Image src={getImg(ch.logo)} alt={ch.name} width={50} height={50} className="object-contain" unoptimized />
+        <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12 gap-3 md:gap-4">
+          {filteredChannels.map((ch, idx) => (
+            <motion.div key={idx} whileTap={{ scale: 0.95 }} className="w-full">
+              {/* 🟢 এখানে সাধারণ Link রাখা হয়েছে, যাতে ব্রাউজার হিস্ট্রি মনে রাখতে পারে */}
+              <Link href={`/play?url=${encodeURIComponent(ch.link)}&title=${encodeURIComponent(ch.name)}&playlistId=${id}`} className="outline-none block h-full">
+                <div className="bg-[#1C1E2B] border border-[#2A8496]/50 rounded-xl p-2 md:p-3 flex flex-col items-center justify-center aspect-[4/5] hover:border-[#00E5FF] hover:shadow-[0_0_15px_rgba(0,229,255,0.2)] transition-all group overflow-hidden">
+                  <div className="w-[50px] h-[50px] md:w-[70px] md:h-[70px] rounded-full bg-white flex items-center justify-center overflow-hidden mb-2 shadow-inner border border-gray-300 transition-transform group-hover:scale-110">
+                    <SmartImage src={ch.logo} alt={ch.name} fill className="object-contain p-1" />
                   </div>
-                  <span className="font-bold text-xs text-gray-200 text-center truncate w-full">{ch.name}</span>
+                  <span className="font-semibold text-[10px] sm:text-xs md:text-sm text-gray-200 text-center truncate w-full px-1">{ch.name}</span>
                 </div>
               </Link>
             </motion.div>
