@@ -3,12 +3,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import useSWR from 'swr';
 import { motion } from 'framer-motion';
-
-// আলাদা করা ফাইলগুলো থেকে ফাংশন ও কার্ড ইমপোর্ট করা হচ্ছে
 import { MATCH_API, fetcher, getMatchStatus, getCategoryIcon } from './utils/helpers';
 import { ChannelCard, MatchCard } from './components/Cards';
 
 export default function Home() {
+  // 🟢 কোনো LocalStorage নেই, সবসময় ডিফল্ট 'Live Events' থাকবে
   const [activeTab, setActiveTab] = useState<'Sports' | 'Live Events' | 'Categories'>('Live Events');
   const [activeCategory, setActiveCategory] = useState('All'); 
   const [activeFilter, setActiveFilter] = useState('All');
@@ -17,26 +16,16 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  // 🟢 ১. ক্লায়েন্ট সাইড মাউন্ট এবং LocalStorage থেকে লাস্ট অ্যাক্টিভ ট্যাব লোড করার লজিক
   useEffect(() => {
     setMounted(true);
-    
-    // ব্রাউজারে আগে কোনো ট্যাব সিলেক্ট করা ছিল কি না তা চেক করবে
-    const savedTab = localStorage.getItem('activeTab');
-    if (savedTab && ['Sports', 'Live Events', 'Categories'].includes(savedTab)) {
-      setActiveTab(savedTab as any);
-    }
-
     const timer = setInterval(() => setCurrentTime(new Date()), 5000);
     return () => clearInterval(timer);
   }, []);
 
-  // 🟢 ২. ট্যাব চেঞ্জ করার সাথে সাথে LocalStorage-এ সেভ করার কাস্টম ফাংশন
   const handleTabChange = (tab: 'Sports' | 'Live Events' | 'Categories') => {
     setActiveTab(tab);
     setSearchInp('');
     setShowSearch(false);
-    localStorage.setItem('activeTab', tab); // ব্রাউজার মেমোরিতে সেভ থাকবে
   };
 
   const handleShare = async () => {
@@ -51,7 +40,7 @@ export default function Home() {
         alert('Link copied to clipboard!');
       }
     } catch (err) {
-      console.log('Share canceled or error', err);
+      console.log('Share error', err);
     }
   };
 
@@ -147,7 +136,6 @@ export default function Home() {
               <h1 className="text-xl md:text-2xl font-bold text-[#00E5FF] tracking-wide uppercase">All In One Reborn</h1>
             </div>
 
-            {/* Desktop Tabs */}
             <div className="hidden md:flex items-center gap-2 bg-[#11131A] p-1 rounded-full border border-gray-800/80 shadow-inner">
               <button onClick={() => handleTabChange('Sports')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${activeTab === 'Sports' ? 'bg-[#2A2D3E] text-[#00E5FF] shadow-md' : 'text-gray-400 hover:text-gray-200'}`}>Sports</button>
               <button onClick={() => handleTabChange('Live Events')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${activeTab === 'Live Events' ? 'bg-[#3A3C52] text-white shadow-md ring-1 ring-[#00E5FF]/50' : 'text-gray-400 hover:text-gray-200'}`}>Live Events</button>
@@ -216,7 +204,6 @@ export default function Home() {
         )}
       </div>
 
-      {/* Mobile Bottom Navigation */}
       <div className="md:hidden fixed bottom-0 left-0 w-full bg-[#1C1E2B] border-t border-gray-800/80 pb-safe z-[60]">
         <div className="max-w-md mx-auto flex justify-between items-center h-[60px] px-6 relative">
           
