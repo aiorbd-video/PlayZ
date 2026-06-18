@@ -11,7 +11,6 @@ export const SmartImage = memo(({ src, alt, fill, width, height, className }: an
   const [imgSrc, setImgSrc] = useState(originalSrc);
   const [errorCount, setErrorCount] = useState(0);
 
-  // 🟢 Next.js Image conflict ফিক্স: fill থাকলে width/height পাঠানো যাবে না
   const imageProps = fill ? { fill: true } : { width: width || 80, height: height || 80 };
 
   return (
@@ -104,7 +103,9 @@ export const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { star
 MatchCountdown.displayName = 'MatchCountdown';
 
 export const ChannelCard = memo(({ channel, isPlaylist }: { channel: any, isPlaylist?: boolean }) => {
-  const linkHref = isPlaylist ? `/playlist/${channel.id}` : `/tv/${channel.id}`;
+  // 🟢 সুরক্ষার ধারাবাহিকতা: স্পোর্টস চ্যানেলের আইডি হোমপেজ থেকেও Base64 এনকোড হয়ে বের হবে
+  const secureId = isPlaylist ? channel.id : btoa(unescape(encodeURIComponent(channel.id)));
+  const linkHref = isPlaylist ? `/playlist/${secureId}` : `/tv/${secureId}`;
 
   return (
     <motion.div whileTap={{ scale: 0.95 }} className="w-full">
@@ -113,9 +114,31 @@ export const ChannelCard = memo(({ channel, isPlaylist }: { channel: any, isPlay
           <div className="w-[50px] h-[50px] md:w-[70px] md:h-[70px] lg:w-[80px] lg:h-[80px] rounded-full bg-white flex items-center justify-center overflow-hidden mb-2 shadow-inner border border-gray-300 transition-transform group-hover:scale-110">
             <SmartImage src={channel.logo} alt={channel.name} width={80} height={80} className="object-contain p-1" />
           </div>
-          <span className="font-semibold text-[10px] sm:text-xs md:text-sm text-gray-200 text-center truncate w-full px-1">{channel.name}</span>
+          
+          {/* 🟢 ফিক্সড: মেইন হোমপেজের 'Sports' এবং 'Categories' গ্রিড কার্ডেও Marquee স্ক্রলিং টেক্সট যোগ করা হলো */}
+          <div className="w-full overflow-hidden whitespace-nowrap text-center main-marquee-container mt-1">
+            <span className={`inline-block font-semibold text-[10px] sm:text-xs md:text-sm text-gray-200 group-hover:text-white ${channel.name.length > 11 ? 'main-marquee-text' : ''}`}>
+              {channel.name}
+            </span>
+          </div>
         </div>
       </Link>
+
+      {/* হোমপেজ গ্রিড কার্ডের জন্য আলাদা লাইটওয়েট মারকিউ অ্যানিমেশন CSS */}
+      <style dangerouslySetInnerHTML={{__html: `
+        .main-marquee-container {
+           mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+           -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+        }
+        .main-marquee-text {
+           padding-left: 100%;
+           animation: home-card-marquee 6s linear infinite;
+        }
+        @keyframes home-card-marquee {
+           0% { transform: translateX(0); }
+           100% { transform: translateX(-100%); }
+        }
+      `}} />
     </motion.div>
   );
 });
