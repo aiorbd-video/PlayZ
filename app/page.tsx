@@ -17,7 +17,7 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  // 🟢 ১. ব্রাউজার ব্যাক/ফরওয়ার্ড হিস্ট্রি ট্র্যাক করার লজিক (ধাপে ধাপে ব্যাক করার জন্য)
+  // ব্রাউজার ব্যাক/ফরওয়ার্ড হিস্ট্রি ট্র্যাক করার লজিক (ধাপে ধাপে ব্যাক করার জন্য)
   useEffect(() => {
     setMounted(true);
 
@@ -29,17 +29,17 @@ export default function Home() {
       }
     };
 
-    handlePopState(); // মাউন্ট হওয়ার সময় রান হবে
+    handlePopState(); 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // 🟢 ২. ট্যাব চেঞ্জ হলে ব্রাউজার হিস্ট্রি স্ট্যাকে পুশ করার ফাংশন
+  // ট্যাব চেঞ্জ হলে ব্রাউজার হিস্ট্রি স্ট্যাকে পুশ করার ফাংশন
   const handleTabChange = (tab: 'Sports' | 'Live Events' | 'Categories') => {
     setActiveTab(tab);
     setSearchInp('');
     setShowSearch(false);
-    router.push(`/?tab=${encodeURIComponent(tab)}`); // ধাপে ধাপে ব্যাক ট্র্যাকিং ইউআরএল
+    router.push(`/?tab=${encodeURIComponent(tab)}`); 
   };
 
   const handleShare = async () => {
@@ -58,9 +58,25 @@ export default function Home() {
     }
   };
 
-  const { data: matches } = useSWR(MATCH_API, fetcher, { refreshInterval: 30000 });
-  const { data: channelData } = useSWR('/api/channels', fetcher, { refreshInterval: 60000 });
-  const { data: m3uData } = useSWR('/api/m3u', fetcher, { refreshInterval: 60000 });
+  // 🟢 এন্টারপ্রাইজ ফিক্স: ব্যান্ডউইথ বাঁচাতে SWR-এর স্মার্ট অটো-রিফ্রেশ ও ডুপ্লিকেশন রিমুভাল
+  const { data: matches } = useSWR(MATCH_API, fetcher, { 
+    refreshInterval: 30000,
+    revalidateOnFocus: false,
+    dedupingInterval: 15000
+  });
+  
+  const { data: channelData } = useSWR('/api/channels', fetcher, { 
+    refreshInterval: 60000,        // আপনার ক্যাশ এপিআই এর সাথে মিলিয়ে ৬০ সেকেন্ড পর পর রিফ্রেশ করবে
+    revalidateOnFocus: false,      // অন্য ট্যাবে গিয়ে ফিরে আসলে অপ্রয়োজনীয় ফায়ারবেস হিট বন্ধ
+    revalidateOnReconnect: true,   // নেটওয়ার্ক চলে গিয়ে আবার আসলে অটো রিফ্রেশ হবে
+    dedupingInterval: 20000        // ২০ সেকেন্ডের ভেতরের সব ডুপ্লিকেট রিকোয়েস্ট ব্লক করবে
+  });
+  
+  const { data: m3uData } = useSWR('/api/m3u', fetcher, { 
+    refreshInterval: 90000,
+    revalidateOnFocus: false,
+    dedupingInterval: 30000
+  });
   
   const channels = channelData?.channels || [];
   const m3uChannels = m3uData?.channels || [];
@@ -242,6 +258,10 @@ export default function Home() {
             <span className="text-[10px] font-bold">Categories</span>
           </button>
         </div>
+      </div>
+
+      <div className="max-w-[1600px] mx-auto px-4 md:px-8 pt-2">
+         {/* ... (বাকি কন্টেন্ট স্ট্রাকচার অক্ষত) */}
       </div>
 
       <style dangerouslySetInnerHTML={{__html: `
