@@ -11,8 +11,12 @@ function PlayerContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
-  // 🟢 অ্যাড্রেস বার থেকে টোকেন নেওয়া হচ্ছে এবং ডিকোড করা হচ্ছে
+  // 🟢 অ্যাড্রেস বার থেকে টোকেন এবং DRM চাবি নেওয়া হচ্ছে
   const streamToken = searchParams.get('stream');
+  const drmKeyString = searchParams.get('key'); // 🟢 নতুন: চাবি রিসিভ করা হচ্ছে
+  const title = searchParams.get('title') || 'Live TV';
+  const playlistId = searchParams.get('playlistId');
+
   const streamUrl = useMemo(() => {
     if (!streamToken) return null;
     try {
@@ -22,9 +26,6 @@ function PlayerContent() {
     }
   }, [streamToken]);
 
-  const title = searchParams.get('title') || 'Live TV';
-  const playlistId = searchParams.get('playlistId');
-
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const [playerInstance, setPlayerInstance] = useState<any>(null);
@@ -33,7 +34,7 @@ function PlayerContent() {
   const [searchInp, setSearchInp] = useState('');
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
 
-  // 🟢 কাস্টম প্রোটেকশন: প্লেয়ার পেজেও রাইট ক্লিক এবং F12 ব্লক
+  // কাস্টম প্রোটেকশন: প্লেয়ার পেজেও রাইট ক্লিক এবং F12 ব্লক
   useEffect(() => {
     const blockInspect = (e: MouseEvent) => e.preventDefault();
     const blockKeys = (e: KeyboardEvent) => {
@@ -49,6 +50,7 @@ function PlayerContent() {
     };
   }, []);
 
+  // শাকা প্লেয়ার সেটআপ
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || typeof window === 'undefined') return;
 
@@ -94,11 +96,33 @@ function PlayerContent() {
     };
   }, []);
 
+  // 🟢 ভিডিও এবং ClearKey DRM কনফিগারেশন লোড করা হচ্ছে
   useEffect(() => {
     if (!playerInstance || !streamUrl) return;
-    playerInstance.load(streamUrl).catch((e: any) => console.error("Stream Load Error", e));
-  }, [playerInstance, streamUrl]);
 
+    const loadVideo = async () => {
+      try {
+        const playerConfig: any = {
+          streaming: { bufferingGoal: 30, rebufferingGoal: 5, retryParameters: { maxAttempts: 5, baseDelay: 1000 } }
+        };
+
+        // 🟢 যদি চাবি থাকে, তবে শাকা প্লেয়ারকে ClearKey সিস্টেমে কনফিগার করবে
+        if (drmKeyString && drmKeyString.includes(':')) {
+          const [kid, key] = drmKeyString.split(':');
+          playerConfig.drm = { clearKeys: { [kid]: key } };
+        }
+
+        playerInstance.configure(playerConfig);
+        await playerInstance.load(streamUrl);
+      } catch (e) {
+        console.error("Stream Load Error", e);
+      }
+    };
+
+    loadVideo();
+  }, [playerInstance, streamUrl, drmKeyString]);
+
+  // 🟢 প্লেয়ারের ভেতরের চ্যানেল লিস্ট পার্সিং (DRM চাবিসহ)
   useEffect(() => {
     if (!playlistId) return;
     fetch('/api/m3u')
@@ -120,7 +144,12 @@ function PlayerContent() {
                   if (logoMatch) currentChannel.logo = logoMatch[1];
                   const nameSplit = line.split(',');
                   currentChannel.name = nameSplit[nameSplit.length - 1].trim();
-                } else if (line.startsWith('http')) {
+                } 
+                // 🟢 নতুন: প্লেয়ারের নিচের লিস্টের জন্যও চাবি বের করা হচ্ছে
+                else if (line.startsWith('#KODIPROP:inputstream.adaptive.license_key=')) {
+                  currentChannel.key = line.split('=')[1].trim();
+                } 
+                else if (line.startsWith('http')) {
                   currentChannel.link = line;
                   if (currentChannel.name) parsedChannels.push(currentChannel);
                   currentChannel = {};
@@ -166,12 +195,13 @@ function PlayerContent() {
             
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {filteredChannels.map((ch, index) => {
-                // 🟢 নিচে লিস্টের বাকি চ্যানেলগুলোতেও টোকেন প্রোটেকশন এনকোড করা হলো
                 const secureToken = btoa(unescape(encodeURIComponent(ch.link)));
+                // 🟢 নতুন: ইউআরএল কোয়েরি ট্র্যাকিংয়ে চাবি যোগ করা হচ্ছে
+                const drmKeyParam = ch.key ? `&key=${encodeURIComponent(ch.key)}` : '';
                 
                 return (
                   <motion.div key={index} initial={{ opacity: 0 }} animate={{ opacity: 1 }} whileTap={{ scale: 0.95 }}>
-                    <button onClick={() => router.replace(`/play?stream=${secureToken}&title=${encodeURIComponent(ch.name)}&playlistId=${playlistId}`)} className="outline-none text-left w-full">
+                    <button onClick={() => router.replace(`/play?stream=${secureToken}${drmKeyParam}&title=${encodeURIComponent(ch.name)}&playlistId=${playlistId}`)} className="outline-none text-left w-full">
                       <div className={`bg-[#1C1E2B] border rounded-[20px] p-5 flex flex-col items-center justify-center gap-3 transition-all duration-300 hover:border-[#00E5FF]/60 hover:shadow-[0_4px_20px_rgba(0,229,255,0.1)] h-full min-h-[140px] group ${ch.link === streamUrl ? 'border-[#00E5FF] ring-1 ring-[#00E5FF]/30' : 'border-gray-800/80'}`}>
                         <div className="w-14 h-14 rounded-full bg-black/40 border border-gray-700/50 p-1 flex items-center justify-center overflow-hidden transition-transform group-hover:scale-110 relative">
                            <SmartImage src={ch.logo} alt={ch.name} width={80} height={80} className="object-contain p-0.5" />
