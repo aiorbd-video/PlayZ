@@ -12,7 +12,16 @@ import { SmartImage } from '../../components/Cards';
 export default function TvPlayer() {
   const params = useParams();
   const router = useRouter();
-  const id = params.id as string;
+  const rawId = params.id as string;
+
+  // 🟢 ১. আইডি ডিকোড করার লজিক (যাতে এনকোডেড এবং নরমাল দুই ধরনের লিংকই সাপোর্ট করে)
+  const targetId = useMemo(() => {
+    try {
+      return decodeURIComponent(escape(atob(rawId)));
+    } catch (e) {
+      return rawId; // যদি কেউ এনকোড ছাড়া সরাসরি ঢুকে পড়ে
+    }
+  }, [rawId]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
@@ -21,7 +30,7 @@ export default function TvPlayer() {
   const [searchInp, setSearchInp] = useState('');
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
 
-  // 🟢 ১. কাস্টম প্রোটেকশন: রাইট ক্লিক এবং F12 (Inspect Element) সম্পূর্ণ ব্লক
+  // 🟢 ২. কাস্টম প্রোটেকশন: রাইট ক্লিক এবং F12 (Inspect Element) সম্পূর্ণ ব্লক
   useEffect(() => {
     const blockInspect = (e: MouseEvent) => e.preventDefault();
     const blockKeys = (e: KeyboardEvent) => {
@@ -39,9 +48,11 @@ export default function TvPlayer() {
 
   const { data } = useSWR('/api/channels', fetcher);
   const channels = data?.channels || [];
-  const channel = channels.find((c: any) => c.id === id);
+  
+  // 🟢 ৩. ডিকোড করা আইডি দিয়ে চ্যানেল ফিল্টার
+  const channel = channels.find((c: any) => c.id === targetId || c.id === rawId);
 
-  // ২. শাকা প্লেয়ার ও কাস্টম Stretch বাটন সেটআপ
+  // ৪. শাকা প্লেয়ার ও কাস্টম Stretch বাটন সেটআপ
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || typeof window === 'undefined') return;
 
@@ -87,7 +98,7 @@ export default function TvPlayer() {
     };
   }, []);
 
-  // ৩. ভিডিও এবং DRM লোড লজিক
+  // ৫. ভিডিও এবং DRM লোড লজিক
   useEffect(() => {
     if (!playerInstance || !channel) return;
     const streamUrl = channel.link;
@@ -98,6 +109,7 @@ export default function TvPlayer() {
         const playerConfig: any = {
           streaming: { bufferingGoal: 30, rebufferingGoal: 5, retryParameters: { maxAttempts: 5, baseDelay: 1000 } }
         };
+        // 🟢 DRM ClearKey পার্সার
         if (drmKeyString && drmKeyString.includes(':')) {
           const [kid, key] = drmKeyString.split(':');
           playerConfig.drm = { clearKeys: { [kid]: key } };
@@ -150,20 +162,24 @@ export default function TvPlayer() {
           </div>
           
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {filteredChannels.map((ch: any) => (
-              <motion.div key={ch.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileTap={{ scale: 0.95 }}>
-                {/* 🟢 ফিক্সড লজিক: এখানে router.replace ব্যবহার করা হয়েছে, যাতে প্লেয়ারের ভেতরের হিস্ট্রি লুপ না হয় */}
-                <button onClick={() => router.replace(`/tv/${ch.id}`)} className="outline-none block w-full text-left">
-                  <div className={`bg-[#1C1E2B] border rounded-[20px] p-5 flex flex-col items-center justify-center gap-3 transition-all duration-300 hover:border-[#00E5FF]/60 hover:shadow-[0_4px_20px_rgba(0,229,255,0.1)] h-full min-h-[140px] group ${ch.id === id ? 'border-[#00E5FF] ring-1 ring-[#00E5FF]/30' : 'border-gray-800/80'}`}>
-                    <div className="w-14 h-14 rounded-full bg-black/40 border border-gray-700/50 p-1 flex items-center justify-center overflow-hidden transition-transform group-hover:scale-110 relative">
-                      <SmartImage src={ch.logo} alt={ch.name} width={80} height={80} className="object-contain p-0.5" />
+            {filteredChannels.map((ch: any) => {
+              // 🟢 ৬. নিচের লিস্টের চ্যানেলগুলোর আইডিও Base64 দিয়ে এনকোড করা হচ্ছে
+              const secureId = btoa(unescape(encodeURIComponent(ch.id)));
+
+              return (
+                <motion.div key={ch.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileTap={{ scale: 0.95 }}>
+                  <button onClick={() => router.replace(`/tv/${secureId}`)} className="outline-none block w-full text-left">
+                    <div className={`bg-[#1C1E2B] border rounded-[20px] p-5 flex flex-col items-center justify-center gap-3 transition-all duration-300 hover:border-[#00E5FF]/60 hover:shadow-[0_4px_20px_rgba(0,229,255,0.1)] h-full min-h-[140px] group ${ch.id === channel?.id ? 'border-[#00E5FF] ring-1 ring-[#00E5FF]/30' : 'border-gray-800/80'}`}>
+                      <div className="w-14 h-14 rounded-full bg-black/40 border border-gray-700/50 p-1 flex items-center justify-center overflow-hidden transition-transform group-hover:scale-110 relative">
+                        <SmartImage src={ch.logo} alt={ch.name} width={80} height={80} className="object-contain p-0.5" />
+                      </div>
+                      <span className="font-bold text-xs md:text-sm text-gray-200 group-hover:text-white text-center truncate w-full">{ch.name}</span>
+                      {ch.id === channel?.id && <span className="text-[9px] px-2 py-0.5 bg-[#00E5FF]/20 text-[#00E5FF] rounded-full font-bold">Playing</span>}
                     </div>
-                    <span className="font-bold text-xs md:text-sm text-gray-200 group-hover:text-white text-center truncate w-full">{ch.name}</span>
-                    {ch.id === id && <span className="text-[9px] px-2 py-0.5 bg-[#00E5FF]/20 text-[#00E5FF] rounded-full font-bold">Playing</span>}
-                  </div>
-                </button>
-              </motion.div>
-            ))}
+                  </button>
+                </motion.div>
+              );
+            })}
           </div>
         </div>
       </div>
