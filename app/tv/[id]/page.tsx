@@ -15,10 +15,19 @@ export default function TvPlayer() {
   const router = useRouter();
   const rawId = params.id as string;
 
-  // আইডি ডিকোড লজিক
+  // 🟢 ১. প্রো-লেভেল Base64 রাউটার রিকভারি পার্সার (URL-Safe ও ট্রিম প্যাডিং ফিক্সড)
   const targetId = useMemo(() => {
+    if (!rawId) return '';
     try {
       return decodeURIComponent(escape(atob(rawId)));
+    } catch (e) {}
+
+    try {
+      let base64 = rawId.replace(/-/g, '+').replace(/_/g, '/');
+      while (base64.length % 4) {
+        base64 += '=';
+      }
+      return decodeURIComponent(escape(atob(base64)));
     } catch (e) {
       return rawId;
     }
@@ -152,7 +161,7 @@ export default function TvPlayer() {
     };
   }, []);
 
-  // ভিডিও লোড এবং জাদুকরী মাল্টি-ফরম্যাট DRM ক্লিয়ারকি লজিক
+  // 🟢 ভিডিও লোড এবং জাদুকরী মাল্টি-ফরম্যাট জেসন অবজেক্ট DRM পার্সার লজিক
   useEffect(() => {
     if (!playerInstance || !channel) return;
     const streamUrl = channel.link;
@@ -166,13 +175,12 @@ export default function TvPlayer() {
           streaming: { bufferingGoal: 30, rebufferingGoal: 5, retryParameters: { maxAttempts: 3, baseDelay: 1000 } }
         };
         
-        // 🟢 আইরনক্ল্যাড প্রো-লেভেল DRM পার্সার ইঞ্জিন
+        // 🟢 ফায়ারবেসের জেসন ম্যাপ ডাইনামিক পার্সার
         if (drmData) {
-          let kid = '';
-          let key = '';
+          const clearKeysObj: Record<string, string> = {};
           let parsedData = drmData;
 
-          // ১. ডাটা যদি ভুলবশত টেক্সট/স্ট্রিংফাইড জেসন আকারে আসে, তাকে অবজেক্টে রূপান্তর করা হচ্ছে
+          // ডাটা টেক্সট ফরম্যাটে থাকলে অবজেক্টে কনভার্ট করবে
           if (typeof drmData === 'string') {
             const trimmed = drmData.trim();
             if (trimmed.startsWith('{')) {
@@ -182,27 +190,28 @@ export default function TvPlayer() {
             }
           }
 
-          // ২. ডাটা যদি পিওর অবজেক্ট বা পার্সড জেসন ম্যাপ হয়
+          // অবজেক্টের ভেতর থেকে ডাইনামিকালি কী এবং আইডি লুপিং করে বের করা হচ্ছে
           if (typeof parsedData === 'object' && parsedData !== null) {
-            const keys = Object.keys(parsedData);
-            if (keys.length > 0) {
-              kid = keys[0].replace(/['"\s{}:]/g, '');
-              key = String(parsedData[keys[0]]).replace(/['"\s{}:]/g, '');
-            }
+            Object.entries(parsedData).forEach(([k, v]) => {
+              const cleanKid = k.replace(/['"\s{}:]/g, '');
+              const cleanKey = String(v).replace(/['"\s{}:]/g, '');
+              if (cleanKid && cleanKey) {
+                clearKeysObj[cleanKid] = cleanKey;
+              }
+            });
           } 
-          // ৩. ডাটা যদি সাধারণ কোলন দেওয়া টেক্সট হয় ("kid:key")
+          // সাধারণ কোলন দেওয়া টেক্সট ব্যাকআপ লজিক
           else if (typeof parsedData === 'string' && parsedData.includes(':')) {
             const cleanStr = parsedData.replace(/['"\s{}]/g, '');
             const parts = cleanStr.split(':');
             if (parts.length === 2) {
-              kid = parts[0];
-              key = parts[1];
+              clearKeysObj[parts[0]] = parts[1];
             }
           }
 
-          // ৪. নিখুঁতভাবে চাবি দুটি আলাদা হলে শাকা প্লেয়ারকে দেওয়া হচ্ছে
-          if (kid && key) {
-            playerConfig.drm = { clearKeys: { [kid]: key } };
+          // শাকা প্লেয়ারে ক্লিয়ারকি ইনজেক্ট করা হচ্ছে
+          if (Object.keys(clearKeysObj).length > 0) {
+            playerConfig.drm = { clearKeys: clearKeysObj };
           }
         }
         
