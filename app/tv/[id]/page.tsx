@@ -80,7 +80,13 @@ export default function TvPlayer() {
     }
   }, [showFitToast, objectFit]);
 
-  const { data } = useSWR('/api/channels', fetcher);
+  const { data } = useSWR('/api/channels', fetcher, {
+  revalidateIfStale: false,      // একবার ডাটা পেলে সেটা পুরনো হলেও বারবার ফেইচ করবে না
+  revalidateOnFocus: false,      // ইউজার অন্য ট্যাবে গিয়ে আবার ফিরে আসলে ফায়ারবেসে হিট করবে if না
+  revalidateOnReconnect: false,  // ইন্টারনেট চলে গিয়ে আবার আসলে বারবার হিট করবে না
+  dedupingInterval: 600000       // ১০ মিনিটের মধ্যে কোনো ডুপ্লিকেট রিকোয়েস্ট ফায়ারবেসে পাঠাবে না
+});
+
   const channels = data?.channels || [];
   
   const channel = useMemo(() => {
