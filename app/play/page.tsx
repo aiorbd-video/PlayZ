@@ -12,7 +12,6 @@ function PlayerContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
-  // URL থেকে ডাটা রিসিভ
   const streamToken = searchParams.get('stream');
   const drmKeyString = searchParams.get('key'); 
   const title = searchParams.get('title') || 'Live TV';
@@ -34,13 +33,11 @@ function PlayerContent() {
   const [playlistChannels, setPlaylistChannels] = useState<any[]>([]);
   const [searchInp, setSearchInp] = useState('');
   
-  // 🟢 এন্টারপ্রাইজ স্টেট
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
   const [showFitToast, setShowFitToast] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [isBuffering, setIsBuffering] = useState(true);
 
-  // কাস্টম প্রোটেকশন
   useEffect(() => {
     const blockInspect = (e: MouseEvent) => e.preventDefault();
     const blockKeys = (e: KeyboardEvent) => {
@@ -56,7 +53,6 @@ function PlayerContent() {
     };
   }, []);
 
-  // 🟢 Custom Event for Toast
   const handleFitToggle = useCallback(() => {
     setObjectFit((prev) => {
       const nextFit = prev === 'contain' ? 'cover' : prev === 'cover' ? 'fill' : 'contain';
@@ -77,33 +73,33 @@ function PlayerContent() {
     }
   }, [showFitToast, objectFit]);
 
-  // 🟢 Shaka Player Setup (SVG Icon Fixed)
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || typeof window === 'undefined') return;
 
     const shaka = require('shaka-player/dist/shaka-player.ui');
     shaka.polyfill.installAll();
 
-    if (!shaka.ui.Controls.elements_['custom_stretch']) {
-        class StretchButton extends shaka.ui.Element {
-            constructor(parent: HTMLElement, controls: any) {
-                super(parent, controls);
-                const button = document.createElement('button');
-                button.className = 'shaka-custom-stretch-btn shaka-tooltip';
-                button.setAttribute('aria-label', 'Toggle Fit');
-                button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white" style="pointer-events:none;"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
-                
-                this.eventManager.listen(button, 'click', () => {
-                    window.dispatchEvent(new CustomEvent('toggleObjectFit'));
-                });
-                parent.appendChild(button);
-            }
-        }
-        try {
-            shaka.ui.Controls.registerElement('custom_stretch', {
-                create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
+    // 🟢 ফিক্সড: প্রোডাকশন ক্র্যাশ এড়াতে সেফ রেজিস্টার মেথড
+    class StretchButton extends shaka.ui.Element {
+        constructor(parent: HTMLElement, controls: any) {
+            super(parent, controls);
+            const button = document.createElement('button');
+            button.className = 'shaka-custom-stretch-btn shaka-tooltip';
+            button.setAttribute('aria-label', 'Toggle Fit');
+            button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white" style="pointer-events:none;"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
+            
+            this.eventManager.listen(button, 'click', () => {
+                window.dispatchEvent(new CustomEvent('toggleObjectFit'));
             });
-        } catch (e) {}
+            parent.appendChild(button);
+        }
+    }
+    try {
+        shaka.ui.Controls.registerElement('custom_stretch', {
+            create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
+        });
+    } catch (e) {
+        // অলরেডি রেজিস্টার করা থাকলে স্কিপ করবে
     }
 
     let player = new shaka.Player(videoRef.current);
@@ -116,8 +112,8 @@ function PlayerContent() {
         'spacer', 
         'mute', 
         'volume', 
-        'custom_stretch', // ফিক্সড বাটন
-        'overflow_menu',  // কোয়ালিটি মেনু
+        'custom_stretch', 
+        'overflow_menu',  
         'fullscreen'
       ],
       addSeekBar: true,
@@ -125,7 +121,6 @@ function PlayerContent() {
 
     player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
     player.addEventListener('error', (e: any) => {
-      console.error('Shaka Error:', e.detail);
       setPlayerError("Unable to play this channel. It might be offline or blocked.");
       setIsBuffering(false);
     });
@@ -138,7 +133,6 @@ function PlayerContent() {
     };
   }, []);
 
-  // ভিডিও লোড এবং DRM
   useEffect(() => {
     if (!playerInstance || !streamUrl) return;
 
@@ -165,7 +159,6 @@ function PlayerContent() {
         await playerInstance.load(finalStreamUrl);
         setIsBuffering(false);
       } catch (e) {
-        console.error("Stream Load Error", e);
         setPlayerError("Failed to load stream. Please try another channel.");
         setIsBuffering(false);
       }
@@ -174,7 +167,6 @@ function PlayerContent() {
     loadVideo();
   }, [playerInstance, streamUrl, drmKeyString]);
 
-  // M3U Playlist Parsing
   useEffect(() => {
     if (!playlistId) return;
     fetch('/api/m3u')
@@ -225,11 +217,8 @@ function PlayerContent() {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 mt-6">
-        
-        {/* 🟢 Player Container */}
         <div ref={videoContainerRef} className="w-full max-w-5xl mx-auto aspect-video relative bg-black shadow-2xl rounded-[20px] overflow-hidden shaka-video-container border border-gray-800/80 group">
           
-          {/* Buffering Loader */}
           {isBuffering && !playerError && streamUrl && (
             <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
               <div className="w-12 h-12 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin mb-3"></div>
@@ -237,7 +226,6 @@ function PlayerContent() {
             </div>
           )}
 
-          {/* Error Screen */}
           {playerError && (
             <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/90 p-6 text-center">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-red-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -252,7 +240,6 @@ function PlayerContent() {
           
           <video ref={videoRef} className="w-full h-full transition-all duration-300" style={{ objectFit: objectFit }} autoPlay playsInline />
           
-          {/* Netflix Style Toast */}
           <AnimatePresence>
             {showFitToast && (
               <motion.div 
@@ -270,7 +257,6 @@ function PlayerContent() {
           </AnimatePresence>
         </div>
 
-        {/* 🟢 Playlist Channels Grid */}
         {playlistChannels.length > 0 && (
           <div className="max-w-7xl mx-auto mt-10 border-t border-gray-800/60 pt-8">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -294,7 +280,6 @@ function PlayerContent() {
                            <SmartImage src={ch.logo} alt={ch.name} width={80} height={80} className="object-contain p-0.5" />
                         </div>
                         
-                        {/* 🟢 Marquee Animation added here */}
                         <div className="w-full overflow-hidden whitespace-nowrap text-center marquee-container">
                           <span className={`inline-block font-bold text-xs md:text-sm text-gray-200 group-hover:text-white ${ch.name.length > 15 ? 'marquee-text' : ''}`}>
                             {ch.name}
@@ -313,25 +298,11 @@ function PlayerContent() {
       </div>
 
       <style dangerouslySetInnerHTML={{__html: `
-        /* Custom Button CSS */
-        .shaka-custom-stretch-btn { 
-           background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; transition: opacity 0.2s; display: flex; align-items: center; justify-content: center;
-        }
+        .shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; transition: opacity 0.2s; display: flex; align-items: center; justify-content: center; }
         .shaka-custom-stretch-btn:hover { opacity: 1; }
-        
-        /* Marquee CSS */
-        .marquee-container {
-           mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
-           -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
-        }
-        .marquee-text {
-           padding-left: 100%;
-           animation: marquee 8s linear infinite;
-        }
-        @keyframes marquee {
-           0% { transform: translateX(0); }
-           100% { transform: translateX(-100%); }
-        }
+        .marquee-container { mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); }
+        .marquee-text { padding-left: 100%; animation: marquee 8s linear infinite; }
+        @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
       `}} />
     </main>
   );
