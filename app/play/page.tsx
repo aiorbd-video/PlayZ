@@ -80,10 +80,20 @@ function PlayerContent() {
         console.log("Stretch button safely initialized.");
     }
 
-    ui.configure({
-      controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'stretch', 'fullscreen'],
+        ui.configure({
+      controlPanelElements: [
+        'play_pause', 
+        'time_and_duration', 
+        'spacer', 
+        'mute', 
+        'volume', 
+        'stretch', 
+        'overflow_menu', // 🟢 এই ম্যাজিক ওয়ার্ডটাই মিসিং ছিল!
+        'fullscreen'
+      ],
       addSeekBar: true,
     });
+
 
     setPlayerInstance(player);
 
