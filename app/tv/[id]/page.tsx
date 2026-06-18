@@ -15,23 +15,13 @@ export default function TvPlayer() {
   const router = useRouter();
   const rawId = params.id as string;
 
-  // অন-স্ক্রিন লাইভ লগিং সিস্টেম স্টেট
-  const [logs, setLogs] = useState<string[]>([]);
-  const addLog = useCallback((msg: string) => {
-    const time = new Date().toLocaleTimeString();
-    setLogs((prev) => [`[${time}] ➜ ${msg}`, ...prev.slice(0, 49)]);
-  }, []);
-
-  // 🟢 ১. আয়রনক্ল্যাড URL-Safe Base64 রাউটার আইডি ডিকোড পার্সার (ফিক্সড)
+  // 🟢 Base64 রাউটার আইডি ডিকোড পার্সার (URL-Safe)
   const targetId = useMemo(() => {
     if (!rawId) return '';
-    
-    // ব্রাউজারের পার্সেন্ট এনকোডিং ফিক্স (%3D%3D কে আসল == এ রূপান্তর)
     const cleanRawId = decodeURIComponent(rawId);
     
     try {
-      const decoded = decodeURIComponent(escape(atob(cleanRawId)));
-      return decoded;
+      return decodeURIComponent(escape(atob(cleanRawId)));
     } catch (e) {}
 
     try {
@@ -54,7 +44,7 @@ export default function TvPlayer() {
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [isBuffering, setIsBuffering] = useState(true);
 
-  // ইনসপেক্ট লক
+  // কাস্টম প্রোটেকশন (Inspect Element Lock)
   useEffect(() => {
     const blockInspect = (e: MouseEvent) => e.preventDefault();
     const blockKeys = (e: KeyboardEvent) => {
@@ -94,25 +84,10 @@ export default function TvPlayer() {
   const channels = data?.channels || [];
   
   const channel = useMemo(() => {
-    const found = channels.find((c: any) => c.id === targetId || c.id === rawId);
-    return found;
+    return channels.find((c: any) => c.id === targetId || c.id === rawId);
   }, [channels, targetId, rawId]);
 
-  // লগ ট্র্যাকিং
-  useEffect(() => {
-    if (rawId) addLog(`URL Raw ID received: "${rawId}"`);
-    if (targetId) addLog(`Decoded Target ID: "${targetId}"`);
-    if (channels.length > 0) {
-      addLog(`API Connected. Total channels fetched: ${channels.length}`);
-      if (channel) {
-        addLog(`Database Match Found! Name: "${channel.name}"`);
-      } else {
-        addLog(`⚠️ Critical: No matching channel found in DB for ID: "${targetId}"`);
-      }
-    }
-  }, [rawId, targetId, channels, channel, addLog]);
-
-  // প্রোডাকশন-সেফ ডায়নামিক শাকা প্লেয়ার সেটআপ
+  // 🟢 ডায়নামিক শাকা প্লেয়ার ইনিশিয়ালাইজেশন
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
 
@@ -122,10 +97,8 @@ export default function TvPlayer() {
 
     const initPlayer = async () => {
       try {
-        addLog("Loading Shaka UI Library dynamically...");
         shaka = await import('shaka-player/dist/shaka-player.ui');
         shaka.polyfill.installAll();
-        addLog("Shaka Polyfills installed successfully.");
 
         try {
           if (shaka.ui.Controls && !(shaka.ui.Controls as any).custom_stretch_registered) {
@@ -147,7 +120,6 @@ export default function TvPlayer() {
                   create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
               });
               (shaka.ui.Controls as any).custom_stretch_registered = true;
-              addLog("Custom aspect ratio button injected.");
           }
         } catch (e) {}
 
@@ -155,27 +127,30 @@ export default function TvPlayer() {
         ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
         
         ui.configure({
-          controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'custom_stretch', 'overflow_menu', 'fullscreen'],
+          controlPanelElements: [
+            'play_pause', 
+            'time_and_duration', 
+            'spacer', 
+            'mute', 
+            'volume', 
+            'custom_stretch', 
+            'overflow_menu',  
+            'fullscreen'
+          ],
           addSeekBar: true,
+          // 🟢 ফিক্সড: কোয়ালিটি মেনুতে 1080p, 2K, 4K এর সাথে Mbps (Bitrate) দেখানোর জন্য কনফিগারেশন
+          trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.RESOLUTION_BITRATE
         });
 
-        player.addEventListener('buffering', (e: any) => {
-          setIsBuffering(e.buffering);
-          addLog(e.buffering ? "Stream status: Buffering/Connecting..." : "Stream status: Buffering finished.");
-        });
-
+        player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
         player.addEventListener('error', (e: any) => {
-          const err = e.detail;
-          console.error('Shaka Error:', err);
-          addLog(`❌ Shaka Error! Code: ${err.code} (Category: ${err.category})`);
-          setPlayerError(`Playback Error! Shaka Code: ${err.code}`);
+          console.error('Shaka Error:', e.detail);
+          setPlayerError("Unable to play this channel. It might be offline or blocked.");
           setIsBuffering(false);
         });
 
         setPlayerInstance(player);
-        addLog("Shaka Engine Core initialized successfully.");
-      } catch (err: any) {
-        addLog(`❌ Player Init Failed: ${err?.message || err}`);
+      } catch (err) {
         setPlayerError("Player initialization failed.");
       }
     };
@@ -185,11 +160,10 @@ export default function TvPlayer() {
     return () => {
       if (ui) ui.destroy();
       if (player) player.destroy();
-      addLog("Previous player session destroyed safely.");
     };
-  }, [addLog]);
+  }, []);
 
-  // ভিডিও এবং ফায়ারবেস অবজেক্ট DRM পার্সার লজিক
+  // 🟢 ভিডিও লোড এবং জাদুকরী মাল্টি-ফরম্যাট জেসন অবজেক্ট DRM পার্সার লজিক
   useEffect(() => {
     if (!playerInstance || !channel) return;
     const streamUrl = channel.link;
@@ -204,30 +178,22 @@ export default function TvPlayer() {
         };
         
         if (drmData) {
-          addLog(`DRM Key Field Type Detected: "${typeof drmData}"`);
           const clearKeysObj: Record<string, string> = {};
           let parsedData = drmData;
 
           if (typeof drmData === 'string') {
             const trimmed = drmData.trim();
             if (trimmed.startsWith('{')) {
-              try {
-                parsedData = JSON.parse(trimmed);
-                addLog("Successfully parsed Stringified JSON into Map Object.");
-              } catch (e) {
-                addLog("⚠️ Failed to parse string as JSON object.");
-              }
+              try { parsedData = JSON.parse(trimmed); } catch (e) {}
             }
           }
 
           if (typeof parsedData === 'object' && parsedData !== null) {
-            addLog(`Iterating Firebase JSON Key Object Map: ${JSON.stringify(parsedData)}`);
             Object.entries(parsedData).forEach(([k, v]) => {
               const cleanKid = k.replace(/['"\s{}:]/g, '');
               const cleanKey = String(v).replace(/['"\s{}:]/g, '');
               if (cleanKid && cleanKey) {
                 clearKeysObj[cleanKid] = cleanKey;
-                addLog(`🔑 Key Parsed -> KID: ${cleanKid.slice(0, 6)}... KEY: ${cleanKey.slice(0, 6)}...`);
               }
             });
           } else if (typeof parsedData === 'string' && parsedData.includes(':')) {
@@ -235,41 +201,32 @@ export default function TvPlayer() {
             const parts = cleanStr.split(':');
             if (parts.length === 2) {
               clearKeysObj[parts[0]] = parts[1];
-              addLog(`🔑 String Key Parsed -> KID: ${parts[0].slice(0, 6)}... KEY: ${parts[1].slice(0, 6)}...`);
             }
           }
 
           if (Object.keys(clearKeysObj).length > 0) {
             playerConfig.drm = { clearKeys: clearKeysObj };
-            addLog("ClearKey DRM successfully injected into Shaka configuration.");
-          } else {
-            addLog("⚠️ Warning: DRM data exists but no valid KID:KEY pairs could be extracted.");
           }
-        } else {
-          addLog("No DRM/ClearKey data found for this channel. Loading as free/unencrypted stream.");
         }
         
         playerInstance.configure(playerConfig);
 
         let finalStreamUrl = streamUrl;
+        // 🟢 HTTP টু HTTPS আপগ্রেড ফ্লো (Mixed Content বাইপাস এবং Redirect সাপোর্ট)
         if (window.location.protocol === 'https:' && finalStreamUrl.toLowerCase().startsWith('http://')) {
-            addLog("Protocol Upgrade: Upgrading http:// to https:// to bypass Mixed Content Block.");
             finalStreamUrl = finalStreamUrl.replace(/^http:\/\//i, 'https://');
         }
 
-        addLog(`Triggering player.load() for Manifest: "${finalStreamUrl.slice(0, 60)}..."`);
         await playerInstance.load(finalStreamUrl);
-        addLog("🎉 Success! Manifest loaded and decryption handshake complete.");
         setIsBuffering(false);
-      } catch (e: any) {
-        console.error("Load Error Logging", e);
-        addLog(`❌ Load Error: ${e?.message || "Shaka streaming exception"}`);
+      } catch (e) {
+        console.error("Channel Load Error", e);
         setPlayerError("Failed to load stream. Please try another channel.");
         setIsBuffering(false);
       }
     };
     loadVideo();
-  }, [playerInstance, channel, addLog]);
+  }, [playerInstance, channel]);
 
   const filteredChannels = useMemo(() => {
     return channels.filter((ch: any) => ch.name.toLowerCase().includes(searchInp.toLowerCase()));
@@ -293,7 +250,6 @@ export default function TvPlayer() {
 
       <div className="max-w-7xl mx-auto px-4 mt-6">
         
-        {/* প্লেয়ার স্ক্রিন */}
         <div ref={videoContainerRef} className="w-full max-w-5xl mx-auto aspect-video relative bg-black shadow-2xl rounded-[20px] overflow-hidden shaka-video-container border border-gray-800/80 group">
           
           {isBuffering && !playerError && (
@@ -317,32 +273,19 @@ export default function TvPlayer() {
           
           <AnimatePresence>
             {showFitToast && (
-              <motion.div id="fit-toast" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="absolute top-6 left-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none">
+              <motion.div 
+                initial={{ opacity: 0, y: -10 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                exit={{ opacity: 0, y: -10 }}
+                className="absolute top-6 left-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none"
+              >
                 <span className="w-2 h-2 rounded-full bg-[#00E5FF] animate-pulse"></span>
-                <span className="text-xs md:text-sm font-bold text-white capitalize">{objectFit === 'contain' ? 'Fit to Screen' : objectFit === 'cover' ? 'Zoom (Cropped)' : 'Stretch (Fill)'}</span>
+                <span className="text-xs md:text-sm font-bold text-white capitalize">
+                  {objectFit === 'contain' ? 'Fit to Screen' : objectFit === 'cover' ? 'Zoom (Cropped)' : 'Stretch (Fill)'}
+                </span>
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
-
-        {/* লাইভ ডিবাগ লগ কনসোল প্যানেল */}
-        <div className="w-full max-w-5xl mx-auto mt-4 bg-black/90 border border-[#2A8496]/40 rounded-xl p-4 shadow-inner">
-          <div className="flex items-center justify-between border-b border-gray-800 pb-2 mb-2">
-            <span className="text-xs font-mono font-black text-[#00E5FF] flex items-center gap-2 tracking-widest uppercase">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-ping"></span>
-              Console Stream Logs
-            </span>
-            <button onClick={() => setLogs([])} className="text-[10px] bg-gray-800 hover:bg-gray-700 text-gray-300 px-2 py-0.5 rounded font-mono transition-colors">
-              Clear Logs
-            </button>
-          </div>
-          <div className="w-full max-h-36 overflow-y-auto font-mono text-[11px] text-green-400 space-y-1 scrollbar-thin select-text">
-            {logs.length === 0 ? (
-              <p className="text-gray-600 italic">No event logs active. Start playback...</p>
-            ) : (
-              logs.map((log, i) => <div key={i} className="leading-5 break-all border-b border-gray-900/40 pb-0.5">{log}</div>)
-            )}
-          </div>
         </div>
 
         {/* কন্টেন্ট গ্রিড লেআউট */}
@@ -389,9 +332,6 @@ export default function TvPlayer() {
         .marquee-container { mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); }
         .marquee-text { padding-left: 100%; animation: marquee 8s linear infinite; }
         @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
-        .scrollbar-thin::-webkit-scrollbar { width: 4px; }
-        .scrollbar-thin::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
-        .scrollbar-thin::-webkit-scrollbar-thumb { background: #2A8496; border-radius: 10px; }
       `}} />
     </main>
   );
