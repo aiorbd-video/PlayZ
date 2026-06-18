@@ -6,6 +6,7 @@ import Link from 'next/link';
 import useSWR from 'swr';
 import { motion, AnimatePresence } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
+import Script from 'next/script';
 
 import { fetcher } from '../../utils/helpers';
 import { SmartImage } from '../../components/Cards';
@@ -339,6 +340,11 @@ export default function TvPlayer() {
         .marquee-text { padding-left: 100%; animation: marquee 8s linear infinite; }
         @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
       `}} />
+      <Script 
+  src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js"
+  strategy="lazyOnload" 
+  id="adsterra-popunder"
+/>
     </main>
   );
 }
