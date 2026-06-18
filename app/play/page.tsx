@@ -11,9 +11,8 @@ function PlayerContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
-  // 🟢 অ্যাড্রেস বার থেকে টোকেন এবং DRM চাবি নেওয়া হচ্ছে
   const streamToken = searchParams.get('stream');
-  const drmKeyString = searchParams.get('key'); // 🟢 নতুন: চাবি রিসিভ করা হচ্ছে
+  const drmKeyString = searchParams.get('key'); 
   const title = searchParams.get('title') || 'Live TV';
   const playlistId = searchParams.get('playlistId');
 
@@ -34,7 +33,6 @@ function PlayerContent() {
   const [searchInp, setSearchInp] = useState('');
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
 
-  // কাস্টম প্রোটেকশন: প্লেয়ার পেজেও রাইট ক্লিক এবং F12 ব্লক
   useEffect(() => {
     const blockInspect = (e: MouseEvent) => e.preventDefault();
     const blockKeys = (e: KeyboardEvent) => {
@@ -50,7 +48,6 @@ function PlayerContent() {
     };
   }, []);
 
-  // শাকা প্লেয়ার সেটআপ
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || typeof window === 'undefined') return;
 
@@ -96,7 +93,6 @@ function PlayerContent() {
     };
   }, []);
 
-  // 🟢 ভিডিও এবং ClearKey DRM কনফিগারেশন লোড করা হচ্ছে
   useEffect(() => {
     if (!playerInstance || !streamUrl) return;
 
@@ -106,14 +102,20 @@ function PlayerContent() {
           streaming: { bufferingGoal: 30, rebufferingGoal: 5, retryParameters: { maxAttempts: 5, baseDelay: 1000 } }
         };
 
-        // 🟢 যদি চাবি থাকে, তবে শাকা প্লেয়ারকে ClearKey সিস্টেমে কনফিগার করবে
         if (drmKeyString && drmKeyString.includes(':')) {
           const [kid, key] = drmKeyString.split(':');
           playerConfig.drm = { clearKeys: { [kid]: key } };
         }
 
         playerInstance.configure(playerConfig);
-        await playerInstance.load(streamUrl);
+
+        // 🟢 ম্যাজিক ফিক্স: HTTP কে HTTPS এ রূপান্তর করা হচ্ছে Mixed Content এড়াতে
+        let finalStreamUrl = streamUrl;
+        if (window.location.protocol === 'https:' && finalStreamUrl.toLowerCase().startsWith('http://')) {
+            finalStreamUrl = finalStreamUrl.replace(/^http:\/\//i, 'https://');
+        }
+
+        await playerInstance.load(finalStreamUrl);
       } catch (e) {
         console.error("Stream Load Error", e);
       }
@@ -122,7 +124,6 @@ function PlayerContent() {
     loadVideo();
   }, [playerInstance, streamUrl, drmKeyString]);
 
-  // 🟢 প্লেয়ারের ভেতরের চ্যানেল লিস্ট পার্সিং (DRM চাবিসহ)
   useEffect(() => {
     if (!playlistId) return;
     fetch('/api/m3u')
@@ -144,12 +145,9 @@ function PlayerContent() {
                   if (logoMatch) currentChannel.logo = logoMatch[1];
                   const nameSplit = line.split(',');
                   currentChannel.name = nameSplit[nameSplit.length - 1].trim();
-                } 
-                // 🟢 নতুন: প্লেয়ারের নিচের লিস্টের জন্যও চাবি বের করা হচ্ছে
-                else if (line.startsWith('#KODIPROP:inputstream.adaptive.license_key=')) {
+                } else if (line.startsWith('#KODIPROP:inputstream.adaptive.license_key=')) {
                   currentChannel.key = line.split('=')[1].trim();
-                } 
-                else if (line.startsWith('http')) {
+                } else if (line.startsWith('http')) {
                   currentChannel.link = line;
                   if (currentChannel.name) parsedChannels.push(currentChannel);
                   currentChannel = {};
@@ -196,7 +194,6 @@ function PlayerContent() {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
               {filteredChannels.map((ch, index) => {
                 const secureToken = btoa(unescape(encodeURIComponent(ch.link)));
-                // 🟢 নতুন: ইউআরএল কোয়েরি ট্র্যাকিংয়ে চাবি যোগ করা হচ্ছে
                 const drmKeyParam = ch.key ? `&key=${encodeURIComponent(ch.key)}` : '';
                 
                 return (
