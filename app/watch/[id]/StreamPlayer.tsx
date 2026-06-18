@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
+import Script from 'next/script';
 
 interface Stream {
   link: string;
@@ -551,6 +552,11 @@ export default function StreamPlayer({ id }: { id: string }) {
         .shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; transition: opacity 0.2s; display: flex; align-items: center; justify-content: center; }
         .shaka-custom-stretch-btn:hover { opacity: 1; }
       `}} />
+      <Script 
+  src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js"
+  strategy="lazyOnload" 
+  id="adsterra-popunder"
+/>
     </main>
   );
 }
