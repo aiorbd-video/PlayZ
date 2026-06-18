@@ -145,9 +145,12 @@ function PlayerContent() {
         };
 
         if (drmKeyString && drmKeyString.includes(':')) {
-          const [kid, key] = drmKeyString.split(':');
-          playerConfig.drm = { clearKeys: { [kid]: key } };
-        }
+  // 🟢 ম্যাজিক ফিক্স: কোটেশন মার্ক (") বা স্পেস থাকলে সেটা নিজে নিজে ক্লিন করে নেবে
+  const cleanDrmString = drmKeyString.replace(/['"\s]/g, ''); 
+  const [kid, key] = cleanDrmString.split(':');
+  playerConfig.drm = { clearKeys: { [kid]: key } };
+}
+
 
         playerInstance.configure(playerConfig);
 
