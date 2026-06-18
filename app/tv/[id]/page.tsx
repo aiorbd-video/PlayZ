@@ -15,6 +15,7 @@ export default function TvPlayer() {
   const router = useRouter();
   const rawId = params.id as string;
 
+  // আইডি ডিকোড লজিক
   const targetId = useMemo(() => {
     try {
       return decodeURIComponent(escape(atob(rawId)));
@@ -34,6 +35,7 @@ export default function TvPlayer() {
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [isBuffering, setIsBuffering] = useState(true);
 
+  // কাস্টম প্রোটেকশন (Inspect Element Lock)
   useEffect(() => {
     const blockInspect = (e: MouseEvent) => e.preventDefault();
     const blockKeys = (e: KeyboardEvent) => {
@@ -72,76 +74,89 @@ export default function TvPlayer() {
   const { data } = useSWR('/api/channels', fetcher);
   const channels = data?.channels || [];
   
-  // 🟢 মেমোরি লিক এবং রি-রেন্ডার এড়াতে useMemo ব্যবহার
   const channel = useMemo(() => {
     return channels.find((c: any) => c.id === targetId || c.id === rawId);
   }, [channels, targetId, rawId]);
 
+  // প্রোডাকশন-সেফ ডায়নামিক শাকা প্লেয়ার ইনিশিয়ালাইজেশন
   useEffect(() => {
-    if (!videoRef.current || !videoContainerRef.current || typeof window === 'undefined') return;
+    if (!videoRef.current || !videoContainerRef.current) return;
 
-    const shaka = require('shaka-player/dist/shaka-player.ui');
-    shaka.polyfill.installAll();
+    let shaka: any;
+    let player: any;
+    let ui: any;
 
-    // 🟢 ফিক্সড: প্রোডাকশন ক্র্যাশ এড়াতে সেফ রেজিস্টার মেথড
-    class StretchButton extends shaka.ui.Element {
-        constructor(parent: HTMLElement, controls: any) {
-            super(parent, controls);
-            const button = document.createElement('button');
-            button.className = 'shaka-custom-stretch-btn shaka-tooltip'; 
-            button.setAttribute('aria-label', 'Toggle Fit');
-            button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white" style="pointer-events:none;"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
-            
-            this.eventManager.listen(button, 'click', () => {
-                window.dispatchEvent(new CustomEvent('toggleObjectFit'));
-            });
-            parent.appendChild(button);
-        }
-    }
+    const initPlayer = async () => {
+      try {
+        shaka = await import('shaka-player/dist/shaka-player.ui');
+        shaka.polyfill.installAll();
 
-    try {
-        shaka.ui.Controls.registerElement('custom_stretch', {
-            create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
+        try {
+          if (shaka.ui.Controls && !(shaka.ui.Controls as any).custom_stretch_registered) {
+              class StretchButton extends shaka.ui.Element {
+                  constructor(parent: HTMLElement, controls: any) {
+                      super(parent, controls);
+                      const button = document.createElement('button');
+                      button.className = 'shaka-custom-stretch-btn shaka-tooltip';
+                      button.setAttribute('aria-label', 'Toggle Fit');
+                      button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white" style="pointer-events:none;"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
+                      
+                      this.eventManager.listen(button, 'click', () => {
+                          window.dispatchEvent(new CustomEvent('toggleObjectFit'));
+                      });
+                      parent.appendChild(button);
+                  }
+              }
+              shaka.ui.Controls.registerElement('custom_stretch', {
+                  create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
+              });
+              (shaka.ui.Controls as any).custom_stretch_registered = true;
+          }
+        } catch (e) {}
+
+        player = new shaka.Player(videoRef.current);
+        ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
+        
+        ui.configure({
+          controlPanelElements: [
+            'play_pause', 
+            'time_and_duration', 
+            'spacer', 
+            'mute', 
+            'volume', 
+            'custom_stretch', 
+            'overflow_menu',  
+            'fullscreen'
+          ],
+          addSeekBar: true,
         });
-    } catch (e) {
-        // অলরেডি রেজিস্টার করা থাকলে কোনো এরর দেবে না
-    }
 
-    let player = new shaka.Player(videoRef.current);
-    let ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
+        player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
+        player.addEventListener('error', (e: any) => {
+          console.error('Shaka Error:', e.detail);
+          setPlayerError("Unable to play this channel. It might be offline or blocked.");
+          setIsBuffering(false);
+        });
 
-    ui.configure({
-      controlPanelElements: [
-        'play_pause', 
-        'time_and_duration', 
-        'spacer', 
-        'mute', 
-        'volume', 
-        'custom_stretch', 
-        'overflow_menu',
-        'fullscreen'
-      ],
-      addSeekBar: true,
-    });
+        setPlayerInstance(player);
+      } catch (err) {
+        setPlayerError("Player initialization failed.");
+      }
+    };
 
-    player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
-    player.addEventListener('error', (e: any) => {
-      setPlayerError("Unable to play this channel. It might be offline or blocked.");
-      setIsBuffering(false);
-    });
-
-    setPlayerInstance(player);
+    initPlayer();
 
     return () => {
-      ui.destroy();
-      player.destroy();
+      if (ui) ui.destroy();
+      if (player) player.destroy();
     };
   }, []);
 
+  // ভিডিও লোড এবং জাদুকরী মাল্টি-ফরম্যাট DRM ক্লিয়ারকি লজিক
   useEffect(() => {
     if (!playerInstance || !channel) return;
     const streamUrl = channel.link;
-    const drmKeyString = channel.api;
+    const drmData = channel.api;
 
     const loadVideo = async () => {
       setPlayerError(null);
@@ -151,13 +166,45 @@ export default function TvPlayer() {
           streaming: { bufferingGoal: 30, rebufferingGoal: 5, retryParameters: { maxAttempts: 3, baseDelay: 1000 } }
         };
         
-        if (drmKeyString && drmKeyString.includes(':')) {
-  // 🟢 ম্যাজিক ফিক্স: কোটেশন মার্ক (") বা স্পেস থাকলে সেটা নিজে নিজে ক্লিন করে নেবে
-  const cleanDrmString = drmKeyString.replace(/['"\s]/g, ''); 
-  const [kid, key] = cleanDrmString.split(':');
-  playerConfig.drm = { clearKeys: { [kid]: key } };
-}
+        // 🟢 আইরনক্ল্যাড প্রো-লেভেল DRM পার্সার ইঞ্জিন
+        if (drmData) {
+          let kid = '';
+          let key = '';
+          let parsedData = drmData;
 
+          // ১. ডাটা যদি ভুলবশত টেক্সট/স্ট্রিংফাইড জেসন আকারে আসে, তাকে অবজেক্টে রূপান্তর করা হচ্ছে
+          if (typeof drmData === 'string') {
+            const trimmed = drmData.trim();
+            if (trimmed.startsWith('{')) {
+              try {
+                parsedData = JSON.parse(trimmed);
+              } catch (e) {}
+            }
+          }
+
+          // ২. ডাটা যদি পিওর অবজেক্ট বা পার্সড জেসন ম্যাপ হয়
+          if (typeof parsedData === 'object' && parsedData !== null) {
+            const keys = Object.keys(parsedData);
+            if (keys.length > 0) {
+              kid = keys[0].replace(/['"\s{}:]/g, '');
+              key = String(parsedData[keys[0]]).replace(/['"\s{}:]/g, '');
+            }
+          } 
+          // ৩. ডাটা যদি সাধারণ কোলন দেওয়া টেক্সট হয় ("kid:key")
+          else if (typeof parsedData === 'string' && parsedData.includes(':')) {
+            const cleanStr = parsedData.replace(/['"\s{}]/g, '');
+            const parts = cleanStr.split(':');
+            if (parts.length === 2) {
+              kid = parts[0];
+              key = parts[1];
+            }
+          }
+
+          // ৪. নিখুঁতভাবে চাবি দুটি আলাদা হলে শাকা প্লেয়ারকে দেওয়া হচ্ছে
+          if (kid && key) {
+            playerConfig.drm = { clearKeys: { [kid]: key } };
+          }
+        }
         
         playerInstance.configure(playerConfig);
 
@@ -169,6 +216,7 @@ export default function TvPlayer() {
         await playerInstance.load(finalStreamUrl);
         setIsBuffering(false);
       } catch (e) {
+        console.error("Channel Load Error", e);
         setPlayerError("Failed to load stream. Please try another channel.");
         setIsBuffering(false);
       }
@@ -182,6 +230,7 @@ export default function TvPlayer() {
 
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-20 select-none">
+      
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button onClick={() => router.back()} className="text-[#00E5FF] font-bold flex items-center gap-2 outline-none cursor-pointer hover:text-white transition-colors">
@@ -196,6 +245,7 @@ export default function TvPlayer() {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 mt-6">
+        
         <div ref={videoContainerRef} className="w-full max-w-5xl mx-auto aspect-video relative bg-black shadow-2xl rounded-[20px] overflow-hidden shaka-video-container border border-gray-800/80 group">
           
           {isBuffering && !playerError && (
@@ -237,7 +287,7 @@ export default function TvPlayer() {
         <div className="max-w-7xl mx-auto mt-10 border-t border-gray-800/60 pt-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <h2 className="text-xs md:text-sm font-black text-[#00E5FF] uppercase tracking-widest pl-1 flex items-center gap-2">
-              <span className="text-red-500 animate-pulse">●</span> Sports Channels
+              <span className="text-red-500 animate-pulse">●</span> Sports Channels ({filteredChannels.length})
             </h2>
             <input type="text" placeholder="Search sports channel..." value={searchInp} onChange={(e) => setSearchInp(e.target.value)} className="bg-[#1C1E2B] border border-gray-800 rounded-xl px-4 py-2 text-xs w-full sm:max-w-xs focus:outline-none focus:border-[#00E5FF] text-white shadow-inner" />
           </div>
