@@ -153,7 +153,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }, []);
 
-  // 🟢 ১. ফিক্সড: প্রোডাকশন-সেফ ডায়নামিক শাকা প্লেয়ার ইনিশিয়ালাইজেশন (লাইন ১২৪ থেকে পরিবর্তিত)
+  // প্রোডাকশন-সেফ ডায়নামিক শাকা প্লেয়ার ইনিশিয়ালাইজেশন
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
 
@@ -204,13 +204,19 @@ export default function StreamPlayer({ id }: { id: string }) {
             'fullscreen'
           ],
           addSeekBar: true,
-          trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.RESOLUTION_BITRATE
+          // 🟢 ফিক্স: মোবাইলের সব রেজোলিউশন বাটন ম্যানুয়ালি শো করার জন্য টাইপ ফিক্স
+          trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.LABEL
         });
 
         player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
+        
+        // 🟢 ফিক্স: বাফারিং করার সময় হুট করে ফুলস্ক্রিন থেকে বের হওয়া এবং ফলস সার্ভার সুইচ আটকানো
         player.addEventListener('error', (e: any) => {
-          console.error("Shaka Internal Error:", e.detail);
-          triggerNextServer();
+          // গুরুতর এরর কোড (যেমন নেটওয়ার্ক সম্পূর্ণ ব্লক বা রিসোর্স উধাও) হলে তবেই সুইচ করবে
+          if (e.detail && e.detail.code !== 1002 && e.detail.code !== 7000) {
+            console.warn("Shaka Internal Error Handled:", e.detail.code);
+            triggerNextServer();
+          }
         });
 
         setPlayerInstance(player);
@@ -244,17 +250,18 @@ export default function StreamPlayer({ id }: { id: string }) {
 
         const playerConfig: any = {
           streaming: {
-              bufferingGoal: 30,
-              rebufferingGoal: 5,
+              // 🟢 ফিক্স: বাফারিং গোল এবং রিট্রাই প্যারামিটার বুস্ট করা হলো যাতে বাফার করলেও সার্ভার ড্রপ না করে
+              bufferingGoal: 45,
+              rebufferingGoal: 8,
               bufferBehind: 15,
-              retryParameters: { maxAttempts: 5, baseDelay: 1000, backoffFactor: 2, timeout: 20000 }
+              retryParameters: { maxAttempts: 8, baseDelay: 1500, backoffFactor: 1.5, timeout: 35000 }
           },
           abr: { 
               enabled: true, 
-              defaultBandwidthEstimate: 2000000,
+              defaultBandwidthEstimate: 2500000,
               restrictions: { maxHeight: 4320, maxWidth: 7680 } 
           },
-          manifest: { dash: { ignoreMinBufferTime: true } }
+          manifest: { dash: { ignoreMinBufferTime: true }, retryParameters: { maxAttempts: 5, timeout: 30000 } }
         };
         
         if (drmData) {
@@ -295,6 +302,7 @@ export default function StreamPlayer({ id }: { id: string }) {
         await playerInstance.load(finalStreamUrl);
         setIsBuffering(false);
       } catch (e) {
+        // প্লেয়ার হার্ড ফেল খেলেই কেবল পরের সার্ভার ট্রাই করবে
         triggerNextServer();
       }
     };
@@ -553,10 +561,10 @@ export default function StreamPlayer({ id }: { id: string }) {
         .shaka-custom-stretch-btn:hover { opacity: 1; }
       `}} />
       <Script 
-  src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js"
-  strategy="lazyOnload" 
-  id="adsterra-popunder"
-/>
+        src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js"
+        strategy="lazyOnload" 
+        id="adsterra-popunder"
+      />
     </main>
   );
 }
