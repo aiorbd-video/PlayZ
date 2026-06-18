@@ -1,12 +1,11 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
-import shaka from 'shaka-player/dist/shaka-player.ui';
 
 interface Stream {
   link: string;
@@ -32,7 +31,7 @@ interface Match {
 
 interface ApiResponse {
   streams: Stream[] | null;
-  matchInfo?: Match | null; // 🟢 ফিক্স: API থেকে সরাসরি ম্যাচ ইনফো রিসিভ করার টাইপ অ্যাড করা হলো
+  matchInfo?: Match | null;
 }
 
 const MATCH_API = "/api/proxy-matches";
@@ -49,7 +48,6 @@ const generateSlug = (teamA?: string, teamB?: string, eventName?: string, id?: s
   const tA = teamA || 'team';
   const tB = teamB || 'match';
   const event = eventName || 'live-event';
-  
   const rawString = `${tA}-vs-${tB}-${event}`;
   const cleanSlug = rawString.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   return `${cleanSlug}-${id || '0'}`;
@@ -67,37 +65,26 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
 export default function StreamPlayer({ id }: { id: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
-  const [playerInstance, setPlayerInstance] = useState<shaka.Player | null>(null);
+  const [playerInstance, setPlayerInstance] = useState<any>(null);
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
   
-  const [zoomMode, setZoomMode] = useState<'contain' | 'fill' | 'cover'>('contain');
-  
-  const [isControlsVisible, setIsControlsVisible] = useState(true);
+  // 🟢 এন্টারপ্রাইজ প্লেয়ার স্টেট
+  const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
+  const [showFitToast, setShowFitToast] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(true);
   const [allServersDown, setAllServersDown] = useState(false);
   const [showCopied, setShowCopied] = useState(false); 
   
-  const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
   const streamsRef = useRef<Stream[] | null>(null);
   const activeIndexRef = useRef<number>(0);
 
-  // 🟢 ফিক্স ১: সাইডবারের ডাটা সরাসরি fetch করে সেফটি চেক করা হচ্ছে
-  const { data: rawMatches } = useSWR(MATCH_API, fetcher, {
-    revalidateIfStale: false,
-    revalidateOnFocus: false,
-    revalidateOnReconnect: false
-  });
-  
-  // যদি ডাটা Array না হয়ে Error Object হয়, তবে অ্যাপ ক্র্যাশ ঠেকানোর জন্য null করে দেবে
+  // API Calls
+  const { data: rawMatches } = useSWR(MATCH_API, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
   const matches: Match[] | null = Array.isArray(rawMatches) ? rawMatches : null;
 
-  const { data: apiResponse } = useSWR<ApiResponse>(`/api/streams/${id}`, fetcher, { 
-    refreshInterval: 10000,
-    revalidateOnFocus: false
-  });
+  const { data: apiResponse } = useSWR<ApiResponse>(`/api/streams/${id}`, fetcher, { refreshInterval: 10000, revalidateOnFocus: false });
   const streams = apiResponse?.streams || null;
-
-  // 🟢 ফিক্স ২: সাইডবার ক্র্যাশ করলেও ওপরে যেন নাম দেখায়, তার জন্য apiResponse থেকে ডাটা নেওয়া হচ্ছে
   const currentMatch = apiResponse?.matchInfo || (matches ? matches.find((m) => m.id.toString() === id) : null);
 
   useEffect(() => { streamsRef.current = streams; }, [streams]);
@@ -113,42 +100,120 @@ export default function StreamPlayer({ id }: { id: string }) {
     setAllServersDown(false);
   }, [id]);
 
+  // কাস্টম প্রোটেকশন (Inspect Element Lock)
+  useEffect(() => {
+    const blockInspect = (e: MouseEvent) => e.preventDefault();
+    const blockKeys = (e: KeyboardEvent) => {
+      if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'C' || e.key === 'J'))) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('contextmenu', blockInspect);
+    document.addEventListener('keydown', blockKeys);
+    return () => {
+      document.removeEventListener('contextmenu', blockInspect);
+      document.removeEventListener('keydown', blockKeys);
+    };
+  }, []);
+
+  const handleFitToggle = useCallback(() => {
+    setObjectFit((prev) => {
+      const nextFit = prev === 'contain' ? 'cover' : prev === 'cover' ? 'fill' : 'contain';
+      setShowFitToast(true);
+      return nextFit;
+    });
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('toggleObjectFit', handleFitToggle);
+    return () => window.removeEventListener('toggleObjectFit', handleFitToggle);
+  }, [handleFitToggle]);
+
+  useEffect(() => {
+    if (showFitToast) {
+      const timer = setTimeout(() => setShowFitToast(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [showFitToast, objectFit]);
+
+  // সার্ভার অটো সুইচ লজিক
   const triggerNextServer = () => {
     const currentStreams = streamsRef.current;
     const currentIndex = activeIndexRef.current;
-
     if (currentStreams && currentIndex < currentStreams.length - 1) {
-      console.warn(`⚠️ Switching to Backup Server ${currentIndex + 2}...`);
       setActiveStreamIndex(currentIndex + 1);
     } else {
-      console.error("💥 All backup servers exhausted.");
       setAllServersDown(true);
     }
   };
 
+  // 🟢 প্রোডাকশন-সেফ ডায়নামিক শাকা প্লেয়ার ইনিশিয়ালাইজেশন
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
 
-    shaka.polyfill.installAll();
-    let player: shaka.Player | null = null;
-    let ui: shaka.ui.Overlay | null = null;
+    let shaka: any;
+    let player: any;
+    let ui: any;
 
-    if (shaka.Player.isBrowserSupported()) {
+    const initPlayer = async () => {
+      try {
+        shaka = await import('shaka-player/dist/shaka-player.ui');
+        shaka.polyfill.installAll();
+
+        try {
+          if (shaka.ui.Controls && !(shaka.ui.Controls as any).custom_stretch_registered) {
+              class StretchButton extends shaka.ui.Element {
+                  constructor(parent: HTMLElement, controls: any) {
+                      super(parent, controls);
+                      const button = document.createElement('button');
+                      button.className = 'shaka-custom-stretch-btn shaka-tooltip';
+                      button.setAttribute('aria-label', 'Toggle Fit');
+                      button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white" style="pointer-events:none;"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
+                      
+                      this.eventManager.listen(button, 'click', () => {
+                          window.dispatchEvent(new CustomEvent('toggleObjectFit'));
+                      });
+                      parent.appendChild(button);
+                  }
+              }
+              shaka.ui.Controls.registerElement('custom_stretch', {
+                  create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
+              });
+              (shaka.ui.Controls as any).custom_stretch_registered = true;
+          }
+        } catch (e) {}
+
         player = new shaka.Player(videoRef.current);
         ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
         
         ui.configure({
-            controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'fullscreen', 'overflow_menu'],
-            addSeekBar: true,
+          controlPanelElements: [
+            'play_pause', 
+            'time_and_duration', 
+            'spacer', 
+            'mute', 
+            'volume', 
+            'custom_stretch', 
+            'overflow_menu',  
+            'fullscreen'
+          ],
+          addSeekBar: true,
+          // 🟢 ফিক্স: 1080p, 2K, 4K এর পাশে Mbps (Bitrate) দেখানোর কনফিগারেশন
+          trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.RESOLUTION_BITRATE
         });
 
-        player.addEventListener('error', (event: any) => {
-          console.error('Shaka Internal Stream Error:', event.detail);
+        player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
+        player.addEventListener('error', (e: any) => {
           triggerNextServer();
         });
 
         setPlayerInstance(player);
-    }
+      } catch (err) {
+        console.error("Player initialization failed.");
+      }
+    };
+
+    initPlayer();
 
     return () => {
       if (ui) ui.destroy();
@@ -156,6 +221,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     };
   }, []);
 
+  // 🟢 ভিডিও লোড এবং জাদুকরী মাল্টি-ফরম্যাট DRM পার্সার
   useEffect(() => {
     if (!playerInstance || !streams || streams.length === 0 || allServersDown) return;
     
@@ -163,11 +229,12 @@ export default function StreamPlayer({ id }: { id: string }) {
     if (!currentStream) return;
 
     const streamUrl = currentStream.link;
-    const drmKeyString = currentStream.api;
+    const drmData = currentStream.api;
 
     if (playerInstance.getAssetUri() === streamUrl) return;
 
     const loadVideo = async () => {
+      setIsBuffering(true);
       try {
         const playerConfig: any = {
           streaming: {
@@ -179,34 +246,52 @@ export default function StreamPlayer({ id }: { id: string }) {
           abr: { enabled: true, defaultBandwidthEstimate: 1000000 },
           manifest: { dash: { ignoreMinBufferTime: true } }
         };
-        if (drmKeyString && drmKeyString.includes(':')) {
-          const [kid, key] = drmKeyString.split(':');
-          playerConfig.drm = { clearKeys: { [kid]: key } };
+        
+        // 🟢 আইরনক্ল্যাড DRM পার্সার
+        if (drmData) {
+          const clearKeysObj: Record<string, string> = {};
+          let parsedData: any = drmData;
+
+          if (typeof drmData === 'string') {
+            const trimmed = drmData.trim();
+            if (trimmed.startsWith('{')) {
+              try { parsedData = JSON.parse(trimmed); } catch (e) {}
+            }
+          }
+
+          if (typeof parsedData === 'object' && parsedData !== null) {
+            Object.entries(parsedData).forEach(([k, v]) => {
+              const cleanKid = k.replace(/['"\s{}:]/g, '');
+              const cleanKey = String(v).replace(/['"\s{}:]/g, '');
+              if (cleanKid && cleanKey) clearKeysObj[cleanKid] = cleanKey;
+            });
+          } else if (typeof parsedData === 'string' && parsedData.includes(':')) {
+            const cleanStr = parsedData.replace(/['"\s{}]/g, '');
+            const parts = cleanStr.split(':');
+            if (parts.length === 2) clearKeysObj[parts[0]] = parts[1];
+          }
+
+          if (Object.keys(clearKeysObj).length > 0) {
+            playerConfig.drm = { clearKeys: clearKeysObj };
+          }
         }
+        
         playerInstance.configure(playerConfig);
-        await playerInstance.load(streamUrl);
+
+        let finalStreamUrl = streamUrl;
+        // 🟢 HTTP টু HTTPS আপগ্রেড (Redirect Support)
+        if (window.location.protocol === 'https:' && finalStreamUrl.toLowerCase().startsWith('http://')) {
+            finalStreamUrl = finalStreamUrl.replace(/^http:\/\//i, 'https://');
+        }
+
+        await playerInstance.load(finalStreamUrl);
+        setIsBuffering(false);
       } catch (e) {
         triggerNextServer();
       }
     };
     loadVideo();
   }, [playerInstance, streams, activeStreamIndex, allServersDown]);
-
-  const handleZoomToggle = () => {
-    setZoomMode((prev) => {
-      if (prev === 'contain') return 'fill';
-      if (prev === 'fill') return 'cover';
-      return 'contain';
-    });
-  };
-
-  const handleUserActivity = () => {
-    setIsControlsVisible(true);
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    hideTimerRef.current = setTimeout(() => {
-      setIsControlsVisible(false);
-    }, 3000);
-  };
 
   const handleShare = async () => {
     const matchTitle = currentMatch ? `${currentMatch.eventInfo.teamA} VS ${currentMatch.eventInfo.teamB}` : 'Live Match';
@@ -219,9 +304,7 @@ export default function StreamPlayer({ id }: { id: string }) {
           text: `Watch ${matchTitle} Live in HD on All in One Sports!`,
           url: shareUrl,
         });
-      } catch (error) {
-        console.log('Share canceled');
-      }
+      } catch (error) {}
     } else {
       navigator.clipboard.writeText(shareUrl);
       setShowCopied(true);
@@ -252,24 +335,24 @@ export default function StreamPlayer({ id }: { id: string }) {
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
         <div className="lg:col-span-2 flex flex-col">
           
-          <div 
-            ref={videoContainerRef} 
-            className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group"
-            onMouseMoveCapture={handleUserActivity}
-            onTouchStartCapture={handleUserActivity}
-            onClickCapture={handleUserActivity}
-            onMouseLeave={() => setIsControlsVisible(false)}
-          >
+          <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group">
 
             {!streams && !allServersDown && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/90 z-10 flex-col gap-3">
                 <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-gray-400 text-sm animate-pulse tracking-wider">Fetching Secure Stream...</span>
+                <span className="text-[#00E5FF] text-sm animate-pulse tracking-wider font-bold">Connecting...</span>
+              </div>
+            )}
+
+            {isBuffering && !allServersDown && streams && (
+              <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
+                <div className="w-12 h-12 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin mb-3"></div>
+                <p className="text-[#00E5FF] font-bold animate-pulse text-sm">Connecting to Server {activeStreamIndex + 1}...</p>
               </div>
             )}
 
             {allServersDown && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/95 z-20 flex-col gap-4 text-center p-4">
+              <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/95 z-50 flex-col gap-4 text-center p-4">
                 <span className="text-4xl">📡</span>
                 <div className="text-red-400 font-bold tracking-wide">Stream Currently Unavailable</div>
                 <p className="text-gray-400 text-sm max-w-xs">All servers for this match are currently down or the match has ended. Please try again later.</p>
@@ -279,29 +362,16 @@ export default function StreamPlayer({ id }: { id: string }) {
               </div>
             )}
 
-            {streams && !allServersDown && (
-              <button
-                onClick={handleZoomToggle}
-                className={`absolute top-4 right-4 z-[40] bg-black/70 hover:bg-[#00E5FF]/20 text-white hover:text-[#00E5FF] px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 border border-white/10 backdrop-blur-sm shadow-lg active:scale-95 uppercase tracking-wider transition-opacity duration-500 ease-in-out ${
-                  isControlsVisible ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-                }`}
-                title="Change Aspect Ratio"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 8V4h4M4 16v4h4M20 8V4h-4M20 16v4h-4M12 4v16m-8-8h16" />
-                </svg>
-                {zoomMode === 'contain' ? 'Default' : zoomMode === 'fill' ? 'Stretch' : 'Zoom'}
-              </button>
-            )}
-
-            <video 
-              ref={videoRef} 
-              className={`w-full h-full transition-all duration-300 pointer-events-none ${
-                zoomMode === 'fill' ? 'object-fill' : zoomMode === 'cover' ? 'object-cover' : 'object-contain'
-              }`} 
-              autoPlay 
-              playsInline 
-            />
+            <video ref={videoRef} className="w-full h-full transition-all duration-300 pointer-events-none" style={{ objectFit: objectFit }} autoPlay playsInline />
+            
+            <AnimatePresence>
+              {showFitToast && (
+                <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="absolute top-6 left-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none">
+                  <span className="w-2 h-2 rounded-full bg-[#00E5FF] animate-pulse"></span>
+                  <span className="text-xs md:text-sm font-bold text-white capitalize">{objectFit === 'contain' ? 'Fit to Screen' : objectFit === 'cover' ? 'Zoom (Cropped)' : 'Stretch (Fill)'}</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {streams && streams.length > 0 && (
@@ -373,7 +443,6 @@ export default function StreamPlayer({ id }: { id: string }) {
           <div className="flex flex-col gap-3.5">
             <span className="text-xs font-black uppercase tracking-wider text-gray-400 pl-1 mb-1">More Live Events</span>
             
-            {/* 🟢 ফিক্স ৩: ডাটা লোড হওয়ার সময় বা এরর আসলে ক্র্যাশ না করে সুন্দর মেসেজ বা স্কেলিটন দেখাবে */}
             {!rawMatches && (
               <>
                 <div className="h-[75px] bg-[#1C1E2B] rounded-[18px] animate-pulse border border-gray-800/60"></div>
@@ -433,6 +502,11 @@ export default function StreamPlayer({ id }: { id: string }) {
           </div>
         </div>
       </div>
+
+      <style dangerouslySetInnerHTML={{__html: `
+        .shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; transition: opacity 0.2s; display: flex; align-items: center; justify-content: center; }
+        .shaka-custom-stretch-btn:hover { opacity: 1; }
+      `}} />
     </main>
   );
 }
