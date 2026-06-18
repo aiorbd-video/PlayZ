@@ -15,7 +15,6 @@ export default function TvPlayer() {
   const router = useRouter();
   const rawId = params.id as string;
 
-  // 🟢 ১. আইডি ডিকোড এবং ভ্যালিডেশন
   const targetId = useMemo(() => {
     try {
       return decodeURIComponent(escape(atob(rawId)));
@@ -30,13 +29,11 @@ export default function TvPlayer() {
   const [playerInstance, setPlayerInstance] = useState<any>(null);
   const [searchInp, setSearchInp] = useState('');
   
-  // 🟢 ২. এন্টারপ্রাইজ স্টেট ম্যানেজমেন্ট
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
   const [showFitToast, setShowFitToast] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [isBuffering, setIsBuffering] = useState(true);
 
-  // কাস্টম সিকিউরিটি (Inspect & F12 Block)
   useEffect(() => {
     const blockInspect = (e: MouseEvent) => e.preventDefault();
     const blockKeys = (e: KeyboardEvent) => {
@@ -52,12 +49,10 @@ export default function TvPlayer() {
     };
   }, []);
 
-  // 🟢 ৩. Shaka Player <-> React Bridge (ম্যাজিক ফিক্স)
-  // Shaka Player থেকে ইভেন্ট আসলে React State আপডেট হবে
   const handleFitToggle = useCallback(() => {
     setObjectFit((prev) => {
       const nextFit = prev === 'contain' ? 'cover' : prev === 'cover' ? 'fill' : 'contain';
-      setShowFitToast(true); // Toast দেখাবে
+      setShowFitToast(true);
       return nextFit;
     });
   }, []);
@@ -67,7 +62,6 @@ export default function TvPlayer() {
     return () => window.removeEventListener('toggleObjectFit', handleFitToggle);
   }, [handleFitToggle]);
 
-  // Toast ২ সেকেন্ড পর হাইড করার লজিক
   useEffect(() => {
     if (showFitToast) {
       const timer = setTimeout(() => setShowFitToast(false), 2000);
@@ -77,41 +71,40 @@ export default function TvPlayer() {
 
   const { data } = useSWR('/api/channels', fetcher);
   const channels = data?.channels || [];
-  const channel = channels.find((c: any) => c.id === targetId || c.id === rawId);
+  
+  // 🟢 মেমোরি লিক এবং রি-রেন্ডার এড়াতে useMemo ব্যবহার
+  const channel = useMemo(() => {
+    return channels.find((c: any) => c.id === targetId || c.id === rawId);
+  }, [channels, targetId, rawId]);
 
-  // 🟢 ৪. এন্টারপ্রাইজ লেভেল Shaka Player সেটআপ
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || typeof window === 'undefined') return;
 
     const shaka = require('shaka-player/dist/shaka-player.ui');
     shaka.polyfill.installAll();
 
-    // আগের ক্যাশ ভাঙতে বাটনের নতুন ইউনিক নাম ব্যবহার
-    if (!shaka.ui.Controls.elements_['custom_stretch']) {
-        class StretchButton extends shaka.ui.Element {
-            constructor(parent: HTMLElement, controls: any) {
-                super(parent, controls);
-                const button = document.createElement('button');
-                // material-icons ক্লাসটি রিমুভ করা হয়েছে যাতে কোনো টেক্সট না আসে
-                button.className = 'shaka-custom-stretch-btn shaka-tooltip'; 
-                button.setAttribute('aria-label', 'Toggle Fit');
-                
-                // পিওর SVG, কোনো টেক্সট বা লিগেচার নেই
-                button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white" style="pointer-events:none;"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
-                
-                // Custom Event ডিসপ্যাচ করে React-কে জানানো
-                this.eventManager.listen(button, 'click', () => {
-                    window.dispatchEvent(new CustomEvent('toggleObjectFit'));
-                });
-                
-                parent.appendChild(button);
-            }
-        }
-        try {
-            shaka.ui.Controls.registerElement('custom_stretch', {
-                create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
+    // 🟢 ফিক্সড: প্রোডাকশন ক্র্যাশ এড়াতে সেফ রেজিস্টার মেথড
+    class StretchButton extends shaka.ui.Element {
+        constructor(parent: HTMLElement, controls: any) {
+            super(parent, controls);
+            const button = document.createElement('button');
+            button.className = 'shaka-custom-stretch-btn shaka-tooltip'; 
+            button.setAttribute('aria-label', 'Toggle Fit');
+            button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white" style="pointer-events:none;"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
+            
+            this.eventManager.listen(button, 'click', () => {
+                window.dispatchEvent(new CustomEvent('toggleObjectFit'));
             });
-        } catch (e) {}
+            parent.appendChild(button);
+        }
+    }
+
+    try {
+        shaka.ui.Controls.registerElement('custom_stretch', {
+            create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
+        });
+    } catch (e) {
+        // অলরেডি রেজিস্টার করা থাকলে কোনো এরর দেবে না
     }
 
     let player = new shaka.Player(videoRef.current);
@@ -124,8 +117,8 @@ export default function TvPlayer() {
         'spacer', 
         'mute', 
         'volume', 
-        'custom_stretch', // 🟢 নতুন বাটনের আইডি
-        'overflow_menu',  // 🟢 কোয়ালিটি সুইচিং গিয়ার আইকন
+        'custom_stretch', 
+        'overflow_menu',
         'fullscreen'
       ],
       addSeekBar: true,
@@ -133,21 +126,18 @@ export default function TvPlayer() {
 
     player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
     player.addEventListener('error', (e: any) => {
-      console.error('Shaka Playback Error:', e.detail);
       setPlayerError("Unable to play this channel. It might be offline or blocked.");
       setIsBuffering(false);
     });
 
     setPlayerInstance(player);
 
-    // ক্লিনআপ লজিক
     return () => {
       ui.destroy();
       player.destroy();
     };
   }, []);
 
-  // ৫. ভিডিও লোড এবং DRM
   useEffect(() => {
     if (!playerInstance || !channel) return;
     const streamUrl = channel.link;
@@ -189,7 +179,6 @@ export default function TvPlayer() {
 
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-20 select-none">
-      
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button onClick={() => router.back()} className="text-[#00E5FF] font-bold flex items-center gap-2 outline-none cursor-pointer hover:text-white transition-colors">
@@ -204,7 +193,6 @@ export default function TvPlayer() {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 mt-6">
-        
         <div ref={videoContainerRef} className="w-full max-w-5xl mx-auto aspect-video relative bg-black shadow-2xl rounded-[20px] overflow-hidden shaka-video-container border border-gray-800/80 group">
           
           {isBuffering && !playerError && (
@@ -226,7 +214,6 @@ export default function TvPlayer() {
 
           <video ref={videoRef} className="w-full h-full transition-all duration-300" style={{ objectFit: objectFit }} autoPlay playsInline />
           
-          {/* 🟢 Netflix Style Auto-Hiding Toast */}
           <AnimatePresence>
             {showFitToast && (
               <motion.div 
@@ -282,25 +269,11 @@ export default function TvPlayer() {
       </div>
 
       <style dangerouslySetInnerHTML={{__html: `
-        /* 🟢 এন্টারপ্রাইজ কাস্টম বাটন স্টাইল */
-        .shaka-custom-stretch-btn { 
-           background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; transition: opacity 0.2s; display: flex; align-items: center; justify-content: center;
-        }
+        .shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; transition: opacity 0.2s; display: flex; align-items: center; justify-content: center; }
         .shaka-custom-stretch-btn:hover { opacity: 1; }
-        
-        /* 🟢 Marquee Animation */
-        .marquee-container {
-           mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
-           -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
-        }
-        .marquee-text {
-           padding-left: 100%;
-           animation: marquee 8s linear infinite;
-        }
-        @keyframes marquee {
-           0% { transform: translateX(0); }
-           100% { transform: translateX(-100%); }
-        }
+        .marquee-container { mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); }
+        .marquee-text { padding-left: 100%; animation: marquee 8s linear infinite; }
+        @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
       `}} />
     </main>
   );
