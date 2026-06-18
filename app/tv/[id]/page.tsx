@@ -15,7 +15,7 @@ export default function TvPlayer() {
   const router = useRouter();
   const rawId = params.id as string;
 
-  // 🟢 ১. প্রো-লেভেল Base64 রাউটার রিকভারি পার্সার (URL-Safe ও ট্রিম প্যাডিং ফিক্সড)
+  // 🟢 ১. Base64 রাউটার আইডি রিকভারি পার্সার (প্যাডিং ট্রিম ফিক্সড)
   const targetId = useMemo(() => {
     if (!rawId) return '';
     try {
@@ -83,6 +83,7 @@ export default function TvPlayer() {
   const { data } = useSWR('/api/channels', fetcher);
   const channels = data?.channels || [];
   
+  // 🟢 ২. ডিকোড করা আইডি দিয়ে ফায়ারবেস চ্যানেল ম্যাচিং
   const channel = useMemo(() => {
     return channels.find((c: any) => c.id === targetId || c.id === rawId);
   }, [channels, targetId, rawId]);
@@ -161,7 +162,7 @@ export default function TvPlayer() {
     };
   }, []);
 
-  // 🟢 ভিডিও লোড এবং জাদুকরী মাল্টি-ফরম্যাট জেসন অবজেক্ট DRM পার্সার লজিক
+  // 🟢 ৩. জাদুকরী এন্টারপ্রাইজ DRM পার্সার (ফায়ারবেস অবজেক্ট ম্যাপ ফিক্সড)
   useEffect(() => {
     if (!playerInstance || !channel) return;
     const streamUrl = channel.link;
@@ -175,12 +176,11 @@ export default function TvPlayer() {
           streaming: { bufferingGoal: 30, rebufferingGoal: 5, retryParameters: { maxAttempts: 3, baseDelay: 1000 } }
         };
         
-        // 🟢 ফায়ারবেসের জেসন ম্যাপ ডাইনামিক পার্সার
         if (drmData) {
           const clearKeysObj: Record<string, string> = {};
           let parsedData = drmData;
 
-          // ডাটা টেক্সট ফরম্যাটে থাকলে অবজেক্টে কনভার্ট করবে
+          // যদি ডাটা স্ট্রিংফাইড জেসন টেক্সট হিসেবে আসে
           if (typeof drmData === 'string') {
             const trimmed = drmData.trim();
             if (trimmed.startsWith('{')) {
@@ -190,7 +190,7 @@ export default function TvPlayer() {
             }
           }
 
-          // অবজেক্টের ভেতর থেকে ডাইনামিকালি কী এবং আইডি লুপিং করে বের করা হচ্ছে
+          // 🟢 ফায়ারবেসের পিওর অবজেক্ট ম্যাপ থেকে KID এবং KEY আলাদা করার লুপ
           if (typeof parsedData === 'object' && parsedData !== null) {
             Object.entries(parsedData).forEach(([k, v]) => {
               const cleanKid = k.replace(/['"\s{}:]/g, '');
@@ -200,7 +200,7 @@ export default function TvPlayer() {
               }
             });
           } 
-          // সাধারণ কোলন দেওয়া টেক্সট ব্যাকআপ লজিক
+          // সাধারণ ব্যাকআপ টেক্সট লজিক (kid:key)
           else if (typeof parsedData === 'string' && parsedData.includes(':')) {
             const cleanStr = parsedData.replace(/['"\s{}]/g, '');
             const parts = cleanStr.split(':');
@@ -209,7 +209,6 @@ export default function TvPlayer() {
             }
           }
 
-          // শাকা প্লেয়ারে ক্লিয়ারকি ইনজেক্ট করা হচ্ছে
           if (Object.keys(clearKeysObj).length > 0) {
             playerConfig.drm = { clearKeys: clearKeysObj };
           }
@@ -293,6 +292,7 @@ export default function TvPlayer() {
           </AnimatePresence>
         </div>
 
+        {/* কন্টেন্ট গ্রিড লেআউট */}
         <div className="max-w-7xl mx-auto mt-10 border-t border-gray-800/60 pt-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <h2 className="text-xs md:text-sm font-black text-[#00E5FF] uppercase tracking-widest pl-1 flex items-center gap-2">
