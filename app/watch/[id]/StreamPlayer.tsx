@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -67,9 +67,8 @@ export default function StreamPlayer({ id }: { id: string }) {
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const [playerInstance, setPlayerInstance] = useState<any>(null);
   
-  // 🟢 এন্টারপ্রাইজ প্লেয়ার স্টেট
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
-  const [reloadTrigger, setReloadTrigger] = useState(0); // ম্যানুয়াল রিলোড ট্র্যাকার
+  const [reloadTrigger, setReloadTrigger] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
   
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
@@ -141,7 +140,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }, [showFitToast, objectFit]);
 
-  // 🟢 সার্ভার অটো-সুইচ লজিক ফিক্সড
+  // সার্ভার অটো-সুইচ লজিক
   const triggerNextServer = useCallback(() => {
     const currentStreams = streamsRef.current;
     const currentIndex = activeIndexRef.current;
@@ -153,7 +152,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }, []);
 
-  // প্রোডাকশন-সেফ ডায়নামিক শাকা প্লেয়ার ইনিশিয়ালাইজেশন
+  // 🟢 ১. ফিক্সড: প্রোডাকশন-সেফ ডায়নামিক শাকা প্লেয়ার ইনিশিয়ালাইজেশন (লাইন ১২৪ থেকে পরিবর্তিত)
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
 
@@ -204,7 +203,6 @@ export default function StreamPlayer({ id }: { id: string }) {
             'fullscreen'
           ],
           addSeekBar: true,
-          // 🟢 ফিক্স: 1080p, 2K, 4K এর পাশে Mbps দেখানোর জন্য
           trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.RESOLUTION_BITRATE
         });
 
@@ -228,7 +226,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     };
   }, [triggerNextServer]);
 
-  // 🟢 ভিডিও লোড, সার্ভার ফিক্স এবং আইরনক্ল্যাড DRM পার্সার
+  // ভিডিও লোড, সার্ভার ফিক্স এবং আইরনক্ল্যাড DRM পার্সার
   useEffect(() => {
     if (!playerInstance || !streams || streams.length === 0 || allServersDown) return;
     
@@ -241,7 +239,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     const loadVideo = async () => {
       setIsBuffering(true);
       try {
-        // 🟢 ফিক্স: প্লেয়ারের মেমোরি ক্লিন করা হচ্ছে যাতে আটকে না থাকে
         await playerInstance.unload(); 
 
         const playerConfig: any = {
@@ -254,13 +251,11 @@ export default function StreamPlayer({ id }: { id: string }) {
           abr: { 
               enabled: true, 
               defaultBandwidthEstimate: 2000000,
-              // 🟢 ফিক্স: 2K, 4K এর জন্য রেজোলিউশন লিমিট আনলক করা হলো
               restrictions: { maxHeight: 4320, maxWidth: 7680 } 
           },
           manifest: { dash: { ignoreMinBufferTime: true } }
         };
         
-        // 아이রনক্ল্যাড মাল্টি-ফরম্যাট DRM পার্সার
         if (drmData) {
           const clearKeysObj: Record<string, string> = {};
           let parsedData: any = drmData;
@@ -291,7 +286,6 @@ export default function StreamPlayer({ id }: { id: string }) {
         
         playerInstance.configure(playerConfig);
 
-        // 🟢 HTTP টু HTTPS আপগ্রেড এবং Redirect ফ্লো সাপোর্ট
         let finalStreamUrl = streamUrl;
         if (window.location.protocol === 'https:' && finalStreamUrl.toLowerCase().startsWith('http://')) {
             finalStreamUrl = finalStreamUrl.replace(/^http:\/\//i, 'https://');
@@ -426,7 +420,7 @@ export default function StreamPlayer({ id }: { id: string }) {
                   onClick={() => { 
                     setAllServersDown(false);
                     if (activeStreamIndex === index) {
-                      setReloadTrigger(prev => prev + 1); // 🟢 ফিক্স: একই সার্ভারে ক্লিক করলে ফোর্স রিলোড হবে
+                      setReloadTrigger(prev => prev + 1); 
                     } else {
                       setActiveStreamIndex(index);
                     }
