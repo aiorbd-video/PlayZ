@@ -81,11 +81,11 @@ export default function TvPlayer() {
   }, [showFitToast, objectFit]);
 
   const { data } = useSWR('/api/channels', fetcher, {
-  revalidateIfStale: false,      // একবার ডাটা পেলে সেটা পুরনো হলেও বারবার ফেইচ করবে না
-  revalidateOnFocus: false,      // ইউজার অন্য ট্যাবে গিয়ে আবার ফিরে আসলে ফায়ারবেসে হিট করবে if না
-  revalidateOnReconnect: false,  // ইন্টারনেট চলে গিয়ে আবার আসলে বারবার হিট করবে না
-  dedupingInterval: 600000       // ১০ মিনিটের মধ্যে কোনো ডুপ্লিকেট রিকোয়েস্ট ফায়ারবেসে পাঠাবে না
+  revalidateOnFocus: false, // ট্যাব ফোকাসে ফালতু হিট বন্ধ
+  refreshInterval: 60000,   // প্রতি ৬০ সেকেন্ড পর পর ব্যাকগ্রাউন্ডে অটো নতুন লিংক নিয়ে আসবে
+  dedupingInterval: 20000   // ২০ সেকেন্ডের ভেতরের ডুপ্লিকেট রিকোয়েস্ট ব্লক করবে
 });
+
 
   const channels = data?.channels || [];
   
