@@ -86,10 +86,20 @@ export default function TvPlayer() {
         });
     } catch (e) {}
 
-    ui.configure({
-      controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'stretch', 'fullscreen'],
+        ui.configure({
+      controlPanelElements: [
+        'play_pause', 
+        'time_and_duration', 
+        'spacer', 
+        'mute', 
+        'volume', 
+        'stretch', 
+        'overflow_menu', // 🟢 এই ম্যাজিক ওয়ার্ডটাই মিসিং ছিল!
+        'fullscreen'
+      ],
       addSeekBar: true,
     });
+
 
     // 🟢 ইভেন্ট লিসেনার: বাফারিং এবং এরর ধরার জন্য
     player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
