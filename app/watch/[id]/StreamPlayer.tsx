@@ -66,16 +66,20 @@ export default function StreamPlayer({ id }: { id: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const [playerInstance, setPlayerInstance] = useState<any>(null);
-  const [activeStreamIndex, setActiveStreamIndex] = useState(0);
-  const [currentTime, setCurrentTime] = useState(new Date());
   
   // 🟢 এন্টারপ্রাইজ প্লেয়ার স্টেট
+  const [activeStreamIndex, setActiveStreamIndex] = useState(0);
+  const [reloadTrigger, setReloadTrigger] = useState(0); // ম্যানুয়াল রিলোড ট্র্যাকার
+  const [currentTime, setCurrentTime] = useState(new Date());
+  
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
   const [showFitToast, setShowFitToast] = useState(false);
   const [isBuffering, setIsBuffering] = useState(true);
   const [allServersDown, setAllServersDown] = useState(false);
+  const [isControlsVisible, setIsControlsVisible] = useState(true);
   const [showCopied, setShowCopied] = useState(false); 
   
+  const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
   const streamsRef = useRef<Stream[] | null>(null);
   const activeIndexRef = useRef<number>(0);
 
@@ -98,6 +102,7 @@ export default function StreamPlayer({ id }: { id: string }) {
   useEffect(() => {
     setActiveStreamIndex(0);
     setAllServersDown(false);
+    setReloadTrigger(prev => prev + 1);
   }, [id]);
 
   // কাস্টম প্রোটেকশন (Inspect Element Lock)
@@ -136,18 +141,19 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }, [showFitToast, objectFit]);
 
-  // সার্ভার অটো সুইচ লজিক
-  const triggerNextServer = () => {
+  // 🟢 সার্ভার অটো-সুইচ লজিক ফিক্সড
+  const triggerNextServer = useCallback(() => {
     const currentStreams = streamsRef.current;
     const currentIndex = activeIndexRef.current;
     if (currentStreams && currentIndex < currentStreams.length - 1) {
       setActiveStreamIndex(currentIndex + 1);
     } else {
       setAllServersDown(true);
+      setIsBuffering(false);
     }
-  };
+  }, []);
 
-  // 🟢 প্রোডাকশন-সেফ ডায়নামিক শাকা প্লেয়ার ইনিশিয়ালাইজেশন
+  // প্রোডাকশন-সেফ ডায়নামিক শাকা প্লেয়ার ইনিশিয়ালাইজেশন
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
 
@@ -198,12 +204,13 @@ export default function StreamPlayer({ id }: { id: string }) {
             'fullscreen'
           ],
           addSeekBar: true,
-          // 🟢 ফিক্স: 1080p, 2K, 4K এর পাশে Mbps (Bitrate) দেখানোর কনফিগারেশন
+          // 🟢 ফিক্স: 1080p, 2K, 4K এর পাশে Mbps দেখানোর জন্য
           trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.RESOLUTION_BITRATE
         });
 
         player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
         player.addEventListener('error', (e: any) => {
+          console.error("Shaka Internal Error:", e.detail);
           triggerNextServer();
         });
 
@@ -219,23 +226,24 @@ export default function StreamPlayer({ id }: { id: string }) {
       if (ui) ui.destroy();
       if (player) player.destroy();
     };
-  }, []);
+  }, [triggerNextServer]);
 
-  // 🟢 ভিডিও লোড এবং জাদুকরী মাল্টি-ফরম্যাট DRM পার্সার
+  // 🟢 ভিডিও লোড, সার্ভার ফিক্স এবং আইরনক্ল্যাড DRM পার্সার
   useEffect(() => {
     if (!playerInstance || !streams || streams.length === 0 || allServersDown) return;
     
-    const currentStream = streams[activeStreamIndex] || streams[0];
+    const currentStream = streams[activeStreamIndex];
     if (!currentStream) return;
 
     const streamUrl = currentStream.link;
     const drmData = currentStream.api;
 
-    if (playerInstance.getAssetUri() === streamUrl) return;
-
     const loadVideo = async () => {
       setIsBuffering(true);
       try {
+        // 🟢 ফিক্স: প্লেয়ারের মেমোরি ক্লিন করা হচ্ছে যাতে আটকে না থাকে
+        await playerInstance.unload(); 
+
         const playerConfig: any = {
           streaming: {
               bufferingGoal: 30,
@@ -243,11 +251,16 @@ export default function StreamPlayer({ id }: { id: string }) {
               bufferBehind: 15,
               retryParameters: { maxAttempts: 5, baseDelay: 1000, backoffFactor: 2, timeout: 20000 }
           },
-          abr: { enabled: true, defaultBandwidthEstimate: 1000000 },
+          abr: { 
+              enabled: true, 
+              defaultBandwidthEstimate: 2000000,
+              // 🟢 ফিক্স: 2K, 4K এর জন্য রেজোলিউশন লিমিট আনলক করা হলো
+              restrictions: { maxHeight: 4320, maxWidth: 7680 } 
+          },
           manifest: { dash: { ignoreMinBufferTime: true } }
         };
         
-        // 🟢 আইরনক্ল্যাড DRM পার্সার
+        // 아이রনক্ল্যাড মাল্টি-ফরম্যাট DRM পার্সার
         if (drmData) {
           const clearKeysObj: Record<string, string> = {};
           let parsedData: any = drmData;
@@ -278,8 +291,8 @@ export default function StreamPlayer({ id }: { id: string }) {
         
         playerInstance.configure(playerConfig);
 
+        // 🟢 HTTP টু HTTPS আপগ্রেড এবং Redirect ফ্লো সাপোর্ট
         let finalStreamUrl = streamUrl;
-        // 🟢 HTTP টু HTTPS আপগ্রেড (Redirect Support)
         if (window.location.protocol === 'https:' && finalStreamUrl.toLowerCase().startsWith('http://')) {
             finalStreamUrl = finalStreamUrl.replace(/^http:\/\//i, 'https://');
         }
@@ -290,8 +303,17 @@ export default function StreamPlayer({ id }: { id: string }) {
         triggerNextServer();
       }
     };
+    
     loadVideo();
-  }, [playerInstance, streams, activeStreamIndex, allServersDown]);
+  }, [playerInstance, streams, activeStreamIndex, reloadTrigger, allServersDown, triggerNextServer]);
+
+  const handleUserActivity = () => {
+    setIsControlsVisible(true);
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = setTimeout(() => {
+      setIsControlsVisible(false);
+    }, 3000);
+  };
 
   const handleShare = async () => {
     const matchTitle = currentMatch ? `${currentMatch.eventInfo.teamA} VS ${currentMatch.eventInfo.teamB}` : 'Live Match';
@@ -335,12 +357,19 @@ export default function StreamPlayer({ id }: { id: string }) {
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
         <div className="lg:col-span-2 flex flex-col">
           
-          <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group">
+          <div 
+            ref={videoContainerRef} 
+            className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group"
+            onMouseMoveCapture={handleUserActivity}
+            onTouchStartCapture={handleUserActivity}
+            onClickCapture={handleUserActivity}
+            onMouseLeave={() => setIsControlsVisible(false)}
+          >
 
             {!streams && !allServersDown && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/90 z-10 flex-col gap-3">
                 <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-[#00E5FF] text-sm animate-pulse tracking-wider font-bold">Connecting...</span>
+                <span className="text-[#00E5FF] font-bold text-sm animate-pulse tracking-wider">Fetching Secure Stream...</span>
               </div>
             )}
 
@@ -355,14 +384,28 @@ export default function StreamPlayer({ id }: { id: string }) {
               <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/95 z-50 flex-col gap-4 text-center p-4">
                 <span className="text-4xl">📡</span>
                 <div className="text-red-400 font-bold tracking-wide">Stream Currently Unavailable</div>
-                <p className="text-gray-400 text-sm max-w-xs">All servers for this match are currently down or the match has ended. Please try again later.</p>
-                <button onClick={() => window.location.reload()} className="mt-2 bg-[#1C1E2B] border border-gray-700 hover:border-[#00E5FF] text-white px-5 py-2 rounded-full text-xs font-bold transition-all active:scale-95">
-                  Reload Player
+                <p className="text-gray-400 text-sm max-w-xs">All servers for this match are currently down or the match has ended.</p>
+                <button 
+                  onClick={() => {
+                    setAllServersDown(false);
+                    setActiveStreamIndex(0);
+                    setReloadTrigger(prev => prev + 1);
+                  }} 
+                  className="mt-2 bg-[#1C1E2B] border border-gray-700 hover:border-[#00E5FF] text-white px-5 py-2 rounded-full text-xs font-bold transition-all active:scale-95"
+                >
+                  Retry Server 1
                 </button>
               </div>
             )}
 
-            <video ref={videoRef} className="w-full h-full transition-all duration-300 pointer-events-none" style={{ objectFit: objectFit }} autoPlay playsInline />
+            <video 
+              ref={videoRef} 
+              className={`w-full h-full transition-all duration-300 pointer-events-none ${
+                objectFit === 'fill' ? 'object-fill' : objectFit === 'cover' ? 'object-cover' : 'object-contain'
+              }`} 
+              autoPlay 
+              playsInline 
+            />
             
             <AnimatePresence>
               {showFitToast && (
@@ -380,7 +423,14 @@ export default function StreamPlayer({ id }: { id: string }) {
               {streams.map((stream, index) => (
                 <button 
                   key={index} 
-                  onClick={() => { setActiveStreamIndex(index); setAllServersDown(false); }} 
+                  onClick={() => { 
+                    setAllServersDown(false);
+                    if (activeStreamIndex === index) {
+                      setReloadTrigger(prev => prev + 1); // 🟢 ফিক্স: একই সার্ভারে ক্লিক করলে ফোর্স রিলোড হবে
+                    } else {
+                      setActiveStreamIndex(index);
+                    }
+                  }} 
                   className={`px-5 py-2 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border outline-none active:scale-[0.95] duration-150 ${
                     activeStreamIndex === index && !allServersDown
                       ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)] ring-1 ring-[#00E5FF]/30" 
