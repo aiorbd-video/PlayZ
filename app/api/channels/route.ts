@@ -9,10 +9,12 @@ export async function GET() {
 
   try {
     const cleanDbUrl = FIREBASE_URL.endsWith('/') ? FIREBASE_URL.slice(0, -1) : FIREBASE_URL;
+    
+    // ফায়ারবেস থেকে ফ্রেশ ডাটা আনা হচ্ছে
     const res = await fetch(`${cleanDbUrl}/sports-channels.json`, { cache: 'no-store' });
     const data = await res.json();
 
-    // 🟢 আপনার ফায়ারবেসের ডাটা স্ট্রাকচার অনুযায়ী API Key প্রসেস করা হচ্ছে
+    // আপনার ফায়ারবেসের ডাটা স্ট্রাকচার অনুযায়ী API Key প্রসেস করা হচ্ছে
     const channels = data ? Object.keys(data).map(key => {
       const ch = data[key];
       let apiStr = "";
@@ -29,7 +31,16 @@ export async function GET() {
       return { id: key, ...ch, api: apiStr };
     }) : [];
 
-    return NextResponse.json({ channels }, { status: 200 });
+    // 🟢 এন্টারপ্রাইজ ফিক্স: ৩০ সেকেন্ডের স্মার্ট Edge Caching হেডার যুক্ত করা হলো
+    // এটি ৩০ সেকেন্ড পর্যন্ত ডাটা সম্পূর্ণ ক্যাশ রাখবে এবং ব্যাকগ্রাউন্ডে অটো-রিভ্যালিডেট করবে।
+    return new NextResponse(JSON.stringify({ channels }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=10',
+      },
+    });
+
   } catch (error) {
     return NextResponse.json({ error: "Failed to fetch channels" }, { status: 500 });
   }
