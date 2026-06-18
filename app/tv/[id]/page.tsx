@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import useSWR from 'swr';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
 
 import { fetcher } from '../../utils/helpers';
@@ -15,6 +15,7 @@ export default function TvPlayer() {
   const router = useRouter();
   const rawId = params.id as string;
 
+  // 🟢 ১. আইডি ডিকোড এবং ভ্যালিডেশন
   const targetId = useMemo(() => {
     try {
       return decodeURIComponent(escape(atob(rawId)));
@@ -28,13 +29,14 @@ export default function TvPlayer() {
   
   const [playerInstance, setPlayerInstance] = useState<any>(null);
   const [searchInp, setSearchInp] = useState('');
-  const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
   
-  // 🟢 নতুন: এরর এবং বাফারিং স্টেট
+  // 🟢 ২. এন্টারপ্রাইজ স্টেট ম্যানেজমেন্ট
+  const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
+  const [showFitToast, setShowFitToast] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [isBuffering, setIsBuffering] = useState(true);
 
-  // কাস্টম প্রোটেকশন
+  // কাস্টম সিকিউরিটি (Inspect & F12 Block)
   useEffect(() => {
     const blockInspect = (e: MouseEvent) => e.preventDefault();
     const blockKeys = (e: KeyboardEvent) => {
@@ -50,74 +52,102 @@ export default function TvPlayer() {
     };
   }, []);
 
+  // 🟢 ৩. Shaka Player <-> React Bridge (ম্যাজিক ফিক্স)
+  // Shaka Player থেকে ইভেন্ট আসলে React State আপডেট হবে
+  const handleFitToggle = useCallback(() => {
+    setObjectFit((prev) => {
+      const nextFit = prev === 'contain' ? 'cover' : prev === 'cover' ? 'fill' : 'contain';
+      setShowFitToast(true); // Toast দেখাবে
+      return nextFit;
+    });
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('toggleObjectFit', handleFitToggle);
+    return () => window.removeEventListener('toggleObjectFit', handleFitToggle);
+  }, [handleFitToggle]);
+
+  // Toast ২ সেকেন্ড পর হাইড করার লজিক
+  useEffect(() => {
+    if (showFitToast) {
+      const timer = setTimeout(() => setShowFitToast(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [showFitToast, objectFit]);
+
   const { data } = useSWR('/api/channels', fetcher);
   const channels = data?.channels || [];
   const channel = channels.find((c: any) => c.id === targetId || c.id === rawId);
 
-  // শাকা প্লেয়ার ও কাস্টম SVG Stretch বাটন সেটআপ
+  // 🟢 ৪. এন্টারপ্রাইজ লেভেল Shaka Player সেটআপ
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || typeof window === 'undefined') return;
 
     const shaka = require('shaka-player/dist/shaka-player.ui');
     shaka.polyfill.installAll();
 
-    let player = new shaka.Player(videoRef.current);
-    let ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
-    
-    // 🟢 ফিক্সড: টেক্সটের বদলে প্রফেশনাল SVG আইকন ব্যবহার করা হয়েছে (ইউআই ফাটবে না)
-    class StretchButton extends shaka.ui.Element {
-        constructor(parent: HTMLElement, controls: any) {
-            super(parent, controls);
-            const button = document.createElement('button');
-            button.className = 'shaka-stretch-button shaka-tooltip';
-            button.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
-            button.setAttribute('aria-label', 'Toggle Fit');
-            
-            button.addEventListener('click', () => {
-                setObjectFit(prev => prev === 'contain' ? 'cover' : prev === 'cover' ? 'fill' : 'contain');
-            });
-            parent.appendChild(button);
+    // আগের ক্যাশ ভাঙতে বাটনের নতুন ইউনিক নাম ব্যবহার
+    if (!shaka.ui.Controls.elements_['custom_stretch']) {
+        class StretchButton extends shaka.ui.Element {
+            constructor(parent: HTMLElement, controls: any) {
+                super(parent, controls);
+                const button = document.createElement('button');
+                // material-icons ক্লাসটি রিমুভ করা হয়েছে যাতে কোনো টেক্সট না আসে
+                button.className = 'shaka-custom-stretch-btn shaka-tooltip'; 
+                button.setAttribute('aria-label', 'Toggle Fit');
+                
+                // পিওর SVG, কোনো টেক্সট বা লিগেচার নেই
+                button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white" style="pointer-events:none;"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
+                
+                // Custom Event ডিসপ্যাচ করে React-কে জানানো
+                this.eventManager.listen(button, 'click', () => {
+                    window.dispatchEvent(new CustomEvent('toggleObjectFit'));
+                });
+                
+                parent.appendChild(button);
+            }
         }
+        try {
+            shaka.ui.Controls.registerElement('custom_stretch', {
+                create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
+            });
+        } catch (e) {}
     }
 
-    try {
-        shaka.ui.Controls.registerElement('stretch', {
-            create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
-        });
-    } catch (e) {}
+    let player = new shaka.Player(videoRef.current);
+    let ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
 
-        ui.configure({
+    ui.configure({
       controlPanelElements: [
         'play_pause', 
         'time_and_duration', 
         'spacer', 
         'mute', 
         'volume', 
-        'stretch', 
-        'overflow_menu', // 🟢 এই ম্যাজিক ওয়ার্ডটাই মিসিং ছিল!
+        'custom_stretch', // 🟢 নতুন বাটনের আইডি
+        'overflow_menu',  // 🟢 কোয়ালিটি সুইচিং গিয়ার আইকন
         'fullscreen'
       ],
       addSeekBar: true,
     });
 
-
-    // 🟢 ইভেন্ট লিসেনার: বাফারিং এবং এরর ধরার জন্য
     player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
     player.addEventListener('error', (e: any) => {
-      console.error('Shaka Error:', e.detail);
-      setPlayerError("Unable to play this channel. It might be offline or geo-blocked.");
+      console.error('Shaka Playback Error:', e.detail);
+      setPlayerError("Unable to play this channel. It might be offline or blocked.");
       setIsBuffering(false);
     });
 
     setPlayerInstance(player);
 
+    // ক্লিনআপ লজিক
     return () => {
       ui.destroy();
       player.destroy();
     };
   }, []);
 
-  // ভিডিও এবং DRM লোড লজিক
+  // ৫. ভিডিও লোড এবং DRM
   useEffect(() => {
     if (!playerInstance || !channel) return;
     const streamUrl = channel.link;
@@ -146,7 +176,6 @@ export default function TvPlayer() {
         await playerInstance.load(finalStreamUrl);
         setIsBuffering(false);
       } catch (e) {
-        console.error("Channel Load Error", e);
         setPlayerError("Failed to load stream. Please try another channel.");
         setIsBuffering(false);
       }
@@ -160,6 +189,7 @@ export default function TvPlayer() {
 
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-20 select-none">
+      
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button onClick={() => router.back()} className="text-[#00E5FF] font-bold flex items-center gap-2 outline-none cursor-pointer hover:text-white transition-colors">
@@ -175,10 +205,8 @@ export default function TvPlayer() {
 
       <div className="max-w-7xl mx-auto px-4 mt-6">
         
-        {/* 🟢 প্লেয়ার কন্টেইনার এবং এরর/লোডিং স্ক্রিন */}
         <div ref={videoContainerRef} className="w-full max-w-5xl mx-auto aspect-video relative bg-black shadow-2xl rounded-[20px] overflow-hidden shaka-video-container border border-gray-800/80 group">
           
-          {/* বাফারিং লোডার */}
           {isBuffering && !playerError && (
             <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
               <div className="w-12 h-12 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin mb-3"></div>
@@ -186,7 +214,6 @@ export default function TvPlayer() {
             </div>
           )}
 
-          {/* এরর স্ক্রিন */}
           {playerError && (
             <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/90 p-6 text-center">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-red-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -199,12 +226,24 @@ export default function TvPlayer() {
 
           <video ref={videoRef} className="w-full h-full transition-all duration-300" style={{ objectFit: objectFit }} autoPlay playsInline />
           
-          <div className="absolute top-4 left-4 bg-black/60 px-2 py-1 rounded text-xs font-bold text-white opacity-0 group-hover:opacity-100 transition-opacity z-30">
-             {objectFit === 'contain' ? 'Fit Screen' : objectFit === 'cover' ? 'Zoom (Crop)' : 'Stretch'}
-          </div>
+          {/* 🟢 Netflix Style Auto-Hiding Toast */}
+          <AnimatePresence>
+            {showFitToast && (
+              <motion.div 
+                initial={{ opacity: 0, y: -10 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                exit={{ opacity: 0, y: -10 }}
+                className="absolute top-6 left-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none"
+              >
+                <span className="w-2 h-2 rounded-full bg-[#00E5FF] animate-pulse"></span>
+                <span className="text-xs md:text-sm font-bold text-white capitalize">
+                  {objectFit === 'contain' ? 'Fit to Screen' : objectFit === 'cover' ? 'Zoom (Cropped)' : 'Stretch (Fill)'}
+                </span>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
-        {/* চ্যানেল গ্রিড */}
         <div className="max-w-7xl mx-auto mt-10 border-t border-gray-800/60 pt-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <h2 className="text-xs md:text-sm font-black text-[#00E5FF] uppercase tracking-widest pl-1 flex items-center gap-2">
@@ -219,15 +258,13 @@ export default function TvPlayer() {
 
               return (
                 <motion.div key={ch.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileTap={{ scale: 0.95 }}>
-                  {/* 🟢 ফিক্সড: Next.js <Link> ব্যবহার করা হয়েছে, এতে চ্যানেল পরিবর্তনের সময় পেজ ১০০% রিলোড/আপডেট হবে */}
-                  <Link replace href={`/tv/${secureId}`} className="outline-none block w-full">
+                  <Link replace prefetch={false} href={`/tv/${secureId}`} className="outline-none block w-full">
                     <div className={`bg-[#1C1E2B] border rounded-[20px] p-5 flex flex-col items-center justify-center gap-3 transition-all duration-300 hover:border-[#00E5FF]/60 hover:shadow-[0_4px_20px_rgba(0,229,255,0.1)] h-full min-h-[140px] group ${ch.id === channel?.id ? 'border-[#00E5FF] ring-1 ring-[#00E5FF]/30' : 'border-gray-800/80'}`}>
                       
                       <div className="w-14 h-14 rounded-full bg-black/40 border border-gray-700/50 p-1 flex items-center justify-center overflow-hidden transition-transform group-hover:scale-110 relative">
                         <SmartImage src={ch.logo} alt={ch.name} width={80} height={80} className="object-contain p-0.5" />
                       </div>
                       
-                      {/* 🟢 ফিক্সড: Marquee (স্ক্রলিং টেক্সট) অ্যানিমেশন */}
                       <div className="w-full overflow-hidden whitespace-nowrap text-center marquee-container">
                         <span className={`inline-block font-bold text-xs md:text-sm text-gray-200 group-hover:text-white ${ch.name.length > 15 ? 'marquee-text' : ''}`}>
                           {ch.name}
@@ -244,13 +281,14 @@ export default function TvPlayer() {
         </div>
       </div>
 
-      {/* 🟢 কাস্টম CSS: শাকা বাটন এবং Marquee অ্যানিমেশনের জন্য */}
       <style dangerouslySetInnerHTML={{__html: `
-        .shaka-stretch-button { 
+        /* 🟢 এন্টারপ্রাইজ কাস্টম বাটন স্টাইল */
+        .shaka-custom-stretch-btn { 
            background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; transition: opacity 0.2s; display: flex; align-items: center; justify-content: center;
         }
-        .shaka-stretch-button:hover { opacity: 1; }
+        .shaka-custom-stretch-btn:hover { opacity: 1; }
         
+        /* 🟢 Marquee Animation */
         .marquee-container {
            mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
            -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
