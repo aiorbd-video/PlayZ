@@ -15,11 +15,11 @@ export default function TvPlayer() {
   const router = useRouter();
   const rawId = params.id as string;
 
-  // 🟢 ১. অন-স্ক্রিন লাইভ লগিং সিস্টেম স্টেট
+  // অন-স্ক্রিন লাইভ লগিং সিস্টেম স্টেট
   const [logs, setLogs] = useState<string[]>([]);
   const addLog = useCallback((msg: string) => {
     const time = new Date().toLocaleTimeString();
-    setLogs((prev) => [`[${time}] ➜ ${msg}`, ...prev.slice(0, 49)]); // সর্বোচ্চ ৫০টি লগ রাখবে
+    setLogs((prev) => [`[${time}] ➜ ${msg}`, ...prev.slice(0, 49)]);
   }, []);
 
   // Base64 রাউটার আইডি ডিকোড
@@ -94,7 +94,7 @@ export default function TvPlayer() {
     return found;
   }, [channels, targetId, rawId]);
 
-  // লগ ট্র্যাকিং: আইডি এবং চ্যানেল ডাটা রিসিভ
+  // লগ ট্র্যাকিং
   useEffect(() => {
     if (rawId) addLog(`URL Raw ID received: "${rawId}"`);
     if (targetId) addLog(`Decoded Target ID: "${targetId}"`);
@@ -143,7 +143,7 @@ export default function TvPlayer() {
                   create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
               });
               (shaka.ui.Controls as any).custom_stretch_registered = true;
-              addSignup("Custom aspect ratio button injected.");
+              addLog("Custom aspect ratio button injected."); // 🟢 ফিক্সড: এখানে টাইপো ঠিক করা হয়েছে
           }
         } catch (e) {}
 
@@ -163,7 +163,6 @@ export default function TvPlayer() {
         player.addEventListener('error', (e: any) => {
           const err = e.detail;
           console.error('Shaka Error:', err);
-          // 🟢 অন-স্ক্রিন লগে শাকা এররের ক্যাটাগরি এবং কোড প্রিন্ট হবে
           addLog(`❌ Shaka Error! Code: ${err.code} (Category: ${err.category})`);
           setPlayerError(`Playback Error! Shaka Code: ${err.code}`);
           setIsBuffering(false);
@@ -200,7 +199,6 @@ export default function TvPlayer() {
           streaming: { bufferingGoal: 30, rebufferingGoal: 5, retryParameters: { maxAttempts: 3, baseDelay: 1000 } }
         };
         
-        // 🟢 DRM অবজেক্ট ডিবাগ লগার
         if (drmData) {
           addLog(`DRM Key Field Type Detected: "${typeof drmData}"`);
           const clearKeysObj: Record<string, string> = {};
@@ -315,7 +313,7 @@ export default function TvPlayer() {
           
           <AnimatePresence>
             {showFitToast && (
-              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="absolute top-6 left-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none">
+              <motion.div id="fit-toast" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="absolute top-6 left-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none">
                 <span className="w-2 h-2 rounded-full bg-[#00E5FF] animate-pulse"></span>
                 <span className="text-xs md:text-sm font-bold text-white capitalize">{objectFit === 'contain' ? 'Fit to Screen' : objectFit === 'cover' ? 'Zoom (Cropped)' : 'Stretch (Fill)'}</span>
               </motion.div>
@@ -323,7 +321,7 @@ export default function TvPlayer() {
           </AnimatePresence>
         </div>
 
-        {/* 🟢 ২. হ্যাকার-স্টাইল লাইভ ডিবাগ লগ কনসোল প্যানেল (প্লেয়ারের ঠিক নিচে) */}
+        {/* লাইভ ডিবাগ লগ কনসোল প্যানেল */}
         <div className="w-full max-w-5xl mx-auto mt-4 bg-black/90 border border-[#2A8496]/40 rounded-xl p-4 shadow-inner">
           <div className="flex items-center justify-between border-b border-gray-800 pb-2 mb-2">
             <span className="text-xs font-mono font-black text-[#00E5FF] flex items-center gap-2 tracking-widest uppercase">
@@ -389,7 +387,7 @@ export default function TvPlayer() {
         @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
         .scrollbar-thin::-webkit-scrollbar { width: 4px; }
         .scrollbar-thin::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
-        .scrollbar-thin::-webkit-scrollbar-thumb { background: #2A8496; rounded: 10px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #2A8496; border-radius: 10px; }
       `}} />
     </main>
   );
