@@ -22,20 +22,24 @@ export default function TvPlayer() {
     setLogs((prev) => [`[${time}] ➜ ${msg}`, ...prev.slice(0, 49)]);
   }, []);
 
-  // Base64 রাউটার আইডি ডিকোড
+  // 🟢 ১. আয়রনক্ল্যাড URL-Safe Base64 রাউটার আইডি ডিকোড পার্সার (ফিক্সড)
   const targetId = useMemo(() => {
     if (!rawId) return '';
+    
+    // ব্রাউজারের পার্সেন্ট এনকোডিং ফিক্স (%3D%3D কে আসল == এ রূপান্তর)
+    const cleanRawId = decodeURIComponent(rawId);
+    
     try {
-      const decoded = decodeURIComponent(escape(atob(rawId)));
+      const decoded = decodeURIComponent(escape(atob(cleanRawId)));
       return decoded;
     } catch (e) {}
 
     try {
-      let base64 = rawId.replace(/-/g, '+').replace(/_/g, '/');
+      let base64 = cleanRawId.replace(/-/g, '+').replace(/_/g, '/');
       while (base64.length % 4) { base64 += '='; }
       return decodeURIComponent(escape(atob(base64)));
     } catch (e) {
-      return rawId;
+      return cleanRawId;
     }
   }, [rawId]);
 
@@ -143,7 +147,7 @@ export default function TvPlayer() {
                   create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
               });
               (shaka.ui.Controls as any).custom_stretch_registered = true;
-              addLog("Custom aspect ratio button injected."); // 🟢 ফিক্সড: এখানে টাইপো ঠিক করা হয়েছে
+              addLog("Custom aspect ratio button injected.");
           }
         } catch (e) {}
 
@@ -341,7 +345,7 @@ export default function TvPlayer() {
           </div>
         </div>
 
-        {/* কন্টেন্ট চ্যানেল গ্রিড লেআউট */}
+        {/* কন্টেন্ট গ্রিড লেআউট */}
         <div className="max-w-7xl mx-auto mt-10 border-t border-gray-800/60 pt-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <h2 className="text-xs md:text-sm font-black text-[#00E5FF] uppercase tracking-widest pl-1 flex items-center gap-2">
