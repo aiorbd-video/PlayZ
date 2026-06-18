@@ -173,9 +173,6 @@ export default function StreamPlayer({ id }: { id: string }) {
 
         player = new shaka.Player(videoRef.current);
         
-        // 🟢 ফিক্স ১: Fullscreen API Container ফিক্স
-        // শাকা প্লেয়ারকে বলে দেওয়া হলো যে ফুলস্ক্রিন করতে হলে সে যেন শুধু <video> কে না করে,
-        // পুরো container টাকে (videoContainerRef) ফুলস্ক্রিন করে। এতে বাফার করলেও ভিডিও গায়েব হবে না।
         ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
         
         ui.configure({
@@ -184,11 +181,10 @@ export default function StreamPlayer({ id }: { id: string }) {
           trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.LABEL
         });
 
-        // 🟢 ফিক্স ২: Fullscreen Lock Event
-        // যদি ব্রাউজার ভুল করে এক্সিট করার চেষ্টা করে, এই ইভেন্ট তাকে ল্যান্ডস্কেপ মোডেই আটকে রাখবে
+        // 🟢 টাইপস্ক্রিপ্ট ফিক্স: (window.screen.orientation as any).lock ব্যবহার করে এরর বাইপাস করা হলো
         document.addEventListener('fullscreenchange', () => {
-          if (document.fullscreenElement && window.screen && window.screen.orientation && window.screen.orientation.lock) {
-            window.screen.orientation.lock('landscape').catch(() => {});
+          if (document.fullscreenElement && window.screen && window.screen.orientation && (window.screen.orientation as any).lock) {
+            (window.screen.orientation as any).lock('landscape').catch(() => {});
           }
         });
 
@@ -340,56 +336,3 @@ export default function StreamPlayer({ id }: { id: string }) {
             <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 mt-3 shadow-lg relative group">
               <button onClick={handleShare} className="absolute top-4 right-4 bg-gray-800/50 hover:bg-[#00E5FF]/20 text-gray-400 hover:text-[#00E5FF] p-2 rounded-full border border-gray-700/50 transition-all active:scale-95"><svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg></button>
               <div className="text-center text-xs font-bold text-[#00E5FF] uppercase tracking-widest mb-4">{currentMatch.eventInfo.eventCat} | {currentMatch.eventInfo.eventName}</div>
-              <div className="flex justify-center items-center gap-6 sm:gap-12">
-                <div className="flex items-center gap-3 w-[40%] justify-end">
-                  <span className="font-bold text-sm md:text-base text-gray-200 text-right truncate">{currentMatch.eventInfo.teamA}</span>
-                  <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-700/50 relative"><Image unoptimized src={getImg(currentMatch.eventInfo.teamAFlag)} fill className="object-cover" alt="" /></div>
-                </div>
-                <span className="text-gray-400 font-black italic text-sm md:text-base px-2">VS</span>
-                <div className="flex items-center gap-3 w-[40%] justify-start">
-                  <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-700/50 relative"><Image unoptimized src={getImg(currentMatch.eventInfo.teamBFlag)} fill className="object-cover" alt="" /></div>
-                  <span className="font-bold text-sm md:text-base text-gray-200 text-left truncate">{currentMatch.eventInfo.teamB}</span>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="bg-[#1C1E2B] border border-gray-800/60 rounded-[20px] p-5 mt-3 animate-pulse h-24"></div>
-          )}
-        </div>
-
-        {/* 🟢 Sidebar (Desktop) */}
-        <div className="mt-6 lg:mt-0 lg:col-span-1 max-h-[70vh] lg:max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-hide pr-1">
-          <div className="flex flex-col gap-3.5">
-            <span className="text-xs font-black uppercase tracking-wider text-gray-400 pl-1 mb-1">More Live Events</span>
-            {matches && matches.map((match) => {
-              const status = getMatchStatus(match.eventInfo.startTime, match.eventInfo.endTime, currentTime);
-              const slugLink = generateSlug(match.eventInfo.teamA, match.eventInfo.teamB, match.eventInfo.eventName, match.id);
-              return (
-                <Link href={`/watch/${slugLink}`} key={match.id} className="outline-none" prefetch={false}>
-                  <motion.div whileTap={{ scale: 0.97 }} className={`bg-[#1C1E2B] border rounded-[18px] p-4 transition-all ${match.id.toString() === id ? 'border-[#00E5FF] shadow-md ring-1 ring-[#00E5FF]/30' : 'border-gray-800/80 hover:border-[#00E5FF]/40'}`}>
-                    <div className="text-[11px] text-gray-400 mb-2 truncate uppercase">{match.eventInfo.eventCat} • {match.eventInfo.eventName}</div>
-                    <div className="flex justify-between items-center gap-2">
-                      <div className="flex items-center gap-2 truncate max-w-[40%]"><img src={getImg(match.eventInfo.teamAFlag)} className="w-5 h-5 rounded-full object-cover border border-gray-700/40" alt="" /><span className="text-xs font-bold truncate text-gray-200">{match.eventInfo.teamA}</span></div>
-                      <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase shrink-0 ${status.type === 'live' ? 'bg-red-500/10 text-red-400 animate-pulse' : 'bg-blue-500/10 text-blue-400'}`}>{status.label}</span>
-                      <div className="flex items-center gap-2 truncate max-w-[40%] justify-end"><span className="text-xs font-bold truncate text-gray-200 text-right">{match.eventInfo.teamB}</span><img src={getImg(match.eventInfo.teamBFlag)} className="w-5 h-5 rounded-full object-cover border border-gray-700/40" alt="" /></div>
-                    </div>
-                  </motion.div>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      <style dangerouslySetInnerHTML={{__html: `
-        .shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; transition: opacity 0.2s; display: flex; align-items: center; justify-content: center; }
-        .shaka-custom-stretch-btn:hover { opacity: 1; }
-        .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-      `}} />
-      
-      {/* 🟢 Adsterra Popunder */}
-      <Script src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js" strategy="lazyOnload" id="adsterra-popunder" />
-    </main>
-  );
-}
