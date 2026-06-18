@@ -14,12 +14,11 @@ export default function TvPlayer() {
   const router = useRouter();
   const rawId = params.id as string;
 
-  // 🟢 ১. আইডি ডিকোড করার লজিক (যাতে এনকোডেড এবং নরমাল দুই ধরনের লিংকই সাপোর্ট করে)
   const targetId = useMemo(() => {
     try {
       return decodeURIComponent(escape(atob(rawId)));
     } catch (e) {
-      return rawId; // যদি কেউ এনকোড ছাড়া সরাসরি ঢুকে পড়ে
+      return rawId;
     }
   }, [rawId]);
 
@@ -30,7 +29,6 @@ export default function TvPlayer() {
   const [searchInp, setSearchInp] = useState('');
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
 
-  // 🟢 ২. কাস্টম প্রোটেকশন: রাইট ক্লিক এবং F12 (Inspect Element) সম্পূর্ণ ব্লক
   useEffect(() => {
     const blockInspect = (e: MouseEvent) => e.preventDefault();
     const blockKeys = (e: KeyboardEvent) => {
@@ -49,10 +47,8 @@ export default function TvPlayer() {
   const { data } = useSWR('/api/channels', fetcher);
   const channels = data?.channels || [];
   
-  // 🟢 ৩. ডিকোড করা আইডি দিয়ে চ্যানেল ফিল্টার
   const channel = channels.find((c: any) => c.id === targetId || c.id === rawId);
 
-  // ৪. শাকা প্লেয়ার ও কাস্টম Stretch বাটন সেটআপ
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || typeof window === 'undefined') return;
 
@@ -98,7 +94,6 @@ export default function TvPlayer() {
     };
   }, []);
 
-  // ৫. ভিডিও এবং DRM লোড লজিক
   useEffect(() => {
     if (!playerInstance || !channel) return;
     const streamUrl = channel.link;
@@ -109,13 +104,21 @@ export default function TvPlayer() {
         const playerConfig: any = {
           streaming: { bufferingGoal: 30, rebufferingGoal: 5, retryParameters: { maxAttempts: 5, baseDelay: 1000 } }
         };
-        // 🟢 DRM ClearKey পার্সার
+        
         if (drmKeyString && drmKeyString.includes(':')) {
           const [kid, key] = drmKeyString.split(':');
           playerConfig.drm = { clearKeys: { [kid]: key } };
         }
+        
         playerInstance.configure(playerConfig);
-        await playerInstance.load(streamUrl);
+
+        // 🟢 ম্যাজিক ফিক্স: HTTP কে HTTPS এ রূপান্তর করা হচ্ছে
+        let finalStreamUrl = streamUrl;
+        if (window.location.protocol === 'https:' && finalStreamUrl.toLowerCase().startsWith('http://')) {
+            finalStreamUrl = finalStreamUrl.replace(/^http:\/\//i, 'https://');
+        }
+
+        await playerInstance.load(finalStreamUrl);
       } catch (e) {
         console.error("Channel Load Error", e);
       }
@@ -129,8 +132,6 @@ export default function TvPlayer() {
 
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-20 select-none">
-      
-      {/* নেভিগেশন বার - ব্যাক বাটন ধাপে ধাপে কাজ করবে */}
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button onClick={() => router.back()} className="text-[#00E5FF] font-bold flex items-center gap-2 outline-none cursor-pointer">
@@ -152,7 +153,6 @@ export default function TvPlayer() {
           </div>
         </div>
 
-        {/* নিচের চ্যানেল গ্রিড */}
         <div className="max-w-7xl mx-auto mt-10 border-t border-gray-800/60 pt-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <h2 className="text-xs md:text-sm font-black text-[#00E5FF] uppercase tracking-widest pl-1 flex items-center gap-2">
@@ -163,7 +163,6 @@ export default function TvPlayer() {
           
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {filteredChannels.map((ch: any) => {
-              // 🟢 ৬. নিচের লিস্টের চ্যানেলগুলোর আইডিও Base64 দিয়ে এনকোড করা হচ্ছে
               const secureId = btoa(unescape(encodeURIComponent(ch.id)));
 
               return (
