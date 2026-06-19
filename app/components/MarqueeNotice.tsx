@@ -1,4 +1,10 @@
-function MarqueeNotice() {
+'use client';
+
+// 🟢 মেইন ইমপোর্টগুলো যুক্ত করা হলো
+import useSWR from 'swr';
+import { fetcher } from '../utils/helpers'; 
+
+export default function MarqueeNotice() {
   const { data } = useSWR('/api/notice', fetcher, { 
     refreshInterval: 30000,
     revalidateOnFocus: false 
@@ -13,8 +19,6 @@ function MarqueeNotice() {
       <div className="bg-red-500 text-white text-[11px] md:text-xs font-black px-3 py-1 rounded-r-md z-10 shrink-0 uppercase tracking-wider shadow-md animate-pulse">
         Notice
       </div>
-      
-      {/* 🟢 এখানে @ts-ignore যুক্ত করা হয়েছে */}
       {/* @ts-ignore */}
       <marquee 
         behavior="scroll" 
