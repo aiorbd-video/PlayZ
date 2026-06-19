@@ -7,6 +7,36 @@ import { motion } from 'framer-motion';
 import { MATCH_API, fetcher, getMatchStatus, getCategoryIcon } from './utils/helpers';
 import { ChannelCard, MatchCard } from './components/Cards';
 
+// 📢 ১. ইনলাইন মারকুই নোটিশ কম্পোনেন্ট (যা ৩০ সেকেন্ড পর পর ফায়ারবেস চেক করবে)
+function MarqueeNotice() {
+  const { data } = useSWR('/api/notice', fetcher, { 
+    refreshInterval: 30000,
+    revalidateOnFocus: false 
+  });
+
+  // 🟢 লজিক: ফায়ারবেসে নোটিশ না থাকলে বা খালি থাকলে মারকুই বারটি লেআউট থেকে সম্পূর্ণ ভ্যানিশ থাকবে
+  if (!data || !data.notice || data.notice.trim() === "" || data.notice === "null") {
+    return null;
+  }
+
+  return (
+    <div className="w-full bg-[#1C1E2B] border-b border-gray-800/50 text-[#00E5FF] py-2 overflow-hidden flex items-center shadow-md">
+      <div className="bg-red-500 text-white text-[11px] md:text-xs font-black px-3 py-1 rounded-r-md z-10 shrink-0 uppercase tracking-wider shadow-md animate-pulse">
+        Notice
+      </div>
+      <marquee 
+        behavior="scroll" 
+        direction="left" 
+        scrollamount="5" 
+        className="text-xs md:text-sm font-bold tracking-wide pl-4"
+      >
+        {data.notice}
+      </marquee>
+    </div>
+  );
+}
+
+// --- Main Home Component ---
 export default function Home() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'Sports' | 'Live Events' | 'Categories'>('Live Events');
@@ -17,10 +47,8 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  // ব্রাউজার ব্যাক/ফরওয়ার্ড হিস্ট্রি ট্র্যাক করার লজিক (ধাপে ধাপে ব্যাক করার জন্য)
   useEffect(() => {
     setMounted(true);
-
     const handlePopState = () => {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get('tab') || 'Live Events';
@@ -28,13 +56,11 @@ export default function Home() {
         setActiveTab(tab as any);
       }
     };
-
     handlePopState(); 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // ট্যাব চেঞ্জ হলে ব্রাউজার হিস্ট্রি স্ট্যাকে পুশ করার ফাংশন
   const handleTabChange = (tab: 'Sports' | 'Live Events' | 'Categories') => {
     setActiveTab(tab);
     setSearchInp('');
@@ -58,7 +84,6 @@ export default function Home() {
     }
   };
 
-  // 🟢 এন্টারপ্রাইজ ফিক্স: ব্যান্ডউইথ বাঁচাতে SWR-এর স্মার্ট অটো-রিফ্রেশ ও ডুপ্লিকেশন রিমুভাল
   const { data: matches } = useSWR(MATCH_API, fetcher, { 
     refreshInterval: 30000,
     revalidateOnFocus: false,
@@ -66,10 +91,10 @@ export default function Home() {
   });
   
   const { data: channelData } = useSWR('/api/channels', fetcher, { 
-    refreshInterval: 60000,        // আপনার ক্যাশ এপিআই এর সাথে মিলিয়ে ৬০ সেকেন্ড পর পর রিফ্রেশ করবে
-    revalidateOnFocus: false,      // অন্য ট্যাবে গিয়ে ফিরে আসলে অপ্রয়োজনীয় ফায়ারবেস হিট বন্ধ
-    revalidateOnReconnect: true,   // নেটওয়ার্ক চলে গিয়ে আবার আসলে অটো রিফ্রেশ হবে
-    dedupingInterval: 20000        // ২০ সেকেন্ডের ভেতরের সব ডুপ্লিকেট রিকোয়েস্ট ব্লক করবে
+    refreshInterval: 60000,
+    revalidateOnFocus: false,
+    revalidateOnReconnect: true,
+    dedupingInterval: 20000
   });
   
   const { data: m3uData } = useSWR('/api/m3u', fetcher, { 
@@ -147,6 +172,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#11131A] text-gray-200 font-sans pb-32 md:pb-12 selection:bg-[#00E5FF] selection:text-black">
       
+      {/* Navbar Section */}
       <nav className="bg-[#1C1E2B] sticky top-0 z-50 flex items-center justify-between px-4 md:px-8 py-3 border-b border-[#2A8496]/30 shadow-md h-16">
         {showSearch ? (
           <motion.div initial={{ opacity: 0, scaleX: 0.9 }} animate={{ opacity: 1, scaleX: 1 }} className="flex items-center w-full gap-3 origin-right">
@@ -180,6 +206,10 @@ export default function Home() {
         )}
       </nav>
 
+      {/* 🎯 ২. প্লেসমেন্ট ফিক্স: নেভবারের ঠিক নিচে এবং মেইন গেম/চ্যানেল লিস্টের ঠিক ওপরে নোটিশটি বসানো হয়েছে */}
+      <MarqueeNotice />
+
+      {/* Main Content Layout */}
       <div className="max-w-[1600px] mx-auto px-4 md:px-8 pt-2">
         {activeTab === 'Live Events' && (
           <>
@@ -197,7 +227,6 @@ export default function Home() {
             <div className="flex items-center gap-2.5 md:gap-4 overflow-x-auto scrollbar-hide pb-5 mb-2 mt-2">
               {filters.map((f) => (
                 <button key={f.id} onClick={() => setActiveFilter(f.id)} className={`px-5 py-2 md:py-2.5 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all flex items-center gap-1.5 border ${activeFilter === f.id ? 'bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)]' : 'bg-[#11131A] border-gray-700 text-gray-400 hover:text-white hover:border-gray-500'}`}>
-                  {f.id === 'All' && activeFilter === 'All' && <span className="text-[#00E5FF]">✓</span>}
                   {f.label}
                 </button>
               ))}
@@ -239,7 +268,7 @@ export default function Home() {
         <div className="max-w-md mx-auto flex justify-between items-center h-[60px] px-6 relative">
           <button onClick={() => handleTabChange('Sports')} className={`flex flex-col items-center justify-center w-16 gap-1 outline-none transition-colors ${activeTab === 'Sports' ? 'text-[#00E5FF]' : 'text-gray-500 hover:text-gray-300'}`}>
             <div className={`p-1.5 rounded-full ${activeTab === 'Sports' ? 'bg-[#2A2D3E] shadow-inner' : 'bg-transparent'}`}>
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             </div>
             <span className="text-[10px] font-bold">Sports</span>
           </button>
@@ -258,10 +287,6 @@ export default function Home() {
             <span className="text-[10px] font-bold">Categories</span>
           </button>
         </div>
-      </div>
-
-      <div className="max-w-[1600px] mx-auto px-4 md:px-8 pt-2">
-         {/* ... (বাকি কন্টেন্ট স্ট্রাকচার অক্ষত) */}
       </div>
 
       <style dangerouslySetInnerHTML={{__html: `
