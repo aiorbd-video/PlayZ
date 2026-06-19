@@ -7,14 +7,13 @@ import { motion } from 'framer-motion';
 import { MATCH_API, fetcher, getMatchStatus, getCategoryIcon } from './utils/helpers';
 import { ChannelCard, MatchCard } from './components/Cards';
 
-// 📢 ১. ইনলাইন মারকুই নোটিশ কম্পোনেন্ট (যা ৩০ সেকেন্ড পর পর ফায়ারবেস চেক করবে)
+// 📢 ১. ইনলাইন মারকুই নোটিশ কম্পোনেন্ট (React.createElement ফিক্স সহ)
 function MarqueeNotice() {
   const { data } = useSWR('/api/notice', fetcher, { 
     refreshInterval: 30000,
     revalidateOnFocus: false 
   });
 
-  // 🟢 লজিক: ফায়ারবেসে নোটিশ না থাকলে বা খালি থাকলে মারকুই বারটি লেআউট থেকে সম্পূর্ণ ভ্যানিশ থাকবে
   if (!data || !data.notice || data.notice.trim() === "" || data.notice === "null") {
     return null;
   }
@@ -24,17 +23,21 @@ function MarqueeNotice() {
       <div className="bg-red-500 text-white text-[11px] md:text-xs font-black px-3 py-1 rounded-r-md z-10 shrink-0 uppercase tracking-wider shadow-md animate-pulse">
         Notice
       </div>
-      <marquee 
-        behavior="scroll" 
-        direction="left" 
-        scrollamount="5" 
-        className="text-xs md:text-sm font-bold tracking-wide pl-4"
-      >
-        {data.notice}
-      </marquee>
+      {/* 🟢 টাইপস্ক্রিপ্ট বাইপাস ফিক্স */}
+      {require('react').createElement(
+        'marquee',
+        {
+          behavior: 'scroll',
+          direction: 'left',
+          scrollamount: '5',
+          className: 'text-xs md:text-sm font-bold tracking-wide pl-4',
+        },
+        data.notice
+      )}
     </div>
   );
 }
+
 
 // --- Main Home Component ---
 export default function Home() {
