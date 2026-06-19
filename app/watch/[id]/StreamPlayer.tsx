@@ -228,24 +228,85 @@ export default function StreamPlayer({ id }: { id: string }) {
     if (!currentStream) return;
 
     const loadVideo = async () => {
-      setIsBuffering(true);
-      try {
-        await playerInstance.unload(); 
+  setIsBuffering(true);
+
+  try {
+    await playerInstance.unload();
+
+    playerInstance.configure({
+      streaming: {
+        bufferingGoal: 25,
+        rebufferingGoal: 3,
+        bufferBehind: 30,
+
+        retryParameters: {
+          maxAttempts: 8,
+          baseDelay: 1000,
+          backoffFactor: 2,
+          fuzzFactor: 0.5,
+          timeout: 30000
+        },
+
+        stallEnabled: true,
+        stallThreshold: 1
+      },
+
+      abr: {
+        enabled: true,
+
+        switchInterval: 8,
+
+        defaultBandwidthEstimate: 5000000,
+
+        restrictions: {
+          maxWidth: 3840,
+          maxHeight: 2160
+        },
+
+        advanced: {
+          minTotalBytes: 128000,
+          minBytes: 16000,
+          fastHalfLife: 2,
+          slowHalfLife: 5
+        }
+      },
+
+      manifest: {
+        dash: {
+          ignoreMinBufferTime: true
+        },
+
+        retryParameters: {
+          maxAttempts: 8,
+          timeout: 30000
+        }
+      }
+    });
+
+    if (currentStream.api) {
+      const cleanDrm = currentStream.api.replace(/['"\s]/g, '');
+
+      if (cleanDrm.includes(':')) {
+        const [kid, key] = cleanDrm.split(':');
 
         playerInstance.configure({
-          streaming: {
-              bufferingGoal: 8, 
-              rebufferingGoal: 1.5,
-              retryParameters: { maxAttempts: 5, baseDelay: 1000, timeout: 20000 }
-          },
-          abr: { 
-              enabled: true, 
-              switchInterval: 0, 
-              defaultBandwidthEstimate: 3000000,
-              restrictions: { maxHeight: 4320, maxWidth: 7680 } 
-          },
-          manifest: { dash: { ignoreMinBufferTime: true }, retryParameters: { maxAttempts: 5, timeout: 20000 } }
+          drm: {
+            clearKeys: {
+              [kid]: key
+            }
+          }
         });
+      }
+    }
+
+    await playerInstance.load(currentStream.link);
+
+  } catch (error) {
+    console.error(error);
+  } finally {
+    setIsBuffering(false);
+  }
+};
         
         if (currentStream.api) {
           const cleanDrm = currentStream.api.replace(/['"\s]/g, '');
