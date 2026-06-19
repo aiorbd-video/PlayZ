@@ -83,8 +83,8 @@ export default function TvPlayer() {
 
   const { data } = useSWR('/api/channels', fetcher, {
   revalidateOnFocus: false, // ট্যাব ফোকাসে ফালতু হিট বন্ধ
-  refreshInterval: 60000,   // প্রতি ৬০ সেকেন্ড পর পর ব্যাকগ্রাউন্ডে অটো নতুন লিংক নিয়ে আসবে
-  dedupingInterval: 20000   // ২০ সেকেন্ডের ভেতরের ডুপ্লিকেট রিকোয়েস্ট ব্লক করবে
+  refreshInterval: 100000,   // প্রতি ৬০ সেকেন্ড পর পর ব্যাকগ্রাউন্ডে অটো নতুন লিংক নিয়ে আসবে
+  dedupingInterval: 60000   // ২০ সেকেন্ডের ভেতরের ডুপ্লিকেট রিকোয়েস্ট ব্লক করবে
 });
 
 
