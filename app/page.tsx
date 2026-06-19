@@ -7,20 +7,16 @@ import { motion } from 'framer-motion';
 import { MATCH_API, fetcher, getMatchStatus, getCategoryIcon } from './utils/helpers';
 import { ChannelCard, MatchCard } from './components/Cards';
 
-// 📢 ১. ইনলাইন মারকুই নোটিশ কম্পোনেন্ট (সরাসরি ফায়ারবেস থেকে ডাটা রিড করবে)
+// 📢 ১. সিকিউরড মারকুই নোটিশ কম্পোনেন্ট (অভ্যন্তরীণ API থেকে ডাটা রিড করবে)
 function MarqueeNotice() {
-  // আপনার ফায়ারবেসের রিয়ালটাইম লিংক সরাসরি এখানে বসিয়ে দেওয়া হলো
-  const { data } = useSWR(
-    'https://ratul-liv-default-rtdb.asia-southeast1.firebasedatabase.app/homepage_notice.json', 
-    fetcher, 
-    { 
-      refreshInterval: 30000, // ৩০ সেকেন্ড পর পর নোটিশ চেক করবে
-      revalidateOnFocus: false 
-    }
-  );
+  // ফায়ারবেসের লিংক লুকিয়ে এখন লোকাল সিকিউরড এপিআই রিকোয়েস্ট করা হচ্ছে
+  const { data } = useSWR('/api/notice', fetcher, { 
+    refreshInterval: 30000, // ৩০ সেকেন্ড পর পর ব্যাকএন্ড চেক করবে
+    revalidateOnFocus: false 
+  });
 
-  // 🟢 লজিক: ফায়ারবেসে ডাটা না থাকলে বা খালি থাকলে মারকুই বারটি লেআউট থেকে সম্পূর্ণ ভ্যানিশ থাকবে
-  if (!data || typeof data !== 'string' || data.trim() === "" || data === "null") {
+  // লজিক: নোটিশ না থাকলে হাইড থাকবে
+  if (!data || !data.notice || data.notice.trim() === "" || data.notice === "null") {
     return null;
   }
 
@@ -29,7 +25,7 @@ function MarqueeNotice() {
       <div className="bg-red-500 text-white text-[11px] md:text-xs font-black px-3 py-1 rounded-r-md z-10 shrink-0 uppercase tracking-wider shadow-md animate-pulse">
         Notice
       </div>
-      {/* 🟢 টাইপস্ক্রিপ্ট বাইপাস রিয়্যাক্ট এলিমেন্ট */}
+      {/* টাইপস্ক্রিপ্ট বাইপাস রিয়্যাক্ট এলিমেন্ট */}
       {require('react').createElement(
         'marquee',
         {
@@ -38,11 +34,12 @@ function MarqueeNotice() {
           scrollamount: '5',
           className: 'text-xs md:text-sm font-bold tracking-wide pl-4',
         },
-        data
+        data.notice
       )}
     </div>
   );
 }
+
 
 
 
