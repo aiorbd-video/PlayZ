@@ -65,7 +65,6 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
   else return { type: "upcoming", label: startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) };
 };
 
-// --- Main Component ---
 export default function StreamPlayer({ id }: { id: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
@@ -184,7 +183,6 @@ export default function StreamPlayer({ id }: { id: string }) {
         } catch (e) {}
 
         player = new shaka.Player(videoRef.current);
-        
         ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
         
         ui.configure({
@@ -200,8 +198,11 @@ export default function StreamPlayer({ id }: { id: string }) {
         });
 
         player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
+        
+        // 🟢 ফিক্স ২: শুধুমাত্র লোড ইন্টারাপ্ট (৭০০০) বাদে ৪MD৪/HTTP এরর সহ সব মেইন নেটওয়ার্ক এররে পরের সার্ভারে নিয়ে যাবে
         player.addEventListener('error', (e: any) => {
-          if (e.detail && e.detail.code !== 1002 && e.detail.code !== 7000 && e.detail.code !== 1001) {
+          if (e.detail && e.detail.code !== 7000) {
+            console.error("Shaka Player Streaming Error Code:", e.detail.code);
             triggerNextServer();
           }
         });
@@ -220,13 +221,18 @@ export default function StreamPlayer({ id }: { id: string }) {
     };
   }, [triggerNextServer]);
 
-  // 🟢 ফিক্সড ভিডিও লোডিং লজিক (ক্লিন ও সিঙ্গেল আসিনক্রোনাস স্কোপ)
+  // Video Loading Logic
   useEffect(() => {
     if (!playerInstance || !streams || streams.length === 0 || allServersDown) return;
     const currentStream = streams[activeStreamIndex];
     if (!currentStream) return;
 
     const loadVideo = async () => {
+      // 🟢 ফিক্স ৩: SWR রিফ্রেশ দিলেও যদি একই ইউআরএল চালু থাকে, তবে খেলা রিস্টার্ট বা বাফারিং করবে না
+      if (playerInstance.getAssetUri && playerInstance.getAssetUri() === currentStream.link) {
+        return;
+      }
+
       setIsBuffering(true);
       try {
         await playerInstance.unload();
@@ -272,7 +278,6 @@ export default function StreamPlayer({ id }: { id: string }) {
           }
         });
 
-        // DRM কনফিগারেশন
         if (currentStream.api) {
           const cleanDrm = currentStream.api.replace(/['"\s]/g, '');
           if (cleanDrm.includes(':')) {
@@ -287,16 +292,11 @@ export default function StreamPlayer({ id }: { id: string }) {
           }
         }
 
-        // HTTPS প্রোটোকল হ্যান্ডলিং
-        let streamUrl = currentStream.link;
-        if (typeof window !== 'undefined' && window.location.protocol === 'https:' && streamUrl.startsWith('http://')) {
-          streamUrl = streamUrl.replace(/^http:\/\//i, 'https://');
-        }
-
-        await playerInstance.load(streamUrl);
+        // 🟢 ফিক্স ৪: জোরপূর্বক http->https রিপ্লেসমেন্ট রিমুভ করা হলো (যাতে অ্যাপ লেভেলে র স্ট্রিম রান করতে পারে)
+        await playerInstance.load(currentStream.link);
       } catch (error) {
-        console.error("Stream Load Error:", error);
-        triggerNextServer();
+        console.error("Initial Load Error:", error);
+        // 🟢 ফিক্স ১: ক্যাচ ব্লক থেকে ডাবল সুইচিং রিমুভ করা হলো (যা ইভেন্ট লিসেনার একাই হ্যান্ডেল করবে)
       } finally {
         setIsBuffering(false);
       }
@@ -327,8 +327,6 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
-      
-      {/* Navigation */}
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/">
@@ -347,11 +345,7 @@ export default function StreamPlayer({ id }: { id: string }) {
       </nav>
 
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
-        
-        {/* Left Column: Player & Info */}
         <div className="lg:col-span-2 flex flex-col">
-          
-          {/* Video Player Container */}
           <div 
             ref={videoContainerRef} 
             className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group"
@@ -417,7 +411,6 @@ export default function StreamPlayer({ id }: { id: string }) {
             </AnimatePresence>
           </div>
 
-          {/* Server Buttons */}
           {streams && streams.length > 0 && (
             <div className="flex gap-2 overflow-x-auto scrollbar-hide py-4 my-2 border-b border-gray-800/40 items-center">
               <span className="text-gray-400 font-bold text-xs md:text-sm mr-2 whitespace-nowrap uppercase tracking-wider">Servers:</span>
@@ -444,10 +437,8 @@ export default function StreamPlayer({ id }: { id: string }) {
             </div>
           )}
 
-          {/* Match Info Card */}
           {currentMatch ? (
             <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 mt-3 shadow-lg relative group">
-              
               <button
                 onClick={handleShare}
                 className="absolute top-4 right-4 bg-gray-800/50 hover:bg-[#00E5FF]/20 text-gray-400 hover:text-[#00E5FF] p-2 rounded-full border border-gray-700/50 hover:border-[#00E5FF]/50 transition-all active:scale-95 z-10 focus:outline-none"
@@ -491,7 +482,6 @@ export default function StreamPlayer({ id }: { id: string }) {
           )}
         </div>
 
-        {/* Right Column: Sidebar (Desktop) */}
         <div className="mt-6 lg:mt-0 lg:col-span-1 max-h-[70vh] lg:max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-hide pr-1">
           <div className="flex flex-col gap-3.5">
             <span className="text-xs font-black uppercase tracking-wider text-gray-400 pl-1 mb-1">More Live Events</span>
@@ -563,7 +553,6 @@ export default function StreamPlayer({ id }: { id: string }) {
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
       `}} />
       
-      {/* Adsterra Popunder */}
       <Script 
         src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js"
         strategy="lazyOnload" 
