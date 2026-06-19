@@ -193,7 +193,6 @@ export default function StreamPlayer({ id }: { id: string }) {
           trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.LABEL
         });
 
-        // 🟢 টাইপস্ক্রিপ্ট ফিক্স: (window.screen.orientation as any).lock ব্যবহার করে এরর বাইপাস করা হলো
         document.addEventListener('fullscreenchange', () => {
           if (document.fullscreenElement && window.screen && window.screen.orientation && (window.screen.orientation as any).lock) {
             (window.screen.orientation as any).lock('landscape').catch(() => {});
@@ -221,110 +220,85 @@ export default function StreamPlayer({ id }: { id: string }) {
     };
   }, [triggerNextServer]);
 
-  // Video Loading Logic
+  // 🟢 ফিক্সড ভিডিও লোডিং লজিক (ক্লিন ও সিঙ্গেল আসিনক্রোনাস স্কোপ)
   useEffect(() => {
     if (!playerInstance || !streams || streams.length === 0 || allServersDown) return;
     const currentStream = streams[activeStreamIndex];
     if (!currentStream) return;
 
     const loadVideo = async () => {
-  setIsBuffering(true);
-
-  try {
-    await playerInstance.unload();
-
-    playerInstance.configure({
-      streaming: {
-        bufferingGoal: 25,
-        rebufferingGoal: 3,
-        bufferBehind: 30,
-
-        retryParameters: {
-          maxAttempts: 8,
-          baseDelay: 1000,
-          backoffFactor: 2,
-          fuzzFactor: 0.5,
-          timeout: 30000
-        },
-
-        stallEnabled: true,
-        stallThreshold: 1
-      },
-
-      abr: {
-        enabled: true,
-
-        switchInterval: 8,
-
-        defaultBandwidthEstimate: 5000000,
-
-        restrictions: {
-          maxWidth: 3840,
-          maxHeight: 2160
-        },
-
-        advanced: {
-          minTotalBytes: 128000,
-          minBytes: 16000,
-          fastHalfLife: 2,
-          slowHalfLife: 5
-        }
-      },
-
-      manifest: {
-        dash: {
-          ignoreMinBufferTime: true
-        },
-
-        retryParameters: {
-          maxAttempts: 8,
-          timeout: 30000
-        }
-      }
-    });
-
-    if (currentStream.api) {
-      const cleanDrm = currentStream.api.replace(/['"\s]/g, '');
-
-      if (cleanDrm.includes(':')) {
-        const [kid, key] = cleanDrm.split(':');
+      setIsBuffering(true);
+      try {
+        await playerInstance.unload();
 
         playerInstance.configure({
-          drm: {
-            clearKeys: {
-              [kid]: key
+          streaming: {
+            bufferingGoal: 25,
+            rebufferingGoal: 3,
+            bufferBehind: 30,
+            retryParameters: {
+              maxAttempts: 8,
+              baseDelay: 1000,
+              backoffFactor: 2,
+              fuzzFactor: 0.5,
+              timeout: 30000
+            },
+            stallEnabled: true,
+            stallThreshold: 1
+          },
+          abr: {
+            enabled: true,
+            switchInterval: 8,
+            defaultBandwidthEstimate: 5000000,
+            restrictions: {
+              maxWidth: 3840,
+              maxHeight: 2160
+            },
+            advanced: {
+              minTotalBytes: 128000,
+              minBytes: 16000,
+              fastHalfLife: 2,
+              slowHalfLife: 5
+            }
+          },
+          manifest: {
+            dash: {
+              ignoreMinBufferTime: true
+            },
+            retryParameters: {
+              maxAttempts: 8,
+              timeout: 30000
             }
           }
         });
-      }
-    }
 
-    await playerInstance.load(currentStream.link);
-
-  } catch (error) {
-    console.error(error);
-  } finally {
-    setIsBuffering(false);
-  }
-};
-        
+        // DRM কনফিগারেশন
         if (currentStream.api) {
           const cleanDrm = currentStream.api.replace(/['"\s]/g, '');
           if (cleanDrm.includes(':')) {
             const [kid, key] = cleanDrm.split(':');
-            playerInstance.configure({ drm: { clearKeys: { [kid]: key } } });
+            playerInstance.configure({
+              drm: {
+                clearKeys: {
+                  [kid]: key
+                }
+              }
+            });
           }
         }
 
+        // HTTPS প্রোটোকল হ্যান্ডলিং
         let streamUrl = currentStream.link;
-        if (window.location.protocol === 'https:' && streamUrl.startsWith('http://')) {
-            streamUrl = streamUrl.replace(/^http:\/\//i, 'https://');
+        if (typeof window !== 'undefined' && window.location.protocol === 'https:' && streamUrl.startsWith('http://')) {
+          streamUrl = streamUrl.replace(/^http:\/\//i, 'https://');
         }
 
         await playerInstance.load(streamUrl);
+      } catch (error) {
+        console.error("Stream Load Error:", error);
+        triggerNextServer();
+      } finally {
         setIsBuffering(false);
-      } catch (e) { 
-        triggerNextServer(); 
       }
     };
     
@@ -354,7 +328,7 @@ export default function StreamPlayer({ id }: { id: string }) {
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
       
-      {/* 🟢 Navigation */}
+      {/* Navigation */}
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/">
@@ -374,10 +348,10 @@ export default function StreamPlayer({ id }: { id: string }) {
 
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
         
-        {/* 🟢 Left Column: Player & Info */}
+        {/* Left Column: Player & Info */}
         <div className="lg:col-span-2 flex flex-col">
           
-          {/* 🟢 Video Player Container */}
+          {/* Video Player Container */}
           <div 
             ref={videoContainerRef} 
             className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group"
@@ -443,7 +417,7 @@ export default function StreamPlayer({ id }: { id: string }) {
             </AnimatePresence>
           </div>
 
-          {/* 🟢 Server Buttons */}
+          {/* Server Buttons */}
           {streams && streams.length > 0 && (
             <div className="flex gap-2 overflow-x-auto scrollbar-hide py-4 my-2 border-b border-gray-800/40 items-center">
               <span className="text-gray-400 font-bold text-xs md:text-sm mr-2 whitespace-nowrap uppercase tracking-wider">Servers:</span>
@@ -470,7 +444,7 @@ export default function StreamPlayer({ id }: { id: string }) {
             </div>
           )}
 
-          {/* 🟢 Match Info Card */}
+          {/* Match Info Card */}
           {currentMatch ? (
             <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 mt-3 shadow-lg relative group">
               
@@ -517,7 +491,7 @@ export default function StreamPlayer({ id }: { id: string }) {
           )}
         </div>
 
-        {/* 🟢 Right Column: Sidebar (Desktop) */}
+        {/* Right Column: Sidebar (Desktop) */}
         <div className="mt-6 lg:mt-0 lg:col-span-1 max-h-[70vh] lg:max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-hide pr-1">
           <div className="flex flex-col gap-3.5">
             <span className="text-xs font-black uppercase tracking-wider text-gray-400 pl-1 mb-1">More Live Events</span>
@@ -589,7 +563,7 @@ export default function StreamPlayer({ id }: { id: string }) {
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
       `}} />
       
-      {/* 🟢 Adsterra Popunder */}
+      {/* Adsterra Popunder */}
       <Script 
         src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js"
         strategy="lazyOnload" 
