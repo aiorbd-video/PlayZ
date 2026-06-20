@@ -50,10 +50,11 @@ const generateSlug = (teamA?: string, teamB?: string, eventName?: string, id?: s
   return `${cleanSlug}-${id || '0'}`;
 };
 
+// 🎯 লোকাল টাইমজোন ফিক্স সহ স্ট্যাটাস চেকার
 const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => {
   if (!startStr || !endStr) return { type: "upcoming", label: "TBA" };
-  const startTime = new Date(startStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
-  const endTime = new Date(endStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
+  const startTime = new Date(startStr);
+  const endTime = new Date(endStr);
   if (currentTime > endTime) return { type: "ended", label: "Ended" };
   else if (currentTime >= startTime && currentTime <= endTime) return { type: "live", label: "LIVE" };
   else return { type: "upcoming", label: startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) };
@@ -81,7 +82,7 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   const { data: rawMatches } = useSWR(LIVE_EVENTS_API, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
 
-  // 🎯 এখানেও সিঙ্গেল প্লেয়ার পেজের সাইডবারের জন্য ডাটা নরমালাইজেশন লজিক
+  // 🎯 সাইডবার ডাটা নরমালাইজেশন লজিক (লোকাল ISO টাইমজোন সাপোর্ট সহ)
   const matches = useMemo(() => {
     if (!rawMatches || !Array.isArray(rawMatches)) return null;
     return rawMatches.map((item: any, index: number) => {
@@ -91,9 +92,9 @@ export default function StreamPlayer({ id }: { id: string }) {
         if (!dStr || !tStr) return "";
         const parts = dStr.split('/');
         if (parts.length === 3) {
-          return `${parts[2]}/${parts[1]}/${parts[0]} ${tStr}`;
+          return `${parts[2]}-${parts[1]}-${parts[0]}T${tStr}`;
         }
-        return `${dStr} ${tStr}`;
+        return `${dStr}T${tStr}`;
       };
 
       const startTime = convertDate(rawEvent.date, rawEvent.time);
@@ -119,7 +120,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     });
   }, [rawMatches]);
 
-  // স্ল্যাগ আইডি ম্যাচিং ফিক্স
   const currentMatch = useMemo(() => {
     if (!matches) return null;
     return matches.find((m) => id.endsWith(m.id.toString()) || m.id.toString() === id);
@@ -380,6 +380,20 @@ export default function StreamPlayer({ id }: { id: string }) {
             )}
 
             <video ref={videoRef} className={`w-full h-full transition-all duration-300 pointer-events-none ${objectFit === 'fill' ? 'object-fill' : objectFit === 'cover' ? 'object-cover' : 'object-contain'}`} autoPlay playsInline />
+            
+            <AnimatePresence>
+              {showFitToast && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -10 }} 
+                  animate={{ opacity: 1, y: 0 }} 
+                  exit={{ opacity: 0, y: -10 }} 
+                  className="absolute top-6 left-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none"
+                >
+                  <span className="w-2 h-2 rounded-full bg-[#00E5FF] animate-pulse"></span>
+                  <span className="text-xs md:text-sm font-bold text-white capitalize">{objectFit === 'contain' ? 'Fit to Screen' : objectFit === 'cover' ? 'Zoom (Cropped)' : 'Stretch (Fill)'}</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {streams && streams.length > 0 && (
@@ -391,7 +405,7 @@ export default function StreamPlayer({ id }: { id: string }) {
                   onClick={() => { setAllServersDown(false); if (activeStreamIndex === index) { setReloadTrigger(prev => prev + 1); } else { setActiveStreamIndex(index); } }} 
                   className={`px-5 py-2 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border outline-none duration-150 ${activeStreamIndex === index && !allServersDown ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)]" : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white"}`}
                 >
-                  {stream.title || currentMatch?.eventInfo?.link_names?.[index] || `Server ${index + 1}`}
+                  {stream.title || (currentMatch?.eventInfo as any)?.link_names?.[index] || `Server ${index + 1}`}
                 </button>
               ))}
             </div>
@@ -400,6 +414,7 @@ export default function StreamPlayer({ id }: { id: string }) {
           {currentMatch && currentMatch.eventInfo ? (
             <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 mt-3 shadow-lg relative group">
               <button onClick={handleShare} className="absolute top-4 right-4 bg-gray-800/50 hover:bg-[#00E5FF]/20 text-gray-400 hover:text-[#00E5FF] p-2 rounded-full border border-gray-700/50 transition-all z-10"><svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg></button>
+              {showCopied && <div className="absolute -top-8 right-2 bg-[#00E5FF] text-black text-[10px] font-bold px-3 py-1 rounded shadow-lg">Link Copied!</div>}
               <div className="text-center text-xs font-bold text-[#00E5FF] uppercase tracking-widest mb-4 pr-8">{currentMatch.eventInfo.eventCat} | {currentMatch.eventInfo.eventName}</div>
               <div className="flex justify-center items-center gap-6 sm:gap-12 py-2">
                 <div className="flex items-center gap-3 w-[40%] justify-end">
@@ -448,6 +463,12 @@ export default function StreamPlayer({ id }: { id: string }) {
         </div>
       </div>
       <style dangerouslySetInnerHTML={{__html: `.shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; display: flex; align-items: center; justify-content: center; } .scrollbar-hide::-webkit-scrollbar { display: none; }`}} />
+      
+      <Script 
+        src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js"
+        strategy="lazyOnload" 
+        id="adsterra-popunder"
+      />
     </main>
   );
 }
