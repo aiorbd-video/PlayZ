@@ -9,18 +9,21 @@ export const viewport: Viewport = {
   themeColor: '#0f172a',
 };
 
+// ডাইনামিক সাইট ইউআরএল (Vercel Env থেকে আসবে, না থাকলে ডিফল্ট)
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.ratulxlive.duckdns.org';
+
 export const metadata: Metadata = {
-  metadataBase: new URL('https://www.ratulxlive.duckdns.org'),
+  metadataBase: new URL(SITE_URL),
 
   title: {
-    default: 'All in One Sports Web | Watch Live Cricket, Football & WWE HD',
-    template: '%s | All in One Sports Web',
+    default: 'All In One Reborn | Watch Live Cricket, Football & WWE HD',
+    template: '%s | All In One Reborn',
   },
 
   description:
     'Watch live cricket, football, WWE, UFC and premium sports events in HD quality. Fast streaming, mobile friendly and free access worldwide.',
 
-  applicationName: 'All in One Sports Web',
+  applicationName: 'All In One Reborn',
 
   keywords: [
     'live cricket',
@@ -33,7 +36,7 @@ export const metadata: Metadata = {
     'sports streaming',
     'bangladesh cricket live',
     'hd sports stream',
-    'all in one sports web',
+    'all in one reborn',
     'live match today',
   ],
 
@@ -44,10 +47,10 @@ export const metadata: Metadata = {
   ],
 
   creator: 'MD. RATUL HASAN',
-  publisher: 'All in One Sports Web',
+  publisher: 'All In One Reborn',
 
   alternates: {
-    canonical: 'https://www.ratulxlive.duckdns.org',
+    canonical: SITE_URL,
   },
 
   robots: {
@@ -67,28 +70,29 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    url: 'https://www.ratulxlive.duckdns.org',
-    siteName: 'All in One Sports Web',
-    title: 'All in One Sports Web | Live Sports Streaming',
+    url: SITE_URL,
+    // 🎯 গুগলকে সাইটের নাম ঠিকভাবে বোঝানোর জন্য এই জায়গাটি সবচেয়ে জরুরি
+    siteName: 'All In One Reborn',
+    title: 'All In One Reborn | Live Sports Streaming',
     description:
       'Watch live cricket, football, WWE, UFC and premium sports events in HD quality.',
 
     images: [
       {
-        url: 'https://www.ratulxlive.duckdns.org/og-image.jpg',
+        url: `${SITE_URL}/og-image.jpg`,
         width: 1200,
         height: 630,
-        alt: 'All in One Sports Web',
+        alt: 'All In One Reborn Live',
       },
     ],
   },
 
   twitter: {
     card: 'summary_large_image',
-    title: 'All in One Sports Web',
+    title: 'All In One Reborn',
     description:
       'Watch live cricket, football, WWE and premium sports events in HD quality.',
-    images: ['https://www.ratulxlive.duckdns.org/og-image.jpg'],
+    images: [`${SITE_URL}/og-image.jpg`],
   },
 
   verification: {
@@ -114,15 +118,17 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  
+  // 🎯 ম্যাজিক ফিক্স: গুগলের সার্চ রেজাল্টে "Duck DNS" সরিয়ে আপনার আসল ব্র্যান্ড নাম বসানোর জন্য Schema
   const websiteSchema = {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
-    name: 'All in One Sports Web',
-    url: 'https://www.ratulxlive.duckdns.org',
+    name: 'All In One Reborn',
+    alternateName: 'All In One Sports Web',
+    url: SITE_URL,
     potentialAction: {
       '@type': 'SearchAction',
-      target:
-        'https://www.ratulxlive.duckdns.org/search?q={search_term_string}',
+      target: `${SITE_URL}/search?q={search_term_string}`,
       'query-input': 'required name=search_term_string',
     },
   };
@@ -133,7 +139,7 @@ export default function RootLayout({
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta httpEquiv="X-Content-Type-Options" content="nosniff" />
         
-        {/* 🟢 ফিক্স: ট্রাফিক সোর্স ট্র্যাক করার জন্য Referrer মেটা ট্যাগ যুক্ত করা হলো */}
+        {/* 🟢 ট্রাফিক সোর্স ট্র্যাক করার জন্য Referrer মেটা ট্যাগ */}
         <meta name="referrer" content="no-referrer-when-downgrade" />
 
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -148,12 +154,12 @@ export default function RootLayout({
         />
       </head>
 
-      <body className="selection:bg-accent selection:text-white antialiased">
+      <body className="selection:bg-[#00E5FF] selection:text-black antialiased">
         <SecurityScript />
 
         {/* 🟢 ফ্লোটিং টেলিগ্রাম বাটন শুরু */}
         <a
-          href="https://t.me/allonebd" // 👈 এখানে আপনার আসল টেলিগ্রাম লিংকটি বসাবেন
+          href="https://t.me/allonebd"
           target="_blank"
           rel="noopener noreferrer"
           className="fixed bottom-6 right-6 z-[9999] flex items-center justify-center w-14 h-14 md:w-auto md:h-auto md:px-5 md:py-3 bg-gradient-to-br from-[#0088cc] to-[#005580] text-white rounded-full shadow-[0_0_20px_rgba(0,136,204,0.6)] backdrop-blur-md border border-white/20 animate-pulse hover:animate-none hover:scale-110 transition-all duration-300 group"
@@ -170,10 +176,10 @@ export default function RootLayout({
 
         {children}
 
-        {/* 🟢 ফিক্স: Vercel Env থেকে ডাইনামিক্যালি Google Analytics ID আনা হলো */}
-{process.env.NEXT_PUBLIC_GA_ID && (
-  <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
-)}
+        {/* 🟢 Google Analytics (Vercel Env থেকে ডাইনামিক্যালি আনা) */}
+        {process.env.NEXT_PUBLIC_GA_ID && (
+          <GoogleAnalytics gaId={process.env.NEXT_PUBLIC_GA_ID} />
+        )}
 
       </body>
     </html>
