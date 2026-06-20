@@ -88,7 +88,7 @@ export default function Home() {
     }
   };
 
-  const { data: matches } = useSWR(LIVE_EVENTS_API, fetcher, { 
+  const { data: rawMatches } = useSWR(LIVE_EVENTS_API, fetcher, { 
     refreshInterval: 30000,
     revalidateOnFocus: false,
     dedupingInterval: 15000
@@ -110,14 +110,51 @@ export default function Home() {
   const channels = channelData?.channels || [];
   const m3uChannels = m3uData?.channels || [];
 
-  // 🎯 এনকোডিং ফিক্স: eventInfo অথবা event দুইটাই সাপোর্ট করবে
+  // 🎯 নতুন এপিআই ডাটা স্ট্রাকচারকে পুরনো ফরম্যাটে কনভার্ট করার মাস্টার লজিক
+  const matches = useMemo(() => {
+    if (!rawMatches || !Array.isArray(rawMatches)) return null;
+
+    return rawMatches.map((item: any, index: number) => {
+      const rawEvent = item.event || {};
+      if (rawEvent.visible === false) return null; // হিডেন ম্যাচ বাদ যাবে
+
+      // DD/MM/YYYY কে YYYY/MM/DD তে রূপান্তর করার ফাংশন (টাইম ফিক্স)
+      const convertDate = (dStr: string, tStr: string) => {
+        if (!dStr || !tStr) return "";
+        const parts = dStr.split('/');
+        if (parts.length === 3) {
+          return `${parts[2]}/${parts[1]}/${parts[0]} ${tStr}`;
+        }
+        return `${dStr} ${tStr}`;
+      };
+
+      const startTime = convertDate(rawEvent.date, rawEvent.time);
+      const endTime = convertDate(rawEvent.end_date || rawEvent.date, rawEvent.end_time || rawEvent.time);
+      const matchId = rawEvent.links ? rawEvent.links.replace("pro/", "").replace(".txt", "") : index.toString();
+
+      return {
+        id: matchId,
+        links: rawEvent.links || "",
+        eventInfo: {
+          eventCat: rawEvent.category || "Live Event",
+          eventName: rawEvent.eventName || "Live Match",
+          teamA: rawEvent.teamAName || "Team A",
+          teamB: rawEvent.teamBName || "Team B",
+          teamAFlag: rawEvent.teamAFlag || "",
+          teamBFlag: rawEvent.teamBFlag || "",
+          startTime: startTime,
+          endTime: endTime,
+          eventLogo: rawEvent.eventLogo || "",
+          link_names: rawEvent.link_names || []
+        }
+      };
+    }).filter(Boolean);
+  }, [rawMatches]);
+
   const dynamicCategories = useMemo(() => {
     const list = ['All'];
     if (matches && Array.isArray(matches)) {
-      const uniqueCats = new Set(matches.map((m: any) => {
-        const info = m.eventInfo || m.event || {};
-        return info.eventCat;
-      }).filter(Boolean));
+      const uniqueCats = new Set(matches.map((m: any) => m.eventInfo?.eventCat).filter(Boolean));
       uniqueCats.forEach(cat => list.push(cat as string));
     }
     return list;
@@ -127,8 +164,7 @@ export default function Home() {
     if (!matches) return { all: 0, live: 0, recent: 0, upcoming: 0 };
     let live = 0, recent = 0, upcoming = 0;
     matches.forEach((m: any) => {
-      const info = m.eventInfo || m.event || {};
-      const status = getMatchStatus(info.startTime, info.endTime, currentTime);
+      const status = getMatchStatus(m.eventInfo?.startTime, m.eventInfo?.endTime, currentTime);
       if (status === 'live') live++;
       if (status === 'recent') recent++;
       if (status === 'upcoming') upcoming++;
@@ -146,7 +182,7 @@ export default function Home() {
   const processedMatches = useMemo(() => {
     if (!matches) return [];
     return [...matches].filter((match: any) => {
-      const eventInfo = match.eventInfo || match.event || {};
+      const eventInfo = match.eventInfo || {};
       if (activeCategory !== 'All' && eventInfo.eventCat !== activeCategory) return false;
       const status = getMatchStatus(eventInfo.startTime, eventInfo.endTime, currentTime);
       if (activeFilter === 'Live' && status !== 'live') return false;
@@ -159,13 +195,11 @@ export default function Home() {
       }
       return true;
     }).sort((a: any, b: any) => {
-      const aInfo = a.eventInfo || a.event || {};
-      const bInfo = b.eventInfo || b.event || {};
-      const aStart = new Date(aInfo.startTime?.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z') || 0).getTime();
-      const bStart = new Date(bInfo.startTime?.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z') || 0).getTime();
+      const aStart = new Date(a.eventInfo?.startTime?.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z') || 0).getTime();
+      const bStart = new Date(b.eventInfo?.startTime?.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z') || 0).getTime();
       if (activeFilter === 'All') {
-        const aStatus = getMatchStatus(aInfo.startTime, aInfo.endTime, currentTime);
-        const bStatus = getMatchStatus(bInfo.startTime, bInfo.endTime, currentTime);
+        const aStatus = getMatchStatus(a.eventInfo?.startTime, a.eventInfo?.endTime, currentTime);
+        const bStatus = getMatchStatus(b.eventInfo?.startTime, b.eventInfo?.endTime, currentTime);
         const priority: any = { live: 1, upcoming: 2, recent: 3 };
         if (priority[aStatus] !== priority[bStatus]) return priority[aStatus] - priority[bStatus];
         if (aStatus === 'upcoming') return aStart - bStart; 
@@ -248,7 +282,7 @@ export default function Home() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 md:gap-5">
                 {processedMatches.map((match: any) => (
-                  <MatchCard key={match.id} match={match} status={getMatchStatus((match.eventInfo || match.event || {}).startTime, (match.eventInfo || match.event || {}).endTime, currentTime)} />
+                  <MatchCard key={match.id} match={match} status={getMatchStatus(match.eventInfo?.startTime, match.eventInfo?.endTime, currentTime)} />
                 ))}
               </div>
             )}
