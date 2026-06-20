@@ -415,7 +415,8 @@ export default function StreamPlayer({ id }: { id: string }) {
           {streams && streams.length > 0 && (
             <div className="flex gap-2 overflow-x-auto scrollbar-hide py-4 my-2 border-b border-gray-800/40 items-center">
               <span className="text-gray-400 font-bold text-xs md:text-sm mr-2 whitespace-nowrap uppercase tracking-wider">Servers:</span>
-              {streams.map((stream, index) => (
+              {streams.map((stream: any, index: number) => (
+
                 <button 
                   key={index} 
                   onClick={() => { 
