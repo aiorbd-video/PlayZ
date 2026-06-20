@@ -9,7 +9,6 @@ import { ChannelCard, MatchCard } from './components/Cards';
 
 const LIVE_EVENTS_API = "https://ratulxadia-playz-cats-event.hf.space/api/events";
 
-// 📢 ১. সিকিউরড মারকুই নোটিশ কম্পোনেন্ট
 function MarqueeNotice() {
   const { data } = useSWR('/api/notice', fetcher, { 
     refreshInterval: 30000, 
@@ -39,7 +38,6 @@ function MarqueeNotice() {
   );
 }
 
-// --- Main Home Component ---
 export default function Home() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<'Sports' | 'Live Events' | 'Categories'>('Live Events');
@@ -79,57 +77,35 @@ export default function Home() {
   const handleShare = async () => {
     try {
       if (navigator.share) {
-        await navigator.share({
-          title: 'All In One Reborn - Live Sports',
-          url: window.location.href,
-        });
+        await navigator.share({ title: 'All In One Reborn - Live Sports', url: window.location.href });
       } else {
-        navigator.clipboard.writeText(window.location.href);
-        alert('Link copied to clipboard!');
+        navigator.clipboard.writeText(window.location.href); alert('Link copied to clipboard!');
       }
-    } catch (err) {
-      console.log('Share error', err);
-    }
+    } catch (err) { console.log('Share error', err); }
   };
 
-  const { data: rawMatches } = useSWR(LIVE_EVENTS_API, fetcher, { 
-    refreshInterval: 30000,
-    revalidateOnFocus: false,
-    dedupingInterval: 15000
-  });
-  
-  const { data: channelData } = useSWR('/api/channels', fetcher, { 
-    refreshInterval: 60000,
-    revalidateOnFocus: false,
-    revalidateOnReconnect: true,
-    dedupingInterval: 20000
-  });
-  
-  const { data: m3uData } = useSWR('/api/m3u', fetcher, { 
-    refreshInterval: 90000,
-    revalidateOnFocus: false,
-    dedupingInterval: 30000
-  });
+  const { data: rawMatches } = useSWR(LIVE_EVENTS_API, fetcher, { refreshInterval: 30000, revalidateOnFocus: false, dedupingInterval: 15000 });
+  const { data: channelData } = useSWR('/api/channels', fetcher, { refreshInterval: 60000, revalidateOnFocus: false, revalidateOnReconnect: true, dedupingInterval: 20000 });
+  const { data: m3uData } = useSWR('/api/m3u', fetcher, { refreshInterval: 90000, revalidateOnFocus: false, dedupingInterval: 30000 });
   
   const channels = channelData?.channels || [];
   const m3uChannels = m3uData?.channels || [];
 
-  // 🎯 ডাটা কনভার্সন: DD/MM/YYYY কে YYYY/MM/DD তে রূপান্তর
+  // 🎯 টাইমজোন ফিক্স: 'Z' যুক্ত করা হয়েছে যাতে ব্রাউজার বোঝে এটি লন্ডন (UTC) টাইম
   const matches = useMemo(() => {
     if (!rawMatches || !Array.isArray(rawMatches)) return null;
 
     return rawMatches.map((item: any, index: number) => {
       const rawEvent = item.event || {};
-      if (rawEvent.visible === false) return null; // হিডেন ম্যাচ বাদ দেওয়া
+      if (rawEvent.visible === false) return null;
 
       const convertDate = (dStr: string, tStr: string) => {
         if (!dStr || !tStr) return "";
         const parts = dStr.split('/');
-        // YYYY/MM/DD HH:mm:ss ফরম্যাটে কনভার্ট (লোকাল টাইম সাপোর্ট)
         if (parts.length === 3) {
-          return `${parts[2]}/${parts[1]}/${parts[0]} ${tStr}`;
+          return `${parts[2]}-${parts[1]}-${parts[0]}T${tStr}Z`; // 👈 ম্যাজিক 'Z'
         }
-        return `${dStr} ${tStr}`;
+        return `${dStr}T${tStr}Z`; // 👈 ম্যাজিক 'Z'
       };
 
       const startTime = convertDate(rawEvent.date, rawEvent.time);
@@ -199,8 +175,8 @@ export default function Home() {
       }
       return true;
     }).sort((a: any, b: any) => {
-      const aStart = new Date(a.eventInfo?.startTime?.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z') || 0).getTime();
-      const bStart = new Date(b.eventInfo?.startTime?.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z') || 0).getTime();
+      const aStart = new Date(a.eventInfo?.startTime || 0).getTime();
+      const bStart = new Date(b.eventInfo?.startTime || 0).getTime();
       if (activeFilter === 'All') {
         const aStatus = getMatchStatus(a.eventInfo?.startTime, a.eventInfo?.endTime, currentTime);
         const bStatus = getMatchStatus(b.eventInfo?.startTime, b.eventInfo?.endTime, currentTime);
@@ -220,33 +196,20 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#11131A] text-gray-200 font-sans pb-32 md:pb-12 selection:bg-[#00E5FF] selection:text-black">
-      
-      {/* Navbar Section */}
       <nav className="bg-[#1C1E2B] sticky top-0 z-50 flex items-center justify-between px-4 md:px-8 py-3 border-b border-[#2A8496]/30 shadow-md h-16">
         {showSearch ? (
           <motion.div initial={{ opacity: 0, scaleX: 0.9 }} animate={{ opacity: 1, scaleX: 1 }} className="flex items-center w-full gap-3 origin-right">
-            <input 
-              type="text" 
-              placeholder={`Search ${activeTab.toLowerCase()}...`} 
-              value={searchInp}
-              onChange={(e) => setSearchInp(e.target.value)}
-              className="w-full bg-[#11131A] border border-[#00E5FF]/50 rounded-full px-5 py-2 text-sm focus:outline-none focus:border-[#00E5FF] text-white shadow-inner"
-              autoFocus
-            />
+            <input type="text" placeholder={`Search ${activeTab.toLowerCase()}...`} value={searchInp} onChange={(e) => setSearchInp(e.target.value)} className="w-full bg-[#11131A] border border-[#00E5FF]/50 rounded-full px-5 py-2 text-sm focus:outline-none focus:border-[#00E5FF] text-white shadow-inner" autoFocus />
             <button onClick={() => { setShowSearch(false); setSearchInp(''); }} className="text-gray-400 hover:text-white text-sm font-semibold transition-colors">Cancel</button>
           </motion.div>
         ) : (
           <>
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl md:text-2xl font-bold text-[#00E5FF] tracking-wide uppercase">All In One Reborn</h1>
-            </div>
-
+            <div className="flex items-center gap-3"><h1 className="text-xl md:text-2xl font-bold text-[#00E5FF] tracking-wide uppercase">All In One Reborn</h1></div>
             <div className="hidden md:flex items-center gap-2 bg-[#11131A] p-1 rounded-full border border-gray-800/80 shadow-inner">
               <button onClick={() => handleTabChange('Sports')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${activeTab === 'Sports' ? 'bg-[#2A2D3E] text-[#00E5FF] shadow-md' : 'text-gray-400 hover:text-gray-200'}`}>Sports</button>
               <button onClick={() => handleTabChange('Live Events')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${activeTab === 'Live Events' ? 'bg-[#3A3C52] text-white shadow-md ring-1 ring-[#00E5FF]/50' : 'text-gray-400 hover:text-gray-200'}`}>Live Events</button>
               <button onClick={() => handleTabChange('Categories')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${activeTab === 'Categories' ? 'bg-[#2A2D3E] text-[#00E5FF] shadow-md' : 'text-gray-400 hover:text-gray-200'}`}>Playlists</button>
             </div>
-
             <div className="flex items-center gap-4 text-gray-300">
               <svg onClick={handleShare} xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 md:h-6 md:w-6 hover:text-[#00E5FF] cursor-pointer transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
               <svg onClick={() => setShowSearch(true)} xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 md:h-6 md:w-6 hover:text-[#00E5FF] cursor-pointer transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
@@ -255,10 +218,8 @@ export default function Home() {
         )}
       </nav>
 
-      {/* 🎯 প্লেসমেন্ট ফিক্স: নেভবারের ঠিক নিচে নোটিশটি বসানো হয়েছে */}
       <MarqueeNotice />
 
-      {/* Main Content Layout */}
       <div className="max-w-[1600px] mx-auto px-4 md:px-8 pt-2">
         {activeTab === 'Live Events' && (
           <>
