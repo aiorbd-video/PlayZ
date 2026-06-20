@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 export async function GET() {
   try {
     // 🚀 তোমার নতুন হাগিং ফেস API লিংক (সরাসরি ইভেন্ট ডাটার জন্য)
-    const FULL_DATA_URL = "https://ratulxadia-playz-cats-event.hf.space/api/events";
+    const FULL_DATA_URL = "https://ratul-liv-default-rtdb.asia-southeast1.firebasedatabase.app/playz-streams";
 
     const response = await fetch(FULL_DATA_URL, {
       cache: 'no-store',
