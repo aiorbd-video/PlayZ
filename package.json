@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@next/third-parties": "^16.2.9",
+    "artplayer": "^5.4.0",
     "autoprefixer": "^10.5.0",
     "framer-motion": "^12.40.0",
     "next": "^16.2.9",
