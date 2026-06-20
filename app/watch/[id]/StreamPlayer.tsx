@@ -11,7 +11,6 @@ import Script from 'next/script';
 interface Stream {
   link_names: string[];
   links: string;
-  api?: string; // For DRM
 }
 
 interface EventInfo {
@@ -55,11 +54,9 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
   if (!startStr || !endStr) return { type: "upcoming", label: "TBA" };
   const startTime = new Date(startStr);
   let endTime = new Date(endStr);
-  
   if (startTime.getTime() === endTime.getTime()) {
     endTime = new Date(startTime.getTime() + (4 * 60 * 60 * 1000));
   }
-  
   if (currentTime > endTime) return { type: "ended", label: "Ended" };
   else if (currentTime >= startTime && currentTime <= endTime) return { type: "live", label: "LIVE" };
   else return { type: "upcoming", label: startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) };
@@ -68,28 +65,25 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
 export default function StreamPlayer({ id }: { id: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
-  
   const [playerInstance, setPlayerInstance] = useState<any>(null);
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
   const [reloadTrigger, setReloadTrigger] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
-  
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
   const [showFitToast, setShowFitToast] = useState(false);
   const [isBuffering, setIsBuffering] = useState(true);
   const [allServersDown, setAllServersDown] = useState(false);
   const [isControlsVisible, setIsControlsVisible] = useState(true);
   const [showCopied, setShowCopied] = useState(false);
-  
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
   const streamsRef = useRef<any[] | null>(null);
   const activeIndexRef = useRef<number>(0);
-  
-  // 👑 ম্যাজিক: বর্তমানে চলা লিংকটি ট্র‍্যাক করার জন্য Ref, যাতে বারবার রিস্টার্ট না নেয়!
-  const currentlyPlayingUrlRef = useRef<string | null>(null);
+
+  // 🎯 ফিক্স ১: কারেন্ট লিংক সেভ রাখার জন্য Ref (যাতে ১৫ সেকেন্ড পর পর হুদাই রিস্টার্ট না হয়)
+  const playingUrlRef = useRef<string | null>(null);
 
   const { data: rawMatches } = useSWR(LIVE_EVENTS_API ? LIVE_EVENTS_API : null, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
-  
+
   const matches = useMemo(() => {
     if (!rawMatches || !Array.isArray(rawMatches)) return null;
     return rawMatches.map((item: any, index: number) => {
@@ -103,7 +97,6 @@ export default function StreamPlayer({ id }: { id: string }) {
       const startTime = convertDate(rawEvent.date, rawEvent.time);
       const endTime = convertDate(rawEvent.end_date || rawEvent.date, rawEvent.end_time || rawEvent.time);
       const matchId = rawEvent.links ? rawEvent.links.replace("pro/", "").replace(".txt", "") : index.toString();
-      
       return {
         id: matchId,
         links: rawEvent.links || "",
@@ -130,7 +123,6 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   let streamFetchUrl: string | null = null;
   let cacheKey: string | null = null;
-  
   if (currentMatch && currentMatch.links && STREAM_API_BASE) {
     const streamSlug = currentMatch.links.replace("pro/", "").replace(".txt", "");
     cacheKey = `aiorbd_stream_cache_${streamSlug}`;
@@ -151,33 +143,32 @@ export default function StreamPlayer({ id }: { id: string }) {
     } catch (e) { return null; }
   };
 
-  // 🚀 SWR প্রতি ১৫ সেকেন্ড পরপর ব্যাকগ্রাউন্ডে চেক করবে লিংক চেঞ্জ হলো কিনা
-  const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { 
-    refreshInterval: 15000, 
-    revalidateOnFocus: false, 
-    fallbackData: getCachedStreams(), 
+  const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, {
+    refreshInterval: 15000,
+    revalidateOnFocus: false,
+    fallbackData: getCachedStreams(),
     onSuccess: (data) => {
       if (typeof window !== 'undefined' && cacheKey && data) {
         localStorage.setItem(cacheKey, JSON.stringify(data));
       }
-    } 
+    }
   });
 
   const streams = Array.isArray(streamsFromApi) ? streamsFromApi : (streamsFromApi?.streams || null);
-  
+
   useEffect(() => { streamsRef.current = streams; }, [streams]);
   useEffect(() => { activeIndexRef.current = activeStreamIndex; }, [activeStreamIndex]);
-  
+
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 5000);
     return () => clearInterval(timer);
   }, []);
-  
+
   useEffect(() => {
     setActiveStreamIndex(0);
     setAllServersDown(false);
     setReloadTrigger(prev => prev + 1);
-    currentlyPlayingUrlRef.current = null; // নতুন ম্যাচে গেলে ট্র্যাকার রিসেট
+    playingUrlRef.current = null; // নতুন ম্যাচে গেলে ট্র্যাকার রিসেট
   }, [id]);
 
   useEffect(() => {
@@ -231,12 +222,10 @@ export default function StreamPlayer({ id }: { id: string }) {
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
     let shaka: any; let player: any; let ui: any;
-    
     const initPlayer = async () => {
       try {
         shaka = await import('shaka-player/dist/shaka-player.ui');
         shaka.polyfill.installAll();
-        
         try {
           if (shaka.ui.Controls && !(shaka.ui.Controls as any).custom_stretch_registered) {
             class StretchButton extends shaka.ui.Element {
@@ -254,40 +243,31 @@ export default function StreamPlayer({ id }: { id: string }) {
             (shaka.ui.Controls as any).custom_stretch_registered = true;
           }
         } catch (e) {}
-        
         player = new shaka.Player(videoRef.current);
         ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
-        
         ui.configure({
           controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'custom_stretch', 'overflow_menu', 'fullscreen'],
           addSeekBar: true,
           trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.LABEL
         });
-        
         document.addEventListener('fullscreenchange', () => {
           if (document.fullscreenElement && window.screen && window.screen.orientation && (window.screen.orientation as any).lock) {
             (window.screen.orientation as any).lock('landscape').catch(() => {});
           }
         });
-        
         player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
-        
         player.addEventListener('error', (e: any) => {
-          // 🟢 শুধুমাত্র ডেড/ফাটাল এররেই সার্ভার চেঞ্জ করবে
           if (e.detail && e.detail.severity === 2 && e.detail.code !== 7000 && e.detail.code !== 7002) {
             console.error("Shaka Critical Fatal Error:", e.detail.code);
             triggerNextServer();
           }
         });
-        
         setPlayerInstance(player);
       } catch (err) {
         console.error("Init Error", err);
       }
     };
-    
     initPlayer();
-    
     return () => {
       if (ui) ui.destroy();
       if (player) player.destroy();
@@ -299,27 +279,22 @@ export default function StreamPlayer({ id }: { id: string }) {
     const currentStream = streams[activeStreamIndex];
     if (!currentStream || !currentStream.link) return;
 
-    // 👑 🎯 ম্যাজিক লজিক: যদি নতুন লিংক আগের লিংকের মতোই হয়, তবে ভিডিও রিস্টার্ট নেবে না!
-    if (currentlyPlayingUrlRef.current === currentStream.link) {
-      return; // "আরেহ, এই লিংকটাই তো প্লে হচ্ছে! ভিডিও থামানোর কোনো দরকার নেই।"
-    }
+    // 🎯 ফিক্স ২: একই লিংক হলে ভিডিও আর রিস্টার্ট করবে না (হুদাই লোডিং অফ)
+    if (playingUrlRef.current === currentStream.link) return;
 
     let isMounted = true;
-    
     const loadVideo = async () => {
       setIsBuffering(true);
       try {
         await playerInstance.unload();
-        
-        // 🚀 👑 Shaka Player Ultimate Configuration
         playerInstance.configure({
           streaming: {
-            bufferingGoal: 20,           // বেশি বাফার ধরে রাখবে
-            rebufferingGoal: 2,
-            bufferBehind: 10,
-            jumpLargeGaps: true,         // লাইভে ল্যাগ হলে স্কিপ করবে
+            bufferingGoal: 10,
+            rebufferingGoal: 1,
+            bufferBehind: 5,
+            jumpLargeGaps: true,
             ignoreTextStreamFailures: true,
-            retryParameters: { maxAttempts: 10, baseDelay: 1000, backoffFactor: 1.5, fuzzFactor: 0.5, timeout: 15000 },
+            retryParameters: { maxAttempts: 10, baseDelay: 1000, backoffFactor: 1.5, fuzzFactor: 0.5, timeout: 10000 },
             stallEnabled: true,
             stallThreshold: 1,
             stallSkip: 0.5
@@ -327,20 +302,19 @@ export default function StreamPlayer({ id }: { id: string }) {
           manifest: {
             dash: { ignoreMinBufferTime: true },
             hls: { ignoreManifestProgramDateTime: true },
-            retryParameters: { maxAttempts: 10, baseDelay: 1000, timeout: 15000 }
+            retryParameters: { maxAttempts: 10, baseDelay: 1000, timeout: 10000 }
           },
           abr: {
             enabled: true,
-            switchInterval: 2,                 // দ্রুত নেট চেক
-            bandwidthDowngradeTarget: 0.95,    // স্পিড একটু কমলেই কোয়ালিটি ড্রপ
-            bandwidthUpgradeTarget: 0.60,
-            defaultBandwidthEstimate: 300000,  // স্লো নেটেও শুরুতে 360/480p তে চালু হবে
-            restrictToElementSize: true,       // মোবাইলে ফাউ ডাটা টানবে না
+            switchInterval: 1,
+            bandwidthDowngradeTarget: 0.99,
+            bandwidthUpgradeTarget: 0.50,
+            defaultBandwidthEstimate: 300000,
+            restrictToElementSize: true,
             safeMarginSwitch: true,
-            clearBufferSwitch: true            // কোয়ালিটি ড্রপে বাফার আটকে হ্যাং করবে না
+            clearBufferSwitch: true
           }
         });
-        
         if (currentStream.api) {
           const cleanDrm = currentStream.api.replace(/['"\s]/g, '');
           if (cleanDrm.includes(':')) {
@@ -350,9 +324,7 @@ export default function StreamPlayer({ id }: { id: string }) {
         }
         
         await playerInstance.load(currentStream.link);
-        
-        // সফলভাবে প্লে হওয়ার পর ট্র্যাকার আপডেট করে দেওয়া হলো
-        currentlyPlayingUrlRef.current = currentStream.link;
+        playingUrlRef.current = currentStream.link; // 🎯 লিংক প্লে হওয়ার পর সেভ করে রাখলো
 
       } catch (error: any) {
         if (error.code !== 7000 && error.code !== 7002) {
@@ -363,9 +335,7 @@ export default function StreamPlayer({ id }: { id: string }) {
         if (isMounted) setIsBuffering(false);
       }
     };
-    
     loadVideo();
-    
     return () => { isMounted = false; };
   }, [playerInstance, streams, activeStreamIndex, reloadTrigger, allServersDown, triggerNextServer]);
 
@@ -415,7 +385,7 @@ export default function StreamPlayer({ id }: { id: string }) {
               </div>
             )}
             {isBuffering && !allServersDown && streams && (
-              <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none">
+              <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
                 <div className="w-12 h-12 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin mb-3"></div>
                 <p className="text-[#00E5FF] font-bold animate-pulse text-sm">Connecting to Server {activeStreamIndex + 1}...</p>
               </div>
@@ -496,4 +466,16 @@ export default function StreamPlayer({ id }: { id: string }) {
           </div>
         </div>
       </div>
-      <style dangerouslySetInnerHTML={{__html: `.shaka-custom-stretch-btn
+      
+      {/* 🎯 ফিক্স ৩: CSS দিয়ে বিরক্তিকর কালো ওভারলে (Scrim) চিরতরে গায়েব করা হয়েছে */}
+      <style dangerouslySetInnerHTML={{__html: `
+        .shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; display: flex; align-items: center; justify-content: center; } 
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        
+        /* ম্যাজিক: Shaka Player এর ফালতু ওভারলে রিমুভ */
+        .shaka-scrim-container { display: none !important; background: transparent !important; }
+      `}} />
+      <Script src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js" strategy="lazyOnload" id="adsterra-popunder" />
+    </main>
+  );
+}
