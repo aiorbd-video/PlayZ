@@ -30,8 +30,8 @@ interface Match {
   links?: string;
 }
 
-const LIVE_EVENTS_API = process.env.NEXT_PUBLIC_LIVE_EVENTS_API || "https://ratulxadia-playz-cats-event.hf.space/api/events";
-const STREAM_API_BASE = process.env.NEXT_PUBLIC_STREAM_API_BASE || "https://ratulxadia-playz-cats-event.hf.space/api/stream/";
+const LIVE_EVENTS_API = process.env.NEXT_PUBLIC_LIVE_EVENTS_API || "https://ratulxadiapi/events";
+const STREAM_API_BASE = process.env.NEXT_PUBLIC_STREAM_API_BASE || "https://rate/api/stream/";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
@@ -55,7 +55,6 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
   const startTime = new Date(startStr);
   let endTime = new Date(endStr);
 
-  // 🎯 ম্যাজিক ফিক্স: end_time না থাকলে ডিফল্ট ৪ ঘণ্টা লাইভ থাকবে
   if (startTime.getTime() === endTime.getTime()) {
     endTime = new Date(startTime.getTime() + (4 * 60 * 60 * 1000));
   }
@@ -127,11 +126,13 @@ export default function StreamPlayer({ id }: { id: string }) {
     return matches.find((m) => id.endsWith(m.id.toString()) || m.id.toString() === id);
   }, [matches, id]);
 
-  let streamFetchUrl = null;
+  let streamFetchUrl: string | null = null;
+  let cacheKey: string | null = null;
+
   if (currentMatch && currentMatch.links && STREAM_API_BASE) {
     const streamSlug = currentMatch.links.replace("pro/", "").replace(".txt", "");
+    cacheKey = `aiorbd_stream_cache_${streamSlug}`;
     
-    // 🟢 ম্যাজিক ফিক্স: যদি Vercel এ ফায়ারবেসের লিংক দেওয়া থাকে, তবে সে নিজে নিজেই .json যোগ করে নেবে!
     if (STREAM_API_BASE.includes("firebaseio.com")) {
       const base = STREAM_API_BASE.endsWith('/') ? STREAM_API_BASE : `${STREAM_API_BASE}/`;
       streamFetchUrl = `${base}${streamSlug}.json`;
@@ -141,7 +142,27 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }
 
-  const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { refreshInterval: 15000, revalidateOnFocus: false });
+  // 🟢 ম্যাজিক ফিক্স ১: Local Storage থেকে ইনিশিয়াল ক্যাশ লোড করা হচ্ছে
+  const getCachedStreams = () => {
+    if (typeof window === 'undefined' || !cacheKey) return null;
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      return cached ? JSON.parse(cached) : null;
+    } catch (e) { return null; }
+  };
+
+  const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { 
+    refreshInterval: 15000, 
+    revalidateOnFocus: false,
+    fallbackData: getCachedStreams(), // ক্যাশ থাকলে সাথে সাথে প্লেয়ার চালু হয়ে যাবে
+    onSuccess: (data) => {
+      // ডেটা সাকসেসফুলি আসলে সেটা লোকাল স্টোরেজে সেভ করে রাখা
+      if (typeof window !== 'undefined' && cacheKey && data) {
+        localStorage.setItem(cacheKey, JSON.stringify(data));
+      }
+    }
+  });
+
   const streams = Array.isArray(streamsFromApi) ? streamsFromApi : (streamsFromApi?.streams || null);
 
   useEffect(() => { streamsRef.current = streams; }, [streams]);
@@ -250,7 +271,6 @@ export default function StreamPlayer({ id }: { id: string }) {
 
         player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
         
-        // 🟢 ফিক্স ১: শুধুমাত্র Critical (severity === 2) এরর হলেই সার্ভার সুইচ করবে।
         player.addEventListener('error', (e: any) => {
           if (e.detail && e.detail.severity === 2 && e.detail.code !== 7000 && e.detail.code !== 7002) {
             console.error("Shaka Critical Error:", e.detail.code);
@@ -286,24 +306,29 @@ export default function StreamPlayer({ id }: { id: string }) {
       try {
         await playerInstance.unload();
 
+        // 🟢 ম্যাজিক ফিক্স ২: অ্যাডভান্সড বাফারিং এবং ABR কনফিগারেশন 
         playerInstance.configure({
           streaming: {
-            bufferingGoal: 15,
+            bufferingGoal: 20, // বাফারিং স্টোরেজ বাড়ানো হয়েছে যাতে নেটওয়ার্ক ড্রপ হলে না আটকায়
             rebufferingGoal: 2,
             bufferBehind: 30,
-            retryParameters: { maxAttempts: 3, baseDelay: 1000, backoffFactor: 2, fuzzFactor: 0.5, timeout: 10000 },
+            jumpLargeGaps: true, // লাইভ স্ট্রিমে ল্যাগ হলে দ্রুত স্কিপ করে সিঙ্ক করবে
+            retryParameters: { maxAttempts: 5, baseDelay: 1000, backoffFactor: 2, fuzzFactor: 0.5, timeout: 10000 },
             stallEnabled: true,
             stallThreshold: 1
           },
           manifest: {
             dash: { ignoreMinBufferTime: true },
             hls: { ignoreManifestProgramDateTime: true }, 
-            retryParameters: { maxAttempts: 3, baseDelay: 1000, timeout: 10000 }
+            retryParameters: { maxAttempts: 5, baseDelay: 1000, timeout: 10000 }
           },
           abr: {
             enabled: true,
-            switchInterval: 8,
-            defaultBandwidthEstimate: 5000000,
+            switchInterval: 4, // ৮ থেকে ৪ সেকেন্ড করা হলো, যাতে নেটওয়ার্ক পরিবর্তনের সাথে সাথে দ্রুত রিঅ্যাক্ট করে
+            bandwidthUpgradeTarget: 0.85,
+            bandwidthDowngradeTarget: 0.95,
+            defaultBandwidthEstimate: 1000000, // স্লো নেটেও যেন দ্রুত প্লে হয় তার জন্য ইনিশিয়াল এস্টিমেট কমানো হয়েছে
+            safeMarginSwitch: true // বাফারিং এড়ানোর জন্য সেফ কোয়ালিটি সুইচিং
           }
         });
 
@@ -317,7 +342,6 @@ export default function StreamPlayer({ id }: { id: string }) {
 
         await playerInstance.load(currentStream.link);
       } catch (error: any) {
-        // 🟢 ফিক্স ২: ইউজার নিজে ক্লিক করলে (7000/7002) সার্ভার লাফাবে না।
         if (error.code !== 7000 && error.code !== 7002) {
           console.error("Initial Load Failed, Switching Server...", error.code);
           if (isMounted) triggerNextServer();
