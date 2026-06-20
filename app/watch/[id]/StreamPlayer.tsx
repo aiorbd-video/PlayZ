@@ -299,25 +299,25 @@ export default function StreamPlayer({ id }: { id: string }) {
 
     let isMounted = true;
 
-    const loadVideo = async () => {
+        const loadVideo = async () => {
       setIsBuffering(true);
       try {
         await playerInstance.unload();
 
-        // 🚀 🟢 দ্য আল্টিমেট ABR & বাফারিং মেকানিজম
+        // 🚀 👑 প্রো-লেভেল Shaka Player কনফিগারেশন (For Zero Buffering)
         playerInstance.configure({
           streaming: {
-            bufferingGoal: 30,           // হাই বাফার যাতে নেট গেলে অন্তত ৩০ সেকেন্ড চলতে থাকে
-            rebufferingGoal: 1,          // ১ সেকেন্ড লোড হলেই ভিডিও চালু হয়ে যাবে
-            bufferBehind: 15,
-            jumpLargeGaps: true,         // লাইভ স্ট্রিমে ল্যাগ হলে দ্রুত স্কিপ করে সিঙ্ক করবে
+            bufferingGoal: 10,           // 👈 ফিক্স: লাইভ স্ট্রিমে ১০ সেকেন্ডের বেশি বাফার করার চেষ্টা করবে না
+            rebufferingGoal: 1,          // মাত্র ১ সেকেন্ড লোড হলেই খেলা চালু হয়ে যাবে
+            bufferBehind: 5,             // পেছনের ভিডিও মেমোরিতে জমিয়ে রেখে ফোন স্লো করবে না
+            jumpLargeGaps: true,         
             ignoreTextStreamFailures: true,
             retryParameters: { 
-              maxAttempts: 10,           // 👈 ফিক্স: ৫ এর বদলে ১০ বার রিট্রাই করবে। হুট করে সার্ভার চেঞ্জ করবে না।
+              maxAttempts: 10,           
               baseDelay: 1000, 
               backoffFactor: 1.5, 
               fuzzFactor: 0.5, 
-              timeout: 20000 
+              timeout: 10000 
             },
             stallEnabled: true,
             stallThreshold: 1,
@@ -326,16 +326,17 @@ export default function StreamPlayer({ id }: { id: string }) {
           manifest: {
             dash: { ignoreMinBufferTime: true },
             hls: { ignoreManifestProgramDateTime: true }, 
-            retryParameters: { maxAttempts: 10, baseDelay: 1000, timeout: 20000 }
+            retryParameters: { maxAttempts: 10, baseDelay: 1000, timeout: 10000 }
           },
           abr: {
             enabled: true,
-            switchInterval: 2,           // 👈 ফিক্স: প্রতি ২ সেকেন্ড পরপর নেট স্পিড চেক করবে
-            bandwidthUpgradeTarget: 0.85,
-            bandwidthDowngradeTarget: 0.98, // 👈 ফিক্স: নেট একটু ড্রপ করলেই কোয়ালিটি ডাউনের সিগন্যাল দেবে
-            defaultBandwidthEstimate: 500000, // স্লো নেটেও যেন শুরুতেই প্লে হয়, তাই এস্টিমেট কমানো হয়েছে (500kbps)
+            switchInterval: 1,               // 👈 ফিক্স: প্রতি ১ সেকেন্ড পরপর নেট স্পিড চেক করবে (Instant React)
+            bandwidthDowngradeTarget: 0.99,  // 👈 ফিক্স: নেট স্পিড একটুখানি (১%) কমলেই সাথে সাথে কোয়ালিটি কমিয়ে দেবে
+            bandwidthUpgradeTarget: 0.50,    // 👈 ফিক্স: নেটওয়ার্ক স্পিড প্রয়োজনের দ্বিগুণ থাকলে তবেই HD তে যাবে
+            defaultBandwidthEstimate: 300000, // 👈 ফিক্স: 300kbps (SD কোয়ালিটি) থেকে প্লে শুরু হবে, যাতে সাথে সাথে চালু হয়
+            restrictToElementSize: true,     // 👑 ম্যাজিক: মোবাইলের ছোট স্ক্রিনে কখনোই 1080p টেনে নেটওয়ার্ক জ্যাম করবে না
             safeMarginSwitch: true,
-            clearBufferSwitch: true      // 👑 ম্যাজিক ফিক্স: নেট স্লো হলে আগের হাই-কোয়ালিটি বাফার ফেলে দিয়ে ইনস্ট্যান্ট লো-কোয়ালিটি প্লে করবে!
+            clearBufferSwitch: true          // 👈 ফিক্স: কোয়ালিটি কমানোর সময় হাই-রেজুলেশনের বাফার ডিলিট করে ইনস্ট্যান্ট লো-কোয়ালিটি প্লে করবে
           }
         });
 
@@ -357,6 +358,7 @@ export default function StreamPlayer({ id }: { id: string }) {
         if (isMounted) setIsBuffering(false);
       }
     };
+
     
     loadVideo();
 
