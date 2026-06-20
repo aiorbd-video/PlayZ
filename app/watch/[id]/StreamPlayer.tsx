@@ -30,7 +30,6 @@ interface Match {
   links?: string;
 }
 
-// 🚀 Vercel Environment Variable থেকে লিংক আসবে
 const LIVE_EVENTS_API = process.env.NEXT_PUBLIC_LIVE_EVENTS_API || "";
 const STREAM_API_BASE = process.env.NEXT_PUBLIC_STREAM_API_BASE || "";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
@@ -54,7 +53,13 @@ const generateSlug = (teamA?: string, teamB?: string, eventName?: string, id?: s
 const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => {
   if (!startStr || !endStr) return { type: "upcoming", label: "TBA" };
   const startTime = new Date(startStr);
-  const endTime = new Date(endStr);
+  let endTime = new Date(endStr);
+
+  // 🎯 ম্যাজিক ফিক্স: end_time না থাকলে ডিফল্ট ৪ ঘণ্টা লাইভ থাকবে
+  if (startTime.getTime() === endTime.getTime()) {
+    endTime = new Date(startTime.getTime() + (4 * 60 * 60 * 1000));
+  }
+
   if (currentTime > endTime) return { type: "ended", label: "Ended" };
   else if (currentTime >= startTime && currentTime <= endTime) return { type: "live", label: "LIVE" };
   else return { type: "upcoming", label: startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) };
@@ -80,7 +85,6 @@ export default function StreamPlayer({ id }: { id: string }) {
   const streamsRef = useRef<any[] | null>(null);
   const activeIndexRef = useRef<number>(0);
 
-  // ✅ লাইভ API কল
   const { data: rawMatches } = useSWR(LIVE_EVENTS_API ? LIVE_EVENTS_API : null, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
 
   const matches = useMemo(() => {
@@ -91,9 +95,7 @@ export default function StreamPlayer({ id }: { id: string }) {
       const convertDate = (dStr: string, tStr: string) => {
         if (!dStr || !tStr) return "";
         const parts = dStr.split('/');
-        if (parts.length === 3) {
-          return `${parts[2]}-${parts[1]}-${parts[0]}T${tStr}Z`; 
-        }
+        if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}T${tStr}Z`; 
         return `${dStr}T${tStr}Z`; 
       };
 
@@ -406,7 +408,14 @@ export default function StreamPlayer({ id }: { id: string }) {
               {streams.map((stream: any, index: number) => (
                 <button 
                   key={index} 
-                  onClick={() => { setAllServersDown(false); if (activeStreamIndex === index) { setReloadTrigger(prev => prev + 1); } else { setActiveStreamIndex(index); } }} 
+                  onClick={() => { 
+                    setAllServersDown(false); 
+                    if (activeStreamIndex === index) { 
+                      setReloadTrigger(prev => prev + 1); 
+                    } else { 
+                      setActiveStreamIndex(index); 
+                    } 
+                  }} 
                   className={`px-5 py-2 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border outline-none duration-150 ${activeStreamIndex === index && !allServersDown ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)]" : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white"}`}
                 >
                   {stream.title || (currentMatch?.eventInfo as any)?.link_names?.[index] || `Server ${index + 1}`}
