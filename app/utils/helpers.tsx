@@ -1,5 +1,3 @@
-
-// 🚀 তোমার নতুন হাগিং ফেস API লিংক
 export const MATCH_API = "https://ratulxadia-playz-cats-event.hf.space/api/events";
 export const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
@@ -10,10 +8,11 @@ export const getImg = (url: string | undefined | null) => {
   return `${IMG_PROXY}${encodeURIComponent(url)}`;
 };
 
+// 🎯 টাইমজোন ফিক্সড: সরাসরি লোকাল টাইম কম্পেয়ার করবে
 export const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => {
   if (!startStr || !endStr) return 'upcoming';
-  const startTime = new Date(startStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
-  const endTime = new Date(endStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
+  const startTime = new Date(startStr);
+  const endTime = new Date(endStr);
   if (currentTime > endTime) return 'recent';
   if (currentTime >= startTime && currentTime <= endTime) return 'live';
   return 'upcoming';
@@ -27,10 +26,8 @@ export const generateSlug = (teamA?: string, teamB?: string, eventName?: string,
   return `${rawString.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}-${id || '0'}`;
 };
 
-// 🟢 আপডেটেড: ইমোজির বদলে প্রিমিয়াম ডিজিটাল SVG আইকন গ্লোয়িং ইফেক্ট সহ
 export const getCategoryIcon = (cat: string) => {
   const baseClass = "w-7 h-7 md:w-8 md:h-8 transition-transform duration-300";
-
   if (cat === 'All') {
     return (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={`${baseClass} text-[#00E5FF] drop-shadow-[0_0_8px_rgba(0,229,255,0.6)]`}>
@@ -38,9 +35,7 @@ export const getCategoryIcon = (cat: string) => {
       </svg>
     );
   }
-
   const lowerCat = cat.toLowerCase();
-
   if (lowerCat.includes('cricket')) {
     return (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={`${baseClass} text-[#FF3B30] drop-shadow-[0_0_8px_rgba(255,59,48,0.6)]`}>
@@ -50,7 +45,6 @@ export const getCategoryIcon = (cat: string) => {
       </svg>
     );
   }
-
   if (lowerCat.includes('football')) {
     return (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={`${baseClass} text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]`}>
@@ -59,16 +53,14 @@ export const getCategoryIcon = (cat: string) => {
       </svg>
     );
   }
-
-  if (lowerCat.includes('wwe') || lowerCat.includes('wrestling')) {
+  if (lowerCat.includes('wwe') || lowerCat.includes('wrestling') || lowerCat.includes('boxing')) {
     return (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={`${baseClass} text-[#FFD700] drop-shadow-[0_0_8px_rgba(255,215,0,0.6)]`}>
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" fill="currentColor" fillOpacity="0.2" />
       </svg>
     );
   }
-
-  if (lowerCat.includes('racing') || lowerCat.includes('formula')) {
+  if (lowerCat.includes('racing') || lowerCat.includes('formula') || lowerCat.includes('motorsport')) {
     return (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={`${baseClass} text-[#34C759] drop-shadow-[0_0_8px_rgba(52,199,89,0.6)]`}>
         <circle cx="12" cy="12" r="10" strokeWidth={2} />
@@ -77,26 +69,6 @@ export const getCategoryIcon = (cat: string) => {
       </svg>
     );
   }
-
-  if (lowerCat.includes('hockey')) {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={`${baseClass} text-[#FF9500] drop-shadow-[0_0_8px_rgba(255,149,0,0.6)]`}>
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 3v13a4 4 0 004 4h4" />
-        <circle cx="16" cy="18" r="2.5" fill="currentColor" />
-      </svg>
-    );
-  }
-
-  if (lowerCat.includes('basketball')) {
-    return (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={`${baseClass} text-[#FF6F00] drop-shadow-[0_0_8px_rgba(255,111,0,0.6)]`}>
-        <circle cx="12" cy="12" r="10" strokeWidth={2} />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4M12 2a10 10 0 000 20M2 12a10 10 0 0020 0" />
-      </svg>
-    );
-  }
-
-  // ডিফল্ট ট্রফি আইকন
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={`${baseClass} text-[#FFD700] drop-shadow-[0_0_8px_rgba(255,215,0,0.6)]`}>
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 4h14a2 2 0 012 2v2a6 6 0 01-6 6H9a6 6 0 01-6-6V6a2 2 0 012-2z" />
