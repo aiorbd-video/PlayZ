@@ -145,7 +145,8 @@ export const ChannelCard = memo(({ channel, isPlaylist }: { channel: any, isPlay
 ChannelCard.displayName = 'ChannelCard';
 
 export const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
-  const eventInfo = match.eventInfo || {};
+  // 🎯 এখানে ডাবল চাবি চেক করা হয়েছে (eventInfo অথবা event)
+  const eventInfo = match.eventInfo || match.event || {};
   const slugLink = generateSlug(eventInfo.teamA, eventInfo.teamB, eventInfo.eventName, match.id);
 
   return (
