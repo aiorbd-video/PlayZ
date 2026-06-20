@@ -50,7 +50,6 @@ const generateSlug = (teamA?: string, teamB?: string, eventName?: string, id?: s
   return `${cleanSlug}-${id || '0'}`;
 };
 
-// 🎯 লোকাল টাইমজোন ফিক্স সহ স্ট্যাটাস চেকার
 const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => {
   if (!startStr || !endStr) return { type: "upcoming", label: "TBA" };
   const startTime = new Date(startStr);
@@ -82,7 +81,7 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   const { data: rawMatches } = useSWR(LIVE_EVENTS_API, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
 
-  // 🎯 সাইডবার ডাটা নরমালাইজেশন লজিক (লোকাল ISO টাইমজোন সাপোর্ট সহ)
+  // 🎯 টাইমজোন ফিক্স: 'Z' যুক্ত করা হয়েছে যাতে ব্রাউজার বোঝে এটি লন্ডন (UTC) টাইম
   const matches = useMemo(() => {
     if (!rawMatches || !Array.isArray(rawMatches)) return null;
     return rawMatches.map((item: any, index: number) => {
@@ -92,9 +91,9 @@ export default function StreamPlayer({ id }: { id: string }) {
         if (!dStr || !tStr) return "";
         const parts = dStr.split('/');
         if (parts.length === 3) {
-          return `${parts[2]}-${parts[1]}-${parts[0]}T${tStr}`;
+          return `${parts[2]}-${parts[1]}-${parts[0]}T${tStr}Z`; // 👈 ম্যাজিক 'Z'
         }
-        return `${dStr}T${tStr}`;
+        return `${dStr}T${tStr}Z`; // 👈 ম্যাজিক 'Z'
       };
 
       const startTime = convertDate(rawEvent.date, rawEvent.time);
