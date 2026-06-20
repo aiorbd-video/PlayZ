@@ -30,8 +30,8 @@ interface Match {
   links?: string;
 }
 
-const LIVE_EVENTS_API = process.env.NEXT_PUBLIC_LIVE_EVENTS_API || "";
-const STREAM_API_BASE = process.env.NEXT_PUBLIC_STREAM_API_BASE || "";
+const LIVE_EVENTS_API = process.env.NEXT_PUBLIC_LIVE_EVENTS_API || "https://ratulxadia-playz-cats-event.hf.space/api/events";
+const STREAM_API_BASE = process.env.NEXT_PUBLIC_STREAM_API_BASE || "https://ratulxadia-playz-cats-event.hf.space/api/stream/";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
@@ -55,6 +55,7 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
   const startTime = new Date(startStr);
   let endTime = new Date(endStr);
 
+  // 🎯 ম্যাজিক ফিক্স: end_time না থাকলে ডিফল্ট ৪ ঘণ্টা লাইভ থাকবে
   if (startTime.getTime() === endTime.getTime()) {
     endTime = new Date(startTime.getTime() + (4 * 60 * 60 * 1000));
   }
@@ -129,7 +130,15 @@ export default function StreamPlayer({ id }: { id: string }) {
   let streamFetchUrl = null;
   if (currentMatch && currentMatch.links && STREAM_API_BASE) {
     const streamSlug = currentMatch.links.replace("pro/", "").replace(".txt", "");
-    streamFetchUrl = `${STREAM_API_BASE}${streamSlug}`;
+    
+    // 🟢 ম্যাজিক ফিক্স: যদি Vercel এ ফায়ারবেসের লিংক দেওয়া থাকে, তবে সে নিজে নিজেই .json যোগ করে নেবে!
+    if (STREAM_API_BASE.includes("firebaseio.com")) {
+      const base = STREAM_API_BASE.endsWith('/') ? STREAM_API_BASE : `${STREAM_API_BASE}/`;
+      streamFetchUrl = `${base}${streamSlug}.json`;
+    } else {
+      const base = STREAM_API_BASE.endsWith('/') ? STREAM_API_BASE : `${STREAM_API_BASE}/`;
+      streamFetchUrl = `${base}${streamSlug}`;
+    }
   }
 
   const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { refreshInterval: 15000, revalidateOnFocus: false });
