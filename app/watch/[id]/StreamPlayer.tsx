@@ -74,6 +74,8 @@ export default function StreamPlayer({ id }: { id: string }) {
   const [isBuffering, setIsBuffering] = useState(true);
   const [allServersDown, setAllServersDown] = useState(false);
   const [showCopied, setShowCopied] = useState(false); 
+  
+  const [shakaLoaded, setShakaLoaded] = useState(false); // Shaka Global Load State
 
   const { data: rawMatches } = useSWR(LIVE_EVENTS_API ? LIVE_EVENTS_API : null, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
 
@@ -197,9 +199,9 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }, []);
 
-  // 🚀 👑 ARTPLAYER UI + SHAKA PLAYER CORE (THE ULTIMATE COMBO)
+  // 🚀 👑 ARTPLAYER + SHAKA CORE (The Ultimate Fixed Version)
   useEffect(() => {
-    if (!streams || streams.length === 0 || allServersDown || !artRef.current) return;
+    if (!streams || streams.length === 0 || allServersDown || !artRef.current || !shakaLoaded) return;
     const currentStream = streams[activeStreamIndex];
     if (!currentStream || !currentStream.link) return;
 
@@ -210,54 +212,48 @@ export default function StreamPlayer({ id }: { id: string }) {
     const setupPlayer = async () => {
       setIsBuffering(true);
       
-      const shaka = (await import('shaka-player/dist/shaka-player.compiled')).default || await import('shaka-player/dist/shaka-player.compiled');
-      
-      if (!isMounted) return;
-
       artInstance = new Artplayer({
         container: artRef.current!,
         url: currentStream.link,
-        type: 'shaka',
+        type: 'customShaka',
         theme: '#00E5FF',
         autoplay: true,
         pip: true,
         fullscreen: true,
         fullscreenWeb: true,
-        setting: true,
-        fastForward: true,        // 👈 ডাবল ট্যাপে স্কিপ (ExoPlayer Style)
-        miniProgressBar: true,    // 👈 নিচে চিকন প্রোগ্রেস বার
+        setting: true,            // 👈 সেটিংস বাটন অন করা হয়েছে
+        fastForward: true,        
+        miniProgressBar: true,    
         playsInline: true,
         autoOrientation: true,    
         mutex: true,
-        // isLive: true সরিয়ে দেওয়া হয়েছে যাতে সিকবার (Seekbar) ফিরে আসে
+        // isLive সরিয়ে দেওয়া হয়েছে যাতে সিকবার থাকে, আর উল্টাপাল্টা টাইম CSS দিয়ে লুকানো হবে
         customType: {
-          shaka: async function (video: HTMLVideoElement, url: string, art: any) {
+          customShaka: async function (video: HTMLVideoElement, url: string, art: any) {
+            const shaka = (window as any).shaka;
+            if (!shaka) return;
+            
             shaka.polyfill.installAll();
             const player = new shaka.Player(video);
             shakaInstance = player;
             art.shaka = player; 
 
-            // 👑 Shaka Player Network & Buffering Config
+            // 👑 Shaka Player Optimization
             player.configure({
               streaming: {
-                bufferingGoal: 10,
-                rebufferingGoal: 1,
-                bufferBehind: 5,
+                bufferingGoal: 15,
+                rebufferingGoal: 2,
+                bufferBehind: 10,
                 jumpLargeGaps: true,
                 ignoreTextStreamFailures: true,
                 retryParameters: { maxAttempts: 5, baseDelay: 1000, timeout: 10000 }
               },
-              manifest: {
-                dash: { ignoreMinBufferTime: true },
-                hls: { ignoreManifestProgramDateTime: true }
-              },
               abr: {
                 enabled: true,
-                defaultBandwidthEstimate: 100000,  // 👈 100kbps (শুরুতেই লো-কোয়ালিটি থেকে স্টার্ট হবে যাতে না আটকায়)
-                switchInterval: 1,                 // প্রতি সেকেন্ডে নেট চেক করবে
-                bandwidthDowngradeTarget: 0.95,
-                bandwidthUpgradeTarget: 0.60,
-                clearBufferSwitch: true            // কোয়ালিটি কমানোর সময় বাফার ফেলে ইনস্ট্যান্ট লো-কোয়ালিটি প্লে করবে
+                defaultBandwidthEstimate: 500000,  
+                switchInterval: 1,                 
+                bandwidthDowngradeTarget: 0.90,
+                clearBufferSwitch: true            
               }
             });
 
@@ -270,7 +266,7 @@ export default function StreamPlayer({ id }: { id: string }) {
               }
             }
 
-            // ইভেন্টস: শুধু ফাটাল (মারাত্মক) এররেই সার্ভার চেঞ্জ করবে
+            // Events
             player.addEventListener('error', (e: any) => {
               if (e.detail && e.detail.severity === 2 && e.detail.code !== 7000 && e.detail.code !== 7002) {
                 console.error("Shaka Critical Error:", e.detail.code);
@@ -278,7 +274,6 @@ export default function StreamPlayer({ id }: { id: string }) {
               }
             });
 
-            // ডাবল স্পিনার অফ করার জন্য Shaka এর নিজস্ব বাফারিং ইভেন্ট ব্যবহার
             player.addEventListener('buffering', (e: any) => {
               if (isMounted) setIsBuffering(e.buffering);
             });
@@ -286,6 +281,34 @@ export default function StreamPlayer({ id }: { id: string }) {
             try {
               await player.load(url);
               if (isMounted) setIsBuffering(false);
+              
+              // 👑 🎯 Settings Menu Fix (কোয়ালিটি অটো সুইচিং যুক্ত করা হলো)
+              const tracks = player.getVariantTracks();
+              const heights = [...new Set(tracks.filter((t:any) => t.height).map((t:any) => t.height))].sort((a:any, b:any) => b - a);
+
+              if (heights.length > 0) {
+                art.setting.add({
+                  html: 'Video Quality',
+                  tooltip: 'Auto',
+                  selector: [
+                    { html: 'Auto', default: true },
+                    ...heights.map(h => ({ html: `${h}p`, default: false }))
+                  ],
+                  onSelect: function (item: any) {
+                    if (item.html === 'Auto') {
+                      player.configure({ abr: { enabled: true } });
+                    } else {
+                      player.configure({ abr: { enabled: false } });
+                      const targetHeight = parseInt(item.html);
+                      const track = player.getVariantTracks().find((t:any) => t.height === targetHeight);
+                      if (track) player.selectVariantTrack(track, true);
+                    }
+                    art.setting.update({ tooltip: item.html });
+                    return item.html;
+                  }
+                });
+              }
+
             } catch (error: any) {
               if (error.code !== 7000 && error.code !== 7002) {
                 if (isMounted) triggerNextServer();
@@ -299,7 +322,6 @@ export default function StreamPlayer({ id }: { id: string }) {
         if (isMounted) setIsBuffering(false);
       });
       
-      // Artplayer এর নিজস্ব লোডিং হাইড করে দিচ্ছি যাতে ডাবল স্পিনার না আসে
       artInstance.on('video:waiting', () => setIsBuffering(true));
       artInstance.on('video:playing', () => setIsBuffering(false));
     };
@@ -315,7 +337,7 @@ export default function StreamPlayer({ id }: { id: string }) {
         artInstance.destroy(false);
       }
     };
-  }, [streams, activeStreamIndex, reloadTrigger, allServersDown, triggerNextServer]);
+  }, [streams, activeStreamIndex, reloadTrigger, allServersDown, triggerNextServer, shakaLoaded]);
 
   const handleShare = async () => {
     const matchTitle = currentMatch && currentMatch.eventInfo ? `${currentMatch.eventInfo.teamA} VS ${currentMatch.eventInfo.teamB}` : 'Live Match';
@@ -331,6 +353,14 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
+      
+      {/* 🟢 Next.js এর ভেতরের এরর এড়াতে Shaka Player গ্লোবাল স্ক্রিপ্ট হিসেবে কল করা হলো */}
+      <Script 
+        src="https://cdnjs.cloudflare.com/ajax/libs/shaka-player/4.7.11/shaka-player.compiled.js"
+        strategy="beforeInteractive"
+        onLoad={() => setShakaLoaded(true)}
+      />
+
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/">
@@ -351,17 +381,15 @@ export default function StreamPlayer({ id }: { id: string }) {
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
         <div className="lg:col-span-2 flex flex-col">
           
-          {/* 🎬 ARTPLAYER CONTAINER */}
           <div className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 group">
             
             {!streams && !allServersDown && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/90 z-20 flex-col gap-3">
                 <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-[#00E5FF] font-bold text-sm animate-pulse tracking-wider">Fetching Secure Stream...</span>
+                <span className="text-[#00E5FF] font-bold text-sm animate-pulse tracking-wider">Loading Secure Stream...</span>
               </div>
             )}
 
-            {/* 👑 কাস্টম লোডিং স্পিনার */}
             {isBuffering && !allServersDown && streams && (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm pointer-events-none">
                 <div className="w-12 h-12 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin mb-3"></div>
@@ -376,7 +404,6 @@ export default function StreamPlayer({ id }: { id: string }) {
               </div>
             )}
 
-            {/* ARTPLAYER MOUNT POINT */}
             <div ref={artRef} className="w-full h-full outline-none"></div>
 
           </div>
@@ -455,24 +482,13 @@ export default function StreamPlayer({ id }: { id: string }) {
         </div>
       </div>
       
-      {/* 🟢 CSS OVERRIDES: ফালতু কালো শ্যাডো এবং ডাবল স্পিনার হাইড করা হয়েছে */}
+      {/* 👑 ম্যাজিক: 3638:87:00 টাইম লুকানো, ফালতু ওভারলে রিমুভ এবং সিকবার দৃশ্যমান রাখা */}
       <style dangerouslySetInnerHTML={{__html: `
-        .art-video-player .art-bottom { 
-          padding-bottom: 5px !important; 
-          background-image: none !important; 
-          background: transparent !important;
-        }
-        .art-video-player .art-top {
-          background-image: none !important; 
-          background: transparent !important;
-        }
-        /* আর্টপ্লেয়ারের ডিফল্ট স্পিনার অফ করে আমাদেরটা অন রাখা হয়েছে */
+        .art-control-time { display: none !important; }
+        .art-video-player .art-bottom { padding-bottom: 5px !important; background-image: none !important; background: transparent !important; }
+        .art-video-player .art-top { background-image: none !important; background: transparent !important; }
         .art-video-player .art-loading { display: none !important; }
-        
-        .art-video-player .art-progress { 
-          height: 4px !important; 
-          cursor: pointer !important;
-        }
+        .art-video-player .art-progress { height: 4px !important; cursor: pointer !important; }
         .art-video-player .art-progress-played { background-color: #00E5FF !important; }
         .art-video-player .art-progress-indicator { background-color: #00E5FF !important; box-shadow: 0 0 10px #00E5FF !important; }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
