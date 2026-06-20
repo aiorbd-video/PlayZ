@@ -1,10 +1,13 @@
 import type { Metadata } from 'next';
 import StreamPlayer from './StreamPlayer';
 
-const API_URL = process.env.API_URL;
+// 🚀 সোর্স ডাটা ডাইরেক্ট সার্ভার সাইড থেকে রিড করার জন্য এন্টারপ্রাইজ API লিংক
+const LIVE_EVENTS_API = process.env.NEXT_PUBLIC_EVENT_API; 
+
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL as string;
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY;
 
+// 🎯 ১. সোশিয়াল মিডিয়া শেয়ার ফিক্সের জন্য ডাইনামিক মেটাডাটা জেনারেটর
 export async function generateMetadata(
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Metadata> {
@@ -15,41 +18,41 @@ export async function generateMetadata(
   const realId = id.includes('-') ? id.split('-').pop() : id;
 
   try {
-    // 🟢 ফিক্স: API_URL এর বদলে SITE_URL ব্যবহার করা হলো, কারণ /api/streams রাউটটি Vercel-এর নিজের ভেতরেই আছে
-    const res = await fetch(
-      `${SITE_URL}/api/streams/${realId}`,
-      {
-        cache: 'no-store',
-        next: { revalidate: 60 }
-      }
-    );
-
+    // সরাসরি Hugging Face API থেকে ডাটা নিয়ে আসা হচ্ছে (সার্ভার সাইড এসইও)
+    const res = await fetch(LIVE_EVENTS_API, { next: { revalidate: 15 } });
     if (!res.ok) throw new Error("Failed to fetch");
 
-    const data = await res.json();
-    const match = data?.matchInfo;
+    const rawMatches = await res.json();
+    if (!rawMatches || !Array.isArray(rawMatches)) throw new Error("Invalid array");
 
-    if (!match?.eventInfo) {
-      throw new Error("No Event Info");
+    // আইডি ম্যাচ করে বর্তমান ম্যাচটি খুঁজে বের করা
+    const currentMatch = rawMatches.find((item: any) => {
+      const rawEvent = item.event || {};
+      const matchId = rawEvent.links ? rawEvent.links.replace("pro/", "").replace(".txt", "") : "";
+      return realId === matchId || id.endsWith(matchId);
+    });
+
+    if (!currentMatch || !currentMatch.event) {
+      throw new Error("No Event Info Found");
     }
 
-    const info = match.eventInfo;
+    const e = currentMatch.event;
 
-    const teamA = info.teamA || 'Team A';
-    const teamB = info.teamB || 'Team B';
-    const eventName = info.eventName || 'Live Sports';
-    const category = info.eventCat || 'Sports';
+    const teamA = e.teamAName || 'Team A';
+    const teamB = e.teamBName || 'Team B';
+    const eventName = e.eventName || 'Live Sports';
+    const category = e.category || 'Sports';
 
     const title = `${teamA} vs ${teamB} Live Stream | ${eventName} - All in One Sports`;
     const description = `Watch ${teamA} vs ${teamB} live streaming in HD. Don't miss the ${eventName} (${category}) match today! Fast, free, and mobile-friendly.`;
 
     const shareImage =
-      info.teamAFlag && info.teamAFlag !== 'null'
-        ? `${IMG_PROXY}${encodeURIComponent(info.teamAFlag)}`
+      e.teamAFlag && e.teamAFlag !== 'null'
+        ? `${IMG_PROXY}${encodeURIComponent(e.teamAFlag)}`
         : `${SITE_URL}/og-image.jpg`;
 
     return {
-      metadataBase: new URL(SITE_URL || "https://www.ratulxlive.duckdns.org"),
+      metadataBase: new URL(SITE_URL || "https://play-z.vercel.app"),
       title,
       description,
       keywords: [
@@ -103,15 +106,16 @@ export async function generateMetadata(
       }
     };
 
-  } catch {
+  } catch (error) {
     return {
       title: 'Watch Live Sports HD | All in One Sports',
       description: 'Watch Cricket, Football, WWE, UFC and premium sports events live in HD quality.',
-      metadataBase: new URL(SITE_URL || "https://www.ratulxlive.duckdns.org"),
+      metadataBase: new URL(SITE_URL || "https://play-z.vercel.app"),
     };
   }
 }
 
+// 🎯 ২. গুগল সার্চ ইঞ্জিনের ট্রাস্ট অর্জনের জন্য সম্পূর্ণ Schema (JSON-LD) স্ট্রাকচার
 export default async function Page(
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -123,25 +127,37 @@ export default async function Page(
   let jsonLd = null;
 
   try {
-    // 🟢 ফিক্স: এখানেও ইন্টারনাল এপিআই রিকোয়েস্ট সাকসেস করার জন্য SITE_URL ব্যবহার করা হলো
-    const res = await fetch(
-      `${SITE_URL}/api/streams/${realId}`,
-      { cache: 'no-store' }
-    );
+    const res = await fetch(LIVE_EVENTS_API, { next: { revalidate: 15 } });
 
     if (res.ok) {
-      const data = await res.json();
-      const info = data?.matchInfo?.eventInfo;
+      const rawMatches = await res.json();
+      const currentMatch = rawMatches.find((item: any) => {
+        const rawEvent = item.event || {};
+        const matchId = rawEvent.links ? rawEvent.links.replace("pro/", "").replace(".txt", "") : "";
+        return realId === matchId || id.endsWith(matchId);
+      });
 
-      if (info) {
+      if (currentMatch && currentMatch.event) {
+        const e = currentMatch.event;
+
+        // আপনার নতুন ISO ডেট ফরম্যাটের সাথে মিল রেখে স্ট্রাকচার
+        const convertToISO = (dStr: string, tStr: string) => {
+          if (!dStr || !tStr) return undefined;
+          const parts = dStr.split('/');
+          if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}T${tStr}Z`;
+          return `${dStr}T${tStr}Z`;
+        };
+
+        const startDateISO = convertToISO(e.date, e.time);
+
         jsonLd = {
           "@context": "https://schema.org",
           "@type": "SportsEvent",
-          "name": `${info.teamA} vs ${info.teamB}`,
-          "sport": info.eventCat || "Sports",
-          "description": `${info.eventName} Live Streaming HD`,
+          "name": `${e.teamAName || 'Team A'} vs ${e.teamBName || 'Team B'}`,
+          "sport": e.category || "Sports",
+          "description": `${e.eventName || 'Live Event'} Live Streaming HD`,
           "eventStatus": "https://schema.org/EventScheduled",
-          "startDate": info.startTime ? new Date(info.startTime.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z')).toISOString() : undefined,
+          "startDate": startDateISO,
           "url": `${SITE_URL}/watch/${id}`,
           "organizer": {
             "@type": "Organization",
