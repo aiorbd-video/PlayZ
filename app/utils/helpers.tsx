@@ -1,4 +1,5 @@
-export const MATCH_API = "https://ratulxadia-playz-cats-event.hf.space/api/events";
+// 🚀 Vercel Environment Variable থেকে লিংক আসবে
+export const MATCH_API = process.env.NEXT_PUBLIC_LIVE_EVENTS_API || "";
 export const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
 export const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
@@ -10,7 +11,6 @@ export const getImg = (url: string | undefined | null) => {
 
 export const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => {
   if (!startStr || !endStr) return 'upcoming';
-  // Cards.tsx এর সাথে সিঙ্ক করে লোকাল টাইম হিসেবে পার্স করার লজিক
   const startTime = new Date(startStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
   const endTime = new Date(endStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
   if (currentTime > endTime) return 'recent';
@@ -26,7 +26,6 @@ export const generateSlug = (teamA?: string, teamB?: string, eventName?: string,
   return `${rawString.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}-${id || '0'}`;
 };
 
-// 🟢 ইমোজির বদলে প্রিমিয়াম ডিজিটাল SVG আইকন গ্লোয়িং ইফেক্ট সহ
 export const getCategoryIcon = (cat: string) => {
   const baseClass = "w-7 h-7 md:w-8 md:h-8 transition-transform duration-300";
 
@@ -95,7 +94,6 @@ export const getCategoryIcon = (cat: string) => {
     );
   }
 
-  // ডিফল্ট বা অন্যান্য ক্যাটাগরির জন্য Trophy আইকন
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className={`${baseClass} text-[#FFD700] drop-shadow-[0_0_8px_rgba(255,215,0,0.6)]`}>
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 4h14a2 2 0 012 2v2a6 6 0 01-6 6H9a6 6 0 01-6-6V6a2 2 0 012-2z" />
