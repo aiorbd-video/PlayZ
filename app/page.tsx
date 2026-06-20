@@ -8,7 +8,7 @@ import { fetcher, getMatchStatus, getCategoryIcon } from './utils/helpers';
 import { ChannelCard, MatchCard } from './components/Cards';
 
 // 🚀 🟢 ফিক্সড: যদি Vercel Env ভুলও থাকে, তবুও সে Cat Event (Hugging Face) থেকে ডাটা টানবে
-const LIVE_EVENTS_API = process.env.NEXT_PUBLIC_LIVE_EVENTS_API || "https://ratulxadia-playz-cats-event.hf.space/api/events";
+const LIVE_EVENTS_API = process.env.NEXT_PUBLIC_LIVE_EVENTS_API || "https://t.me/allonebd";
 
 function MarqueeNotice() {
   const { data } = useSWR('/api/notice', fetcher, { refreshInterval: 30000, revalidateOnFocus: false });
