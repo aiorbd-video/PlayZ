@@ -433,7 +433,8 @@ export default function StreamPlayer({ id }: { id: string }) {
                       : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white active:border-[#00E5FF]"
                   }`}
                 >
-                  {stream.title || currentMatch?.eventInfo?.link_names?.[index] || `Server ${index + 1}`}
+                  {stream.title || (currentMatch?.eventInfo as any)?.link_names?.[index] || `Server ${index + 1}`}
+
                 </button>
               ))}
             </div>
