@@ -1,4 +1,3 @@
-// 🚀 Vercel Environment Variable থেকে লিংক আসবে
 export const MATCH_API = process.env.NEXT_PUBLIC_LIVE_EVENTS_API || "";
 export const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
@@ -11,8 +10,15 @@ export const getImg = (url: string | undefined | null) => {
 
 export const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => {
   if (!startStr || !endStr) return 'upcoming';
-  const startTime = new Date(startStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
-  const endTime = new Date(endStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
+  const startTime = new Date(startStr);
+  let endTime = new Date(endStr);
+
+  // 🎯 ম্যাজিক ফিক্স: যদি API তে end_time না থাকে (অর্থাৎ start এবং end একই হয়ে যায়), 
+  // তবে ম্যাচটিকে ডিফল্টভাবে ৪ ঘণ্টা ধরে LIVE রাখা হবে।
+  if (startTime.getTime() === endTime.getTime()) {
+    endTime = new Date(startTime.getTime() + (4 * 60 * 60 * 1000));
+  }
+
   if (currentTime > endTime) return 'recent';
   if (currentTime >= startTime && currentTime <= endTime) return 'live';
   return 'upcoming';
