@@ -8,7 +8,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
 import Script from 'next/script';
 
-// --- Interfaces ---
 interface Stream {
   link_names: string[];
   links: string;
@@ -28,11 +27,9 @@ interface EventInfo {
 interface Match {
   id: number | string;
   eventInfo: EventInfo;
-  streams?: any[]; // নতুন এপিআই থেকে যদি স্ট্রিম আসে
-  links?: string; // নতুন এপিআই এর লিংক ফরম্যাট
+  links?: string;
 }
 
-// 🚀 তোমার নতুন হাগিং ফেস API লিংকগুলো
 const LIVE_EVENTS_API = "https://ratulxadia-playz-cats-event.hf.space/api/events";
 const STREAM_API_BASE = "https://ratulxadia-playz-cats-event.hf.space/api/stream/";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
@@ -82,12 +79,52 @@ export default function StreamPlayer({ id }: { id: string }) {
   const streamsRef = useRef<any[] | null>(null);
   const activeIndexRef = useRef<number>(0);
 
-  // 🎯 ১. সাইডবারের জন্য সব লাইভ ইভেন্ট ফেচ করা হচ্ছে
   const { data: rawMatches } = useSWR(LIVE_EVENTS_API, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
-  const matches: Match[] | null = Array.isArray(rawMatches) ? rawMatches : null;
-  const currentMatch = matches ? matches.find((m) => m.id.toString() === id) : null;
 
-  // 🎯 ২. স্ট্রিম ফেচ করার লজিক (slug বের করে নতুন API কল করা)
+  // 🎯 এখানেও সিঙ্গেল প্লেয়ার পেজের সাইডবারের জন্য ডাটা নরমালাইজেশন লজিক
+  const matches = useMemo(() => {
+    if (!rawMatches || !Array.isArray(rawMatches)) return null;
+    return rawMatches.map((item: any, index: number) => {
+      const rawEvent = item.event || {};
+      
+      const convertDate = (dStr: string, tStr: string) => {
+        if (!dStr || !tStr) return "";
+        const parts = dStr.split('/');
+        if (parts.length === 3) {
+          return `${parts[2]}/${parts[1]}/${parts[0]} ${tStr}`;
+        }
+        return `${dStr} ${tStr}`;
+      };
+
+      const startTime = convertDate(rawEvent.date, rawEvent.time);
+      const endTime = convertDate(rawEvent.end_date || rawEvent.date, rawEvent.end_time || rawEvent.time);
+      const matchId = rawEvent.links ? rawEvent.links.replace("pro/", "").replace(".txt", "") : index.toString();
+
+      return {
+        id: matchId,
+        links: rawEvent.links || "",
+        eventInfo: {
+          eventCat: rawEvent.category || "Live Event",
+          eventName: rawEvent.eventName || "Live Match",
+          teamA: rawEvent.teamAName || "Team A",
+          teamB: rawEvent.teamBName || "Team B",
+          teamAFlag: rawEvent.teamAFlag || "",
+          teamBFlag: rawEvent.teamBFlag || "",
+          startTime: startTime,
+          endTime: endTime,
+          eventLogo: rawEvent.eventLogo || "",
+          link_names: rawEvent.link_names || []
+        }
+      };
+    });
+  }, [rawMatches]);
+
+  // স্ল্যাগ আইডি ম্যাচিং ফিক্স
+  const currentMatch = useMemo(() => {
+    if (!matches) return null;
+    return matches.find((m) => id.endsWith(m.id.toString()) || m.id.toString() === id);
+  }, [matches, id]);
+
   let streamFetchUrl = null;
   if (currentMatch && currentMatch.links) {
     const streamSlug = currentMatch.links.replace("pro/", "").replace(".txt", "");
@@ -95,7 +132,6 @@ export default function StreamPlayer({ id }: { id: string }) {
   }
 
   const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { refreshInterval: 15000, revalidateOnFocus: false });
-  // নতুন ডাটা স্ট্রাকচারে streamsFromApi সরাসরি অ্যারে হিসেবে আসতে পারে
   const streams = Array.isArray(streamsFromApi) ? streamsFromApi : (streamsFromApi?.streams || null);
 
   useEffect(() => { streamsRef.current = streams; }, [streams]);
@@ -112,7 +148,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     setReloadTrigger(prev => prev + 1);
   }, [id]);
 
-  // Security: Block Inspect
+  // Security
   useEffect(() => {
     const blockInspect = (e: MouseEvent) => e.preventDefault();
     const blockKeys = (e: KeyboardEvent) => {
@@ -159,7 +195,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }, []);
 
-  // Shaka Engine Initialization
+  // Shaka
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
     let shaka: any; let player: any; let ui: any;
@@ -225,7 +261,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     };
   }, [triggerNextServer]);
 
-  // Video Loading Logic
+  // Video Load
   useEffect(() => {
     if (!playerInstance || !streams || streams.length === 0 || allServersDown) return;
     const currentStream = streams[activeStreamIndex];
@@ -245,13 +281,7 @@ export default function StreamPlayer({ id }: { id: string }) {
             bufferingGoal: 25,
             rebufferingGoal: 3,
             bufferBehind: 30,
-            retryParameters: {
-              maxAttempts: 8,
-              baseDelay: 1000,
-              backoffFactor: 2,
-              fuzzFactor: 0.5,
-              timeout: 30000
-            },
+            retryParameters: { maxAttempts: 8, baseDelay: 1000, backoffFactor: 2, fuzzFactor: 0.5, timeout: 30000 },
             stallEnabled: true,
             stallThreshold: 1
           },
@@ -259,25 +289,7 @@ export default function StreamPlayer({ id }: { id: string }) {
             enabled: true,
             switchInterval: 8,
             defaultBandwidthEstimate: 5000000,
-            restrictions: {
-              maxWidth: 3840,
-              maxHeight: 2160
-            },
-            advanced: {
-              minTotalBytes: 128000,
-              minBytes: 16000,
-              fastHalfLife: 2,
-              slowHalfLife: 5
-            }
-          },
-          manifest: {
-            dash: {
-              ignoreMinBufferTime: true
-            },
-            retryParameters: {
-              maxAttempts: 8,
-              timeout: 30000
-            }
+            restrictions: { maxWidth: 3840, maxHeight: 2160 }
           }
         });
 
@@ -285,20 +297,14 @@ export default function StreamPlayer({ id }: { id: string }) {
           const cleanDrm = currentStream.api.replace(/['"\s]/g, '');
           if (cleanDrm.includes(':')) {
             const [kid, key] = cleanDrm.split(':');
-            playerInstance.configure({
-              drm: {
-                clearKeys: {
-                  [kid]: key
-                }
-              }
-            });
+            playerInstance.configure({ drm: { clearKeys: { [kid]: key } } });
           }
         }
 
         await playerInstance.load(currentStream.link);
       } catch (error) {
         console.error("Initial Load Error:", error);
-      } finally {
+      } finaly {
         setIsBuffering(false);
       }
     };
@@ -313,12 +319,10 @@ export default function StreamPlayer({ id }: { id: string }) {
   };
 
   const handleShare = async () => {
-    const matchTitle = currentMatch ? `${currentMatch.eventInfo.teamA} VS ${currentMatch.eventInfo.teamB}` : 'Live Match';
+    const matchTitle = currentMatch && currentMatch.eventInfo ? `${currentMatch.eventInfo.teamA} VS ${currentMatch.eventInfo.teamB}` : 'Live Match';
     const shareUrl = window.location.href;
     if (navigator.share) {
-      try { 
-        await navigator.share({ title: matchTitle, url: shareUrl }); 
-      } catch (error) {}
+      try { await navigator.share({ title: matchTitle, url: shareUrl }); } catch (error) {}
     } else {
       navigator.clipboard.writeText(shareUrl); 
       setShowCopied(true);
@@ -332,7 +336,7 @@ export default function StreamPlayer({ id }: { id: string }) {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/">
             <button className="p-2 text-gray-400 hover:text-[#00E5FF] flex items-center gap-2 outline-none transition-colors active:scale-[0.95]">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 group-hover:-translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
               <span className="text-sm font-bold hidden sm:inline">Back to Home</span>
@@ -350,12 +354,9 @@ export default function StreamPlayer({ id }: { id: string }) {
           <div 
             ref={videoContainerRef} 
             className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group"
-            onMouseMoveCapture={handleUserActivity} 
-            onTouchStartCapture={handleUserActivity} 
-            onClickCapture={handleUserActivity}
+            onMouseMoveCapture={handleUserActivity} onTouchStartCapture={handleUserActivity} onClickCapture={handleUserActivity}
             onMouseLeave={() => setIsControlsVisible(false)}
           >
-
             {!streams && !allServersDown && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/90 z-10 flex-col gap-3">
                 <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin"></div>
@@ -374,67 +375,23 @@ export default function StreamPlayer({ id }: { id: string }) {
               <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/95 z-50 flex-col gap-4 text-center p-4">
                 <span className="text-4xl">📡</span>
                 <div className="text-red-400 font-bold tracking-wide">Stream Currently Unavailable</div>
-                <p className="text-gray-400 text-sm max-w-xs">All servers for this match are currently down or the match has ended.</p>
-                <button 
-                  onClick={() => {
-                    setAllServersDown(false);
-                    setActiveStreamIndex(0);
-                    setReloadTrigger(prev => prev + 1);
-                  }} 
-                  className="mt-2 bg-[#1C1E2B] border border-gray-700 hover:border-[#00E5FF] text-white px-5 py-2 rounded-full text-xs font-bold transition-all active:scale-95"
-                >
-                  Retry Server 1
-                </button>
+                <button onClick={() => { setAllServersDown(false); setActiveStreamIndex(0); setReloadTrigger(prev => prev + 1); }} className="mt-2 bg-[#1C1E2B] border border-gray-700 hover:border-[#00E5FF] text-white px-5 py-2 rounded-full text-xs font-bold">Retry Server 1</button>
               </div>
             )}
 
-            <video 
-              ref={videoRef} 
-              className={`w-full h-full transition-all duration-300 pointer-events-none ${
-                objectFit === 'fill' ? 'object-fill' : objectFit === 'cover' ? 'object-cover' : 'object-contain'
-              }`} 
-              autoPlay 
-              playsInline 
-            />
-            
-            <AnimatePresence>
-              {showFitToast && (
-                <motion.div 
-                  initial={{ opacity: 0, y: -10 }} 
-                  animate={{ opacity: 1, y: 0 }} 
-                  exit={{ opacity: 0, y: -10 }} 
-                  className="absolute top-6 left-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none"
-                >
-                  <span className="w-2 h-2 rounded-full bg-[#00E5FF] animate-pulse"></span>
-                  <span className="text-xs md:text-sm font-bold text-white capitalize">{objectFit === 'contain' ? 'Fit to Screen' : objectFit === 'cover' ? 'Zoom (Cropped)' : 'Stretch (Fill)'}</span>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <video ref={videoRef} className={`w-full h-full transition-all duration-300 pointer-events-none ${objectFit === 'fill' ? 'object-fill' : objectFit === 'cover' ? 'object-cover' : 'object-contain'}`} autoPlay playsInline />
           </div>
 
           {streams && streams.length > 0 && (
             <div className="flex gap-2 overflow-x-auto scrollbar-hide py-4 my-2 border-b border-gray-800/40 items-center">
               <span className="text-gray-400 font-bold text-xs md:text-sm mr-2 whitespace-nowrap uppercase tracking-wider">Servers:</span>
               {streams.map((stream: any, index: number) => (
-
                 <button 
                   key={index} 
-                  onClick={() => { 
-                    setAllServersDown(false);
-                    if (activeStreamIndex === index) {
-                      setReloadTrigger(prev => prev + 1); 
-                    } else {
-                      setActiveStreamIndex(index);
-                    }
-                  }} 
-                  className={`px-5 py-2 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border outline-none active:scale-[0.95] duration-150 ${
-                    activeStreamIndex === index && !allServersDown
-                      ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)] ring-1 ring-[#00E5FF]/30" 
-                      : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white active:border-[#00E5FF]"
-                  }`}
+                  onClick={() => { setAllServersDown(false); if (activeStreamIndex === index) { setReloadTrigger(prev => prev + 1); } else { setActiveStreamIndex(index); } }} 
+                  className={`px-5 py-2 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border outline-none duration-150 ${activeStreamIndex === index && !allServersDown ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)]" : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white"}`}
                 >
-                  {stream.title || (currentMatch?.eventInfo as any)?.link_names?.[index] || `Server ${index + 1}`}
-
+                  {stream.title || currentMatch?.eventInfo?.link_names?.[index] || `Server ${index + 1}`}
                 </button>
               ))}
             </div>
@@ -442,104 +399,45 @@ export default function StreamPlayer({ id }: { id: string }) {
 
           {currentMatch && currentMatch.eventInfo ? (
             <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 mt-3 shadow-lg relative group">
-              <button
-                onClick={handleShare}
-                className="absolute top-4 right-4 bg-gray-800/50 hover:bg-[#00E5FF]/20 text-gray-400 hover:text-[#00E5FF] p-2 rounded-full border border-gray-700/50 hover:border-[#00E5FF]/50 transition-all active:scale-95 z-10 focus:outline-none"
-                title="Share Match"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                </svg>
-              </button>
-
-              {showCopied && (
-                <div className="absolute -top-8 right-2 bg-[#00E5FF] text-black text-[10px] font-bold px-3 py-1 rounded shadow-lg animate-fade-in pointer-events-none">
-                  Link Copied!
-                </div>
-              )}
-
-              <div className="text-center text-xs font-bold text-[#00E5FF] uppercase tracking-widest mb-4 pr-8">
-                {currentMatch.eventInfo.eventCat} | {currentMatch.eventInfo.eventName}
-              </div>
+              <button onClick={handleShare} className="absolute top-4 right-4 bg-gray-800/50 hover:bg-[#00E5FF]/20 text-gray-400 hover:text-[#00E5FF] p-2 rounded-full border border-gray-700/50 transition-all z-10"><svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg></button>
+              <div className="text-center text-xs font-bold text-[#00E5FF] uppercase tracking-widest mb-4 pr-8">{currentMatch.eventInfo.eventCat} | {currentMatch.eventInfo.eventName}</div>
               <div className="flex justify-center items-center gap-6 sm:gap-12 py-2">
                 <div className="flex items-center gap-3 w-[40%] justify-end">
                   <span className="font-bold text-sm md:text-base text-gray-200 text-right truncate">{currentMatch.eventInfo.teamA}</span>
-                  <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-700/50 flex-shrink-0 relative">
-                    <Image unoptimized src={getImg(currentMatch.eventInfo.teamAFlag)} fill className="object-cover" alt="" />
-                  </div>
+                  <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-700/50 flex-shrink-0 relative"><Image unoptimized src={getImg(currentMatch.eventInfo.teamAFlag)} fill className="object-cover" alt="" /></div>
                 </div>
                 <span className="text-gray-400 font-black italic text-sm md:text-base px-2">VS</span>
                 <div className="flex items-center gap-3 w-[40%] justify-start">
-                  <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-700/50 flex-shrink-0 relative">
-                    <Image unoptimized src={getImg(currentMatch.eventInfo.teamBFlag)} fill className="object-cover" alt="" />
-                  </div>
+                  <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-700/50 flex-shrink-0 relative"><Image unoptimized src={getImg(currentMatch.eventInfo.teamBFlag)} fill className="object-cover" alt="" /></div>
                   <span className="font-bold text-sm md:text-base text-gray-200 text-left truncate">{currentMatch.eventInfo.teamB}</span>
                 </div>
               </div>
             </div>
-          ) : (
-            <div className="bg-[#1C1E2B] border border-gray-800/60 rounded-[20px] p-5 mt-3 animate-pulse flex justify-between items-center">
-              <div className="h-4 bg-gray-800 rounded w-1/3"></div>
-              <div className="h-4 bg-gray-800 rounded w-1/4"></div>
-            </div>
-          )}
+          ) : null}
         </div>
 
         <div className="mt-6 lg:mt-0 lg:col-span-1 max-h-[70vh] lg:max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-hide pr-1">
           <div className="flex flex-col gap-3.5">
             <span className="text-xs font-black uppercase tracking-wider text-gray-400 pl-1 mb-1">More Live Events</span>
-            
-            {!rawMatches && (
-              <>
-                <div className="h-[75px] bg-[#1C1E2B] rounded-[18px] animate-pulse border border-gray-800/60"></div>
-                <div className="h-[75px] bg-[#1C1E2B] rounded-[18px] animate-pulse border border-gray-800/60"></div>
-                <div className="h-[75px] bg-[#1C1E2B] rounded-[18px] animate-pulse border border-gray-800/60"></div>
-              </>
-            )}
-
-            {rawMatches && !matches && (
-              <div className="text-center py-6 px-2 text-red-400 text-xs bg-[#1C1E2B] rounded-[18px] border border-red-500/20 shadow-inner">
-                ⚠️ Sidebar data unavailable.
-              </div>
-            )}
-
-            {matches && matches.map((match) => {
+            {matches && matches.map((match: any) => {
               if (!match.eventInfo) return null;
               const status = getMatchStatus(match.eventInfo.startTime, match.eventInfo.endTime, currentTime);
-              const isCurrent = match.id.toString() === id;
-              
+              const isCurrent = id.endsWith(match.id.toString()) || match.id.toString() === id;
               const slugLink = generateSlug(match.eventInfo.teamA, match.eventInfo.teamB, match.eventInfo.eventName, match.id);
 
               return (
                 <Link href={`/watch/${slugLink}`} key={match.id} className="outline-none" prefetch={false}>
-                  <motion.div 
-                    whileTap={{ scale: 0.97 }}
-                    className={`bg-[#1C1E2B] border rounded-[18px] p-4 transition-all duration-150 active:scale-[0.97] ${
-                      isCurrent 
-                        ? 'border-[#00E5FF] shadow-md shadow-[#00E5FF]/5 ring-1 ring-[#00E5FF]/30' 
-                        : 'border-gray-800/80 hover:border-[#00E5FF]/40 active:border-[#00E5FF]'
-                    }`}
-                  >
-                    <div className="text-[11px] text-gray-400 mb-2 truncate uppercase tracking-wide">
-                      {match.eventInfo.eventCat} • {match.eventInfo.eventName}
-                    </div>
+                  <motion.div whileTap={{ scale: 0.97 }} className={`bg-[#1C1E2B] border rounded-[18px] p-4 transition-all duration-150 ${isCurrent ? 'border-[#00E5FF] shadow-md ring-1 ring-[#00E5FF]/30' : 'border-gray-800/80 hover:border-[#00E5FF]/40'}`}>
+                    <div className="text-[11px] text-gray-400 mb-2 truncate uppercase tracking-wide">{match.eventInfo.eventCat} • {match.eventInfo.eventName}</div>
                     <div className="flex justify-between items-center gap-2">
                       <div className="flex items-center gap-2 truncate max-w-[40%]">
-                        <img src={getImg(match.eventInfo.teamAFlag)} className="w-5 h-5 rounded-full object-cover border border-gray-700/40 min-w-[20px]" alt="" />
+                        <img src={getImg(match.eventInfo.teamAFlag)} className="w-5 h-5 rounded-full object-cover min-w-[20px]" alt="" />
                         <span className="text-xs font-bold truncate text-gray-200">{match.eventInfo.teamA}</span>
                       </div>
-                      
-                      <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wide shrink-0 ${
-                        status.type === 'live' 
-                          ? 'bg-red-500/10 text-red-400 border border-red-500/20 animate-pulse' 
-                          : 'bg-blue-500/10 text-blue-400 border border-blue-500/10'
-                      }`}>
-                        {status.label}
-                      </span>
-                      
+                      <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase ${status.type === 'live' ? 'bg-red-500/10 text-red-400 border border-red-500/20 animate-pulse' : 'bg-blue-500/10 text-blue-400 border border-blue-500/10'}`}>{status.label}</span>
                       <div className="flex items-center gap-2 truncate max-w-[40%] justify-end">
                         <span className="text-xs font-bold truncate text-gray-200 text-right">{match.eventInfo.teamB}</span>
-                        <img src={getImg(match.eventInfo.teamBFlag)} className="w-5 h-5 rounded-full object-cover border border-gray-700/40 min-w-[20px]" alt="" />
+                        <img src={getImg(match.eventInfo.teamBFlag)} className="w-5 h-5 rounded-full object-cover min-w-[20px]" alt="" />
                       </div>
                     </div>
                   </motion.div>
@@ -549,19 +447,7 @@ export default function StreamPlayer({ id }: { id: string }) {
           </div>
         </div>
       </div>
-
-      <style dangerouslySetInnerHTML={{__html: `
-        .shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; transition: opacity 0.2s; display: flex; align-items: center; justify-content: center; }
-        .shaka-custom-stretch-btn:hover { opacity: 1; }
-        .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-      `}} />
-      
-      <Script 
-        src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js"
-        strategy="lazyOnload" 
-        id="adsterra-popunder"
-      />
+      <style dangerouslySetInnerHTML={{__html: `.shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; display: flex; align-items: center; justify-content: center; } .scrollbar-hide::-webkit-scrollbar { display: none; }`}} />
     </main>
   );
 }
