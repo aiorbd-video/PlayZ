@@ -189,7 +189,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     const currentStreams = streamsRef.current;
     const currentIndex = activeIndexRef.current;
     if (currentStreams && currentIndex < currentStreams.length - 1) {
-      console.log(`[Server Issue] Switching to Server ${currentIndex + 2}`);
+      console.log(`[Fatal Error] Switching to Server ${currentIndex + 2}`);
       setActiveStreamIndex(currentIndex + 1);
     } else {
       setAllServersDown(true); 
@@ -197,12 +197,11 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }, []);
 
-  // 🚀 🟢 ARTPLAYER & SHAKA CORE INTEGRATION
+  // 🚀 👑 ARTPLAYER UI + SHAKA PLAYER CORE (THE ULTIMATE COMBO)
   useEffect(() => {
-    if (!streams || streams.length === 0 || allServersDown) return;
+    if (!streams || streams.length === 0 || allServersDown || !artRef.current) return;
     const currentStream = streams[activeStreamIndex];
     if (!currentStream || !currentStream.link) return;
-    if (!artRef.current) return;
 
     let artInstance: any = null;
     let shakaInstance: any = null;
@@ -211,7 +210,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     const setupPlayer = async () => {
       setIsBuffering(true);
       
-      // ডাইনামিক ইমপোর্ট (Next.js এর SSR এরর এড়ানোর জন্য)
       const shaka = (await import('shaka-player/dist/shaka-player.compiled')).default || await import('shaka-player/dist/shaka-player.compiled');
       
       if (!isMounted) return;
@@ -221,44 +219,49 @@ export default function StreamPlayer({ id }: { id: string }) {
         url: currentStream.link,
         type: 'shaka',
         theme: '#00E5FF',
-        isLive: true,
         autoplay: true,
         pip: true,
         fullscreen: true,
         fullscreenWeb: true,
         setting: true,
-        fastForward: true,        // 👈 ExoPlayer এর মতো ডাবল ট্যাপে স্কিপ
+        fastForward: true,        // 👈 ডাবল ট্যাপে স্কিপ (ExoPlayer Style)
         miniProgressBar: true,    // 👈 নিচে চিকন প্রোগ্রেস বার
         playsInline: true,
-        autoOrientation: true,    // 👈 মোবাইল ঘুরলে ফুলস্ক্রিন
+        autoOrientation: true,    
         mutex: true,
+        // isLive: true সরিয়ে দেওয়া হয়েছে যাতে সিকবার (Seekbar) ফিরে আসে
         customType: {
           shaka: async function (video: HTMLVideoElement, url: string, art: any) {
             shaka.polyfill.installAll();
             const player = new shaka.Player(video);
             shakaInstance = player;
-            art.shaka = player; // এক্সপোজ ফর ডেসট্রয়
+            art.shaka = player; 
 
-            // 👑 দ্য বেস্ট শাকা কনফিগারেশন (For Zero Buffering & Lowest Initial Load)
+            // 👑 Shaka Player Network & Buffering Config
             player.configure({
               streaming: {
-                bufferingGoal: 15,
+                bufferingGoal: 10,
                 rebufferingGoal: 1,
                 bufferBehind: 5,
                 jumpLargeGaps: true,
+                ignoreTextStreamFailures: true,
                 retryParameters: { maxAttempts: 5, baseDelay: 1000, timeout: 10000 }
+              },
+              manifest: {
+                dash: { ignoreMinBufferTime: true },
+                hls: { ignoreManifestProgramDateTime: true }
               },
               abr: {
                 enabled: true,
-                defaultBandwidthEstimate: 100000,  // 👈 ম্যাজিক: 100kbps (ফোর্স লোয়েস্ট কোয়ালিটি) જેથી শুরুতে 720p না টানে
-                switchInterval: 1,
+                defaultBandwidthEstimate: 100000,  // 👈 100kbps (শুরুতেই লো-কোয়ালিটি থেকে স্টার্ট হবে যাতে না আটকায়)
+                switchInterval: 1,                 // প্রতি সেকেন্ডে নেট চেক করবে
                 bandwidthDowngradeTarget: 0.95,
-                bandwidthUpgradeTarget: 0.70,
-                clearBufferSwitch: true            // 👈 কোয়ালিটি কমানোর সময় বাফার ডিলিট করে ইনস্ট্যান্ট সুইচ করবে
+                bandwidthUpgradeTarget: 0.60,
+                clearBufferSwitch: true            // কোয়ালিটি কমানোর সময় বাফার ফেলে ইনস্ট্যান্ট লো-কোয়ালিটি প্লে করবে
               }
             });
 
-            // DRM
+            // DRM (MPD Files)
             if (currentStream.api) {
               const cleanDrm = currentStream.api.replace(/['"\s]/g, '');
               if (cleanDrm.includes(':')) {
@@ -267,7 +270,7 @@ export default function StreamPlayer({ id }: { id: string }) {
               }
             }
 
-            // ইভেন্টস
+            // ইভেন্টস: শুধু ফাটাল (মারাত্মক) এররেই সার্ভার চেঞ্জ করবে
             player.addEventListener('error', (e: any) => {
               if (e.detail && e.detail.severity === 2 && e.detail.code !== 7000 && e.detail.code !== 7002) {
                 console.error("Shaka Critical Error:", e.detail.code);
@@ -275,6 +278,7 @@ export default function StreamPlayer({ id }: { id: string }) {
               }
             });
 
+            // ডাবল স্পিনার অফ করার জন্য Shaka এর নিজস্ব বাফারিং ইভেন্ট ব্যবহার
             player.addEventListener('buffering', (e: any) => {
               if (isMounted) setIsBuffering(e.buffering);
             });
@@ -294,6 +298,10 @@ export default function StreamPlayer({ id }: { id: string }) {
       artInstance.on('ready', () => {
         if (isMounted) setIsBuffering(false);
       });
+      
+      // Artplayer এর নিজস্ব লোডিং হাইড করে দিচ্ছি যাতে ডাবল স্পিনার না আসে
+      artInstance.on('video:waiting', () => setIsBuffering(true));
+      artInstance.on('video:playing', () => setIsBuffering(false));
     };
 
     setupPlayer();
@@ -343,7 +351,7 @@ export default function StreamPlayer({ id }: { id: string }) {
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
         <div className="lg:col-span-2 flex flex-col">
           
-          {/* 🟢 ARTPLAYER CONTAINER */}
+          {/* 🎬 ARTPLAYER CONTAINER */}
           <div className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 group">
             
             {!streams && !allServersDown && (
@@ -353,9 +361,10 @@ export default function StreamPlayer({ id }: { id: string }) {
               </div>
             )}
 
+            {/* 👑 কাস্টম লোডিং স্পিনার */}
             {isBuffering && !allServersDown && streams && (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-transparent pointer-events-none">
-                <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin"></div>
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm pointer-events-none">
+                <div className="w-12 h-12 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin mb-3"></div>
               </div>
             )}
 
@@ -446,10 +455,24 @@ export default function StreamPlayer({ id }: { id: string }) {
         </div>
       </div>
       
-      {/* 🟢 Artplayer এর কাস্টম স্টাইলস (টু মেক ইট ক্লিন লাইক ExoPlayer) */}
+      {/* 🟢 CSS OVERRIDES: ফালতু কালো শ্যাডো এবং ডাবল স্পিনার হাইড করা হয়েছে */}
       <style dangerouslySetInnerHTML={{__html: `
-        .art-video-player .art-bottom { padding-bottom: 5px !important; }
-        .art-video-player .art-progress { height: 4px !important; }
+        .art-video-player .art-bottom { 
+          padding-bottom: 5px !important; 
+          background-image: none !important; 
+          background: transparent !important;
+        }
+        .art-video-player .art-top {
+          background-image: none !important; 
+          background: transparent !important;
+        }
+        /* আর্টপ্লেয়ারের ডিফল্ট স্পিনার অফ করে আমাদেরটা অন রাখা হয়েছে */
+        .art-video-player .art-loading { display: none !important; }
+        
+        .art-video-player .art-progress { 
+          height: 4px !important; 
+          cursor: pointer !important;
+        }
         .art-video-player .art-progress-played { background-color: #00E5FF !important; }
         .art-video-player .art-progress-indicator { background-color: #00E5FF !important; box-shadow: 0 0 10px #00E5FF !important; }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
