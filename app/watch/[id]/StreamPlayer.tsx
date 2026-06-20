@@ -80,7 +80,7 @@ export default function StreamPlayer({ id }: { id: string }) {
   const [allServersDown, setAllServersDown] = useState(false);
   const [isControlsVisible, setIsControlsVisible] = useState(true);
   const [showCopied, setShowCopied] = useState(false);
-  const [fallbackToast, setFallbackToast] = useState(false); // 🎯 নতুন টোস্ট স্টেট
+  const [fallbackToast, setFallbackToast] = useState(false); 
   
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
   const streamsRef = useRef<any[] | null>(null);
@@ -214,7 +214,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }, [showFitToast, objectFit]);
 
-  // 🎯 ফলব্যাক টোস্ট কন্ট্রোলার
   useEffect(() => {
     const handleFallback = () => {
       setFallbackToast(true);
@@ -228,10 +227,8 @@ export default function StreamPlayer({ id }: { id: string }) {
     const currentStreams = streamsRef.current;
     const currentIndex = activeIndexRef.current;
     if (currentStreams && currentIndex < currentStreams.length - 1) {
-      console.log(`[Critical Error] Server ${currentIndex + 1} Failed. Switching to Server ${currentIndex + 2}`);
       setActiveStreamIndex(currentIndex + 1);
     } else {
-      console.log("All servers are down.");
       setAllServersDown(true);
       setIsBuffering(false);
     }
@@ -279,24 +276,23 @@ export default function StreamPlayer({ id }: { id: string }) {
           }
         });
         
-        // 🎯 ম্যাজিক: বাফারিং মনিটর (ম্যানুয়াল সিলেকশন থেকে অটোতে শিফট করা)
         player.addEventListener('buffering', (e: any) => {
           setIsBuffering(e.buffering);
           if (e.buffering) {
             bufferTimeout = setTimeout(() => {
               const currentConfig = player.getConfiguration();
-              // ইউজার যদি ম্যানুয়ালি কোয়ালিটি সিলেক্ট করে (abr.enabled = false হয়)
               if (currentConfig.abr && !currentConfig.abr.enabled) {
                 player.configure({ abr: { enabled: true } });
                 window.dispatchEvent(new Event('fallbackQuality'));
               }
-            }, 5000); // 👈 ঠিক ৫ সেকেন্ড বাফার হলে অটো শিফট করবে
+            }, 5000); 
           } else {
             clearTimeout(bufferTimeout);
           }
         });
         
         player.addEventListener('error', (e: any) => {
+          // 🟢 শুধুমাত্র ডেড/ফাটাল এররেই অটো সার্ভার চেঞ্জ করবে
           if (e.detail && e.detail.severity === 2 && e.detail.code !== 7000 && e.detail.code !== 7002) {
             triggerNextServer();
           }
@@ -322,18 +318,16 @@ export default function StreamPlayer({ id }: { id: string }) {
     const currentStream = streams[activeStreamIndex];
     if (!currentStream || !currentStream.link) return;
 
-    if (currentlyPlayingUrlRef.current === currentStream.link) {
-      return; 
-    }
+    if (currentlyPlayingUrlRef.current === currentStream.link) return;
 
     let isMounted = true;
     
     const loadVideo = async () => {
       setIsBuffering(true);
+
       try {
         await playerInstance.unload();
         
-        // 🚀 👑 ABR Optimization: হুট করে HD তে যাবে না 
         playerInstance.configure({
           streaming: {
             bufferingGoal: 20,           
@@ -341,6 +335,7 @@ export default function StreamPlayer({ id }: { id: string }) {
             bufferBehind: 5,
             jumpLargeGaps: true,         
             ignoreTextStreamFailures: true,
+            // 🎯 শাকা প্লেয়ারকে বেশি রিট্রাই করার সুযোগ দিলাম, যাতে সে সার্ভার চেঞ্জ না করে নিজেই ঠিক করার চেষ্টা করে
             retryParameters: { maxAttempts: 10, baseDelay: 1000, backoffFactor: 1.5, fuzzFactor: 0.5, timeout: 15000 },
             stallEnabled: true,
             stallThreshold: 1,
@@ -353,9 +348,9 @@ export default function StreamPlayer({ id }: { id: string }) {
           },
           abr: {
             enabled: true,
-            switchInterval: 5,                 // 👈 ফিক্স ১: ১ সেকেন্ডের বদলে ৫ সেকেন্ড পর পর নেট চেক করবে (ধীরে HD তে যাবে)
+            switchInterval: 5,                 
             bandwidthDowngradeTarget: 0.95,    
-            bandwidthUpgradeTarget: 0.85,      // 👈 ফিক্স ২: নেটওয়ার্ক ৮৫% স্ট্যাবল না হলে HD তে যাবে না
+            bandwidthUpgradeTarget: 0.85,      
             defaultBandwidthEstimate: 300000,  
             restrictToElementSize: true,       
             safeMarginSwitch: true,
@@ -376,7 +371,6 @@ export default function StreamPlayer({ id }: { id: string }) {
 
       } catch (error: any) {
         if (error.code !== 7000 && error.code !== 7002) {
-          console.error("Initial Load Failed, Switching Server...", error.code);
           if (isMounted) triggerNextServer();
         }
       } finally {
@@ -429,7 +423,6 @@ export default function StreamPlayer({ id }: { id: string }) {
         <div className="lg:col-span-2 flex flex-col">
           <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group" onMouseMoveCapture={handleUserActivity} onTouchStartCapture={handleUserActivity} onClickCapture={handleUserActivity} onMouseLeave={() => setIsControlsVisible(false)} >
             
-            {/* Initial Fetching Spinner */}
             {!streams && !allServersDown && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/90 z-10 flex-col gap-3">
                 <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin"></div>
@@ -437,7 +430,6 @@ export default function StreamPlayer({ id }: { id: string }) {
               </div>
             )}
             
-            {/* Server Down Screen */}
             {allServersDown && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/95 z-50 flex-col gap-4 text-center p-4">
                 <span className="text-4xl">📡</span>
@@ -449,7 +441,7 @@ export default function StreamPlayer({ id }: { id: string }) {
             <video ref={videoRef} className={`w-full h-full transition-all duration-300 pointer-events-none ${objectFit === 'fill' ? 'object-fill' : objectFit === 'cover' ? 'object-cover' : 'object-contain'}`} autoPlay playsInline />
             
             <AnimatePresence>
-              {/* 🎯 ফিক্স: বড় ঘোলা ওভারলের বদলে এখন নিচে সুন্দর টোস্ট দেখাবে */}
+              {/* 🎯 ক্লিন টোস্ট মেসেজ, কোনো কালো ওভারলে নেই */}
               {isBuffering && !allServersDown && streams && (
                 <motion.div 
                   initial={{ opacity: 0, y: 10 }} 
@@ -462,7 +454,6 @@ export default function StreamPlayer({ id }: { id: string }) {
                 </motion.div>
               )}
 
-              {/* 🎯 ফিক্স: নেট স্লো হলে অটো-ফলব্যাকের ওয়ার্নিং টোস্ট */}
               {fallbackToast && (
                 <motion.div 
                   initial={{ opacity: 0, y: -10 }} 
@@ -546,8 +537,6 @@ export default function StreamPlayer({ id }: { id: string }) {
       <style dangerouslySetInnerHTML={{__html: `
         .shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; display: flex; align-items: center; justify-content: center; } 
         .scrollbar-hide::-webkit-scrollbar { display: none; }
-        
-        /* 🎯 ম্যাজিক: Shaka Player এর ফালতু ওভারলে (কালো ছায়া) চিরতরে মুছে দেওয়া হলো */
         .shaka-scrim-container { display: none !important; background: transparent !important; }
       `}} />
       <Script src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js" strategy="lazyOnload" id="adsterra-popunder" />
