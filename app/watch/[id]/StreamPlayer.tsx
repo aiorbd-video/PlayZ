@@ -304,7 +304,7 @@ export default function StreamPlayer({ id }: { id: string }) {
         await playerInstance.load(currentStream.link);
       } catch (error) {
         console.error("Initial Load Error:", error);
-      } finaly {
+      } finally {
         setIsBuffering(false);
       }
     };
