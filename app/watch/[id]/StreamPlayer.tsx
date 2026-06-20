@@ -30,8 +30,8 @@ interface Match {
   links?: string;
 }
 
-const LIVE_EVENTS_API = process.env.NEXT_PUBLIC_LIVE_EVENTS_API || "https://ratulxadiapi/events";
-const STREAM_API_BASE = process.env.NEXT_PUBLIC_STREAM_API_BASE || "https://rate/api/stream/";
+const LIVE_EVENTS_API = process.env.NEXT_PUBLIC_LIVE_EVENTS_API || "https://ratulxadia-playz-cats-event.hf.space/api/events";
+const STREAM_API_BASE = process.env.NEXT_PUBLIC_STREAM_API_BASE || "https://ratulxadia-playz-cats-event.hf.space/api/stream/";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
@@ -142,7 +142,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }
 
-  // 🟢 ম্যাজিক ফিক্স ১: Local Storage থেকে ইনিশিয়াল ক্যাশ লোড করা হচ্ছে
   const getCachedStreams = () => {
     if (typeof window === 'undefined' || !cacheKey) return null;
     try {
@@ -154,9 +153,8 @@ export default function StreamPlayer({ id }: { id: string }) {
   const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { 
     refreshInterval: 15000, 
     revalidateOnFocus: false,
-    fallbackData: getCachedStreams(), // ক্যাশ থাকলে সাথে সাথে প্লেয়ার চালু হয়ে যাবে
+    fallbackData: getCachedStreams(), 
     onSuccess: (data) => {
-      // ডেটা সাকসেসফুলি আসলে সেটা লোকাল স্টোরেজে সেভ করে রাখা
       if (typeof window !== 'undefined' && cacheKey && data) {
         localStorage.setItem(cacheKey, JSON.stringify(data));
       }
@@ -272,11 +270,11 @@ export default function StreamPlayer({ id }: { id: string }) {
         player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
         
         player.addEventListener('error', (e: any) => {
+          // 🟢 ফিক্স: শুধুমাত্র নেটওয়ার্ক রিট্রাই সম্পূর্ণ ফেইল করলে তবেই সার্ভার সুইচ করবে। 
+          // ছোটখাটো এররে আর সার্ভার লাফাবে না।
           if (e.detail && e.detail.severity === 2 && e.detail.code !== 7000 && e.detail.code !== 7002) {
-            console.error("Shaka Critical Error:", e.detail.code);
+            console.error("Shaka Critical Fatal Error:", e.detail.code);
             triggerNextServer();
-          } else {
-            console.warn("Shaka Recoverable Error Ignored:", e.detail?.code);
           }
         });
 
@@ -306,29 +304,38 @@ export default function StreamPlayer({ id }: { id: string }) {
       try {
         await playerInstance.unload();
 
-        // 🟢 ম্যাজিক ফিক্স ২: অ্যাডভান্সড বাফারিং এবং ABR কনফিগারেশন 
+        // 🚀 🟢 দ্য আল্টিমেট ABR & বাফারিং মেকানিজম
         playerInstance.configure({
           streaming: {
-            bufferingGoal: 20, // বাফারিং স্টোরেজ বাড়ানো হয়েছে যাতে নেটওয়ার্ক ড্রপ হলে না আটকায়
-            rebufferingGoal: 2,
-            bufferBehind: 30,
-            jumpLargeGaps: true, // লাইভ স্ট্রিমে ল্যাগ হলে দ্রুত স্কিপ করে সিঙ্ক করবে
-            retryParameters: { maxAttempts: 5, baseDelay: 1000, backoffFactor: 2, fuzzFactor: 0.5, timeout: 10000 },
+            bufferingGoal: 30,           // হাই বাফার যাতে নেট গেলে অন্তত ৩০ সেকেন্ড চলতে থাকে
+            rebufferingGoal: 1,          // ১ সেকেন্ড লোড হলেই ভিডিও চালু হয়ে যাবে
+            bufferBehind: 15,
+            jumpLargeGaps: true,         // লাইভ স্ট্রিমে ল্যাগ হলে দ্রুত স্কিপ করে সিঙ্ক করবে
+            ignoreTextStreamFailures: true,
+            retryParameters: { 
+              maxAttempts: 10,           // 👈 ফিক্স: ৫ এর বদলে ১০ বার রিট্রাই করবে। হুট করে সার্ভার চেঞ্জ করবে না।
+              baseDelay: 1000, 
+              backoffFactor: 1.5, 
+              fuzzFactor: 0.5, 
+              timeout: 20000 
+            },
             stallEnabled: true,
-            stallThreshold: 1
+            stallThreshold: 1,
+            stallSkip: 0.5
           },
           manifest: {
             dash: { ignoreMinBufferTime: true },
             hls: { ignoreManifestProgramDateTime: true }, 
-            retryParameters: { maxAttempts: 5, baseDelay: 1000, timeout: 10000 }
+            retryParameters: { maxAttempts: 10, baseDelay: 1000, timeout: 20000 }
           },
           abr: {
             enabled: true,
-            switchInterval: 4, // ৮ থেকে ৪ সেকেন্ড করা হলো, যাতে নেটওয়ার্ক পরিবর্তনের সাথে সাথে দ্রুত রিঅ্যাক্ট করে
+            switchInterval: 2,           // 👈 ফিক্স: প্রতি ২ সেকেন্ড পরপর নেট স্পিড চেক করবে
             bandwidthUpgradeTarget: 0.85,
-            bandwidthDowngradeTarget: 0.95,
-            defaultBandwidthEstimate: 1000000, // স্লো নেটেও যেন দ্রুত প্লে হয় তার জন্য ইনিশিয়াল এস্টিমেট কমানো হয়েছে
-            safeMarginSwitch: true // বাফারিং এড়ানোর জন্য সেফ কোয়ালিটি সুইচিং
+            bandwidthDowngradeTarget: 0.98, // 👈 ফিক্স: নেট একটু ড্রপ করলেই কোয়ালিটি ডাউনের সিগন্যাল দেবে
+            defaultBandwidthEstimate: 500000, // স্লো নেটেও যেন শুরুতেই প্লে হয়, তাই এস্টিমেট কমানো হয়েছে (500kbps)
+            safeMarginSwitch: true,
+            clearBufferSwitch: true      // 👑 ম্যাজিক ফিক্স: নেট স্লো হলে আগের হাই-কোয়ালিটি বাফার ফেলে দিয়ে ইনস্ট্যান্ট লো-কোয়ালিটি প্লে করবে!
           }
         });
 
