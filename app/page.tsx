@@ -7,10 +7,10 @@ import { motion } from 'framer-motion';
 import { fetcher, getMatchStatus, getCategoryIcon } from './utils/helpers';
 import { ChannelCard, MatchCard } from './components/Cards';
 
-// 🚀 তোমার নতুন লাইভ ইভেন্টের লিংকটি এখানে বসাও
+// 🚀 তোমার নতুন লাইভ ইভেন্টের লিংক
 const LIVE_EVENTS_API = "https://ratulxadia-playz-cats-event.hf.space/api/events";
 
-// 📢 ১. সিকিউরড মারকুই নোটিশ কম্পোনেন্ট
+// 📢 সিকিউরড মারকুই নোটিশ কম্পোনেন্ট
 function MarqueeNotice() {
   const { data } = useSWR('/api/notice', fetcher, { 
     refreshInterval: 30000, 
@@ -110,10 +110,14 @@ export default function Home() {
   const channels = channelData?.channels || [];
   const m3uChannels = m3uData?.channels || [];
 
+  // 🎯 এনকোডিং ফিক্স: eventInfo অথবা event দুইটাই সাপোর্ট করবে
   const dynamicCategories = useMemo(() => {
     const list = ['All'];
     if (matches && Array.isArray(matches)) {
-      const uniqueCats = new Set(matches.map((m: any) => m.eventInfo?.eventCat).filter(Boolean));
+      const uniqueCats = new Set(matches.map((m: any) => {
+        const info = m.eventInfo || m.event || {};
+        return info.eventCat;
+      }).filter(Boolean));
       uniqueCats.forEach(cat => list.push(cat as string));
     }
     return list;
@@ -123,7 +127,8 @@ export default function Home() {
     if (!matches) return { all: 0, live: 0, recent: 0, upcoming: 0 };
     let live = 0, recent = 0, upcoming = 0;
     matches.forEach((m: any) => {
-      const status = getMatchStatus(m.eventInfo?.startTime, m.eventInfo?.endTime, currentTime);
+      const info = m.eventInfo || m.event || {};
+      const status = getMatchStatus(info.startTime, info.endTime, currentTime);
       if (status === 'live') live++;
       if (status === 'recent') recent++;
       if (status === 'upcoming') upcoming++;
@@ -141,7 +146,7 @@ export default function Home() {
   const processedMatches = useMemo(() => {
     if (!matches) return [];
     return [...matches].filter((match: any) => {
-      const eventInfo = match.eventInfo || {};
+      const eventInfo = match.eventInfo || match.event || {};
       if (activeCategory !== 'All' && eventInfo.eventCat !== activeCategory) return false;
       const status = getMatchStatus(eventInfo.startTime, eventInfo.endTime, currentTime);
       if (activeFilter === 'Live' && status !== 'live') return false;
@@ -154,11 +159,13 @@ export default function Home() {
       }
       return true;
     }).sort((a: any, b: any) => {
-      const aStart = new Date(a.eventInfo?.startTime?.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z') || 0).getTime();
-      const bStart = new Date(b.eventInfo?.startTime?.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z') || 0).getTime();
+      const aInfo = a.eventInfo || a.event || {};
+      const bInfo = b.eventInfo || b.event || {};
+      const aStart = new Date(aInfo.startTime?.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z') || 0).getTime();
+      const bStart = new Date(bInfo.startTime?.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z') || 0).getTime();
       if (activeFilter === 'All') {
-        const aStatus = getMatchStatus(a.eventInfo?.startTime, a.eventInfo?.endTime, currentTime);
-        const bStatus = getMatchStatus(b.eventInfo?.startTime, b.eventInfo?.endTime, currentTime);
+        const aStatus = getMatchStatus(aInfo.startTime, aInfo.endTime, currentTime);
+        const bStatus = getMatchStatus(bInfo.startTime, bInfo.endTime, currentTime);
         const priority: any = { live: 1, upcoming: 2, recent: 3 };
         if (priority[aStatus] !== priority[bStatus]) return priority[aStatus] - priority[bStatus];
         if (aStatus === 'upcoming') return aStart - bStart; 
@@ -175,8 +182,6 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#11131A] text-gray-200 font-sans pb-32 md:pb-12 selection:bg-[#00E5FF] selection:text-black">
-      
-      {/* Navbar Section */}
       <nav className="bg-[#1C1E2B] sticky top-0 z-50 flex items-center justify-between px-4 md:px-8 py-3 border-b border-[#2A8496]/30 shadow-md h-16">
         {showSearch ? (
           <motion.div initial={{ opacity: 0, scaleX: 0.9 }} animate={{ opacity: 1, scaleX: 1 }} className="flex items-center w-full gap-3 origin-right">
@@ -212,7 +217,6 @@ export default function Home() {
 
       <MarqueeNotice />
 
-      {/* Main Content Layout */}
       <div className="max-w-[1600px] mx-auto px-4 md:px-8 pt-2">
         {activeTab === 'Live Events' && (
           <>
@@ -244,7 +248,7 @@ export default function Home() {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 md:gap-5">
                 {processedMatches.map((match: any) => (
-                  <MatchCard key={match.id} match={match} status={getMatchStatus(match.eventInfo?.startTime, match.eventInfo?.endTime, currentTime)} />
+                  <MatchCard key={match.id} match={match} status={getMatchStatus((match.eventInfo || match.event || {}).startTime, (match.eventInfo || match.event || {}).endTime, currentTime)} />
                 ))}
               </div>
             )}
