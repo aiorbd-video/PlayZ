@@ -30,8 +30,9 @@ interface Match {
   links?: string;
 }
 
-const LIVE_EVENTS_API = "https://ratulxadia-playz-cats-event.hf.space/api/events";
-const STREAM_API_BASE = "https://ratulxadia-playz-cats-event.hf.space/api/stream/";
+// 🚀 Vercel Environment Variable থেকে লিংক আসবে
+const LIVE_EVENTS_API = process.env.NEXT_PUBLIC_LIVE_EVENTS_API || "";
+const STREAM_API_BASE = process.env.NEXT_PUBLIC_STREAM_API_BASE || "";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
@@ -79,7 +80,8 @@ export default function StreamPlayer({ id }: { id: string }) {
   const streamsRef = useRef<any[] | null>(null);
   const activeIndexRef = useRef<number>(0);
 
-  const { data: rawMatches } = useSWR(LIVE_EVENTS_API, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
+  // ✅ লাইভ API কল
+  const { data: rawMatches } = useSWR(LIVE_EVENTS_API ? LIVE_EVENTS_API : null, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
 
   const matches = useMemo(() => {
     if (!rawMatches || !Array.isArray(rawMatches)) return null;
@@ -90,9 +92,9 @@ export default function StreamPlayer({ id }: { id: string }) {
         if (!dStr || !tStr) return "";
         const parts = dStr.split('/');
         if (parts.length === 3) {
-          return `${parts[2]}-${parts[1]}-${parts[0]}T${tStr}Z`;
+          return `${parts[2]}-${parts[1]}-${parts[0]}T${tStr}Z`; 
         }
-        return `${dStr}T${tStr}Z`;
+        return `${dStr}T${tStr}Z`; 
       };
 
       const startTime = convertDate(rawEvent.date, rawEvent.time);
@@ -124,7 +126,7 @@ export default function StreamPlayer({ id }: { id: string }) {
   }, [matches, id]);
 
   let streamFetchUrl = null;
-  if (currentMatch && currentMatch.links) {
+  if (currentMatch && currentMatch.links && STREAM_API_BASE) {
     const streamSlug = currentMatch.links.replace("pro/", "").replace(".txt", "");
     streamFetchUrl = `${STREAM_API_BASE}${streamSlug}`;
   }
@@ -146,7 +148,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     setReloadTrigger(prev => prev + 1);
   }, [id]);
 
-  // Security (Block Inspect)
   useEffect(() => {
     const blockInspect = (e: MouseEvent) => e.preventDefault();
     const blockKeys = (e: KeyboardEvent) => {
@@ -182,7 +183,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }, [showFitToast, objectFit]);
 
-  // 🎯 সুপারফাস্ট অটো-সুইচিং লজিক
   const triggerNextServer = useCallback(() => {
     const currentStreams = streamsRef.current;
     const currentIndex = activeIndexRef.current;
@@ -196,7 +196,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }, []);
 
-  // Shaka Engine Initialization
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
     let shaka: any; let player: any; let ui: any;
@@ -241,7 +240,6 @@ export default function StreamPlayer({ id }: { id: string }) {
 
         player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
         
-        // 🎯 প্লে চলাকালীন এরর হ্যান্ডলিং (7000 ও 7002 মানে হলো ম্যানুয়াল সুইচ বা আনলোড করা, এগুলো বাদে সব এররে অটো-সুইচ হবে)
         player.addEventListener('error', (e: any) => {
           if (e.detail && e.detail.code !== 7000 && e.detail.code !== 7002) {
             console.error("Shaka Streaming Error:", e.detail.code);
@@ -263,7 +261,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     };
   }, [triggerNextServer]);
 
-  // Video Load System
   useEffect(() => {
     if (!playerInstance || !streams || streams.length === 0 || allServersDown) return;
     const currentStream = streams[activeStreamIndex];
@@ -281,14 +278,13 @@ export default function StreamPlayer({ id }: { id: string }) {
             bufferingGoal: 15,
             rebufferingGoal: 2,
             bufferBehind: 30,
-            // 🎯 দ্রুত অটো সুইচিং এর জন্য retry limit ও timeout কমানো হয়েছে
             retryParameters: { maxAttempts: 3, baseDelay: 1000, backoffFactor: 2, fuzzFactor: 0.5, timeout: 10000 },
             stallEnabled: true,
             stallThreshold: 1
           },
           manifest: {
             dash: { ignoreMinBufferTime: true },
-            hls: { ignoreManifestProgramDateTime: true }, // iOS/Mac/TV সাপোর্ট ফিক্স
+            hls: { ignoreManifestProgramDateTime: true }, 
             retryParameters: { maxAttempts: 3, baseDelay: 1000, timeout: 10000 }
           },
           abr: {
@@ -309,7 +305,6 @@ export default function StreamPlayer({ id }: { id: string }) {
         await playerInstance.load(currentStream.link);
       } catch (error) {
         console.error("Initial Load Failed, Switching Server...", error);
-        // 🎯 প্রথমবার লোড ফেইল করলেই সাথে সাথে পরের সার্ভারে পাঠিয়ে দেবে
         if (isMounted) triggerNextServer();
       } finally {
         if (isMounted) setIsBuffering(false);
@@ -411,15 +406,7 @@ export default function StreamPlayer({ id }: { id: string }) {
               {streams.map((stream: any, index: number) => (
                 <button 
                   key={index} 
-                  onClick={() => { 
-                    setAllServersDown(false); 
-                    // 🎯 ম্যানুয়াল সুইচিং ফিক্সড: এখন বাটনে ক্লিক করলেই সার্ভার রিলোড হবে
-                    if (activeStreamIndex === index) { 
-                      setReloadTrigger(prev => prev + 1); 
-                    } else { 
-                      setActiveStreamIndex(index); 
-                    } 
-                  }} 
+                  onClick={() => { setAllServersDown(false); if (activeStreamIndex === index) { setReloadTrigger(prev => prev + 1); } else { setActiveStreamIndex(index); } }} 
                   className={`px-5 py-2 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border outline-none duration-150 ${activeStreamIndex === index && !allServersDown ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)]" : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white"}`}
                 >
                   {stream.title || (currentMatch?.eventInfo as any)?.link_names?.[index] || `Server ${index + 1}`}
