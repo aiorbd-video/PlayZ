@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import StreamPlayer from './StreamPlayer';
 
-// 🚀 সোর্স ডাটা ডাইরেক্ট সার্ভার সাইড থেকে রিড করার জন্য এন্টারপ্রাইজ API লিংক
-const LIVE_EVENTS_API = process.env.NEXT_PUBLIC_EVENT_API; 
+// 🚀 Vercel Environment Variable থেকে লিংক আসবে (কোনো হার্ডকোড লিংক নেই)
+const LIVE_EVENTS_API = process.env.NEXT_PUBLIC_LIVE_EVENTS_API as string;
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL as string;
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY;
@@ -18,7 +18,9 @@ export async function generateMetadata(
   const realId = id.includes('-') ? id.split('-').pop() : id;
 
   try {
-    // সরাসরি Hugging Face API থেকে ডাটা নিয়ে আসা হচ্ছে (সার্ভার সাইড এসইও)
+    if (!LIVE_EVENTS_API) throw new Error("API URL is missing in environment variables");
+
+    // Vercel Env থেকে আসা সোর্স লিংক ব্যবহার করে সার্ভার সাইড ফেচিং
     const res = await fetch(LIVE_EVENTS_API, { next: { revalidate: 15 } });
     if (!res.ok) throw new Error("Failed to fetch");
 
@@ -115,7 +117,7 @@ export async function generateMetadata(
   }
 }
 
-// 🎯 ২. গুগল সার্চ ইঞ্জিনের ট্রাস্ট অর্জনের জন্য সম্পূর্ণ Schema (JSON-LD) স্ট্রাকচার
+// 🎯 ২. গুগল সার্চ ইঞ্জিনের জন্য সম্পূর্ণ Schema (JSON-LD) স্ট্রাকচার
 export default async function Page(
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -127,44 +129,45 @@ export default async function Page(
   let jsonLd = null;
 
   try {
-    const res = await fetch(LIVE_EVENTS_API, { next: { revalidate: 15 } });
+    if (LIVE_EVENTS_API) {
+      const res = await fetch(LIVE_EVENTS_API, { next: { revalidate: 15 } });
 
-    if (res.ok) {
-      const rawMatches = await res.json();
-      const currentMatch = rawMatches.find((item: any) => {
-        const rawEvent = item.event || {};
-        const matchId = rawEvent.links ? rawEvent.links.replace("pro/", "").replace(".txt", "") : "";
-        return realId === matchId || id.endsWith(matchId);
-      });
+      if (res.ok) {
+        const rawMatches = await res.json();
+        const currentMatch = rawMatches.find((item: any) => {
+          const rawEvent = item.event || {};
+          const matchId = rawEvent.links ? rawEvent.links.replace("pro/", "").replace(".txt", "") : "";
+          return realId === matchId || id.endsWith(matchId);
+        });
 
-      if (currentMatch && currentMatch.event) {
-        const e = currentMatch.event;
+        if (currentMatch && currentMatch.event) {
+          const e = currentMatch.event;
 
-        // আপনার নতুন ISO ডেট ফরম্যাটের সাথে মিল রেখে স্ট্রাকচার
-        const convertToISO = (dStr: string, tStr: string) => {
-          if (!dStr || !tStr) return undefined;
-          const parts = dStr.split('/');
-          if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}T${tStr}Z`;
-          return `${dStr}T${tStr}Z`;
-        };
+          const convertToISO = (dStr: string, tStr: string) => {
+            if (!dStr || !tStr) return undefined;
+            const parts = dStr.split('/');
+            if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}T${tStr}Z`;
+            return `${dStr}T${tStr}Z`;
+          };
 
-        const startDateISO = convertToISO(e.date, e.time);
+          const startDateISO = convertToISO(e.date, e.time);
 
-        jsonLd = {
-          "@context": "https://schema.org",
-          "@type": "SportsEvent",
-          "name": `${e.teamAName || 'Team A'} vs ${e.teamBName || 'Team B'}`,
-          "sport": e.category || "Sports",
-          "description": `${e.eventName || 'Live Event'} Live Streaming HD`,
-          "eventStatus": "https://schema.org/EventScheduled",
-          "startDate": startDateISO,
-          "url": `${SITE_URL}/watch/${id}`,
-          "organizer": {
-            "@type": "Organization",
-            "name": "All in One Sports Web",
-            "url": SITE_URL
-          }
-        };
+          jsonLd = {
+            "@context": "https://schema.org",
+            "@type": "SportsEvent",
+            "name": `${e.teamAName || 'Team A'} vs ${e.teamBName || 'Team B'}`,
+            "sport": e.category || "Sports",
+            "description": `${e.eventName || 'Live Event'} Live Streaming HD`,
+            "eventStatus": "https://schema.org/EventScheduled",
+            "startDate": startDateISO,
+            "url": `${SITE_URL}/watch/${id}`,
+            "organizer": {
+              "@type": "Organization",
+              "name": "All in One Sports Web",
+              "url": SITE_URL
+            }
+          };
+        }
       }
     }
   } catch (error) {
@@ -184,7 +187,6 @@ export default async function Page(
       )}
 
       <div className="max-w-7xl mx-auto">
-        {/* 🟢 StreamPlayer-কে আসল আইডি দেওয়া হলো যাতে প্লেয়ার ইন্টারনাল লজিক ও সাইডবার ঠিকঠাক ট্র্যাক করতে পারে */}
         <StreamPlayer id={realId as string} />
       </div>
 
