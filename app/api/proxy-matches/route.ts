@@ -2,16 +2,8 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
-    // 🟢 কোনো হার্ডকোড লিংক নেই, পুরোটাই Vercel এর সিন্দুক থেকে আসবে
-    const HF_BASE_URL = process.env.API_URL;
-    
-    if (!HF_BASE_URL) {
-      console.error("🚨 API_URL is not set in environment variables");
-      return NextResponse.json({ error: "API Configuration missing" }, { status: 500 });
-    }
-
-    const cleanBaseUrl = HF_BASE_URL.endsWith('/') ? HF_BASE_URL.slice(0, -1) : HF_BASE_URL;
-    const FULL_DATA_URL = `${cleanBaseUrl}/get-data/categories/live-events.txt`;
+    // 🚀 তোমার নতুন হাগিং ফেস API লিংক (সরাসরি ইভেন্ট ডাটার জন্য)
+    const FULL_DATA_URL = "https://ratulxadia-playz-cats-event.hf.space/api/events";
 
     const response = await fetch(FULL_DATA_URL, {
       cache: 'no-store',
@@ -21,7 +13,7 @@ export async function GET() {
     });
 
     if (!response.ok) {
-      return NextResponse.json({ error: "Failed to fetch from HF" }, { status: response.status });
+      return NextResponse.json({ error: "Failed to fetch from HF Server" }, { status: response.status });
     }
 
     const data = await response.json();
