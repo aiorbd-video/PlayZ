@@ -55,7 +55,6 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
   const startTime = new Date(startStr);
   let endTime = new Date(endStr);
 
-  // 🎯 ম্যাজিক ফিক্স: end_time না থাকলে ডিফল্ট ৪ ঘণ্টা লাইভ থাকবে
   if (startTime.getTime() === endTime.getTime()) {
     endTime = new Date(startTime.getTime() + (4 * 60 * 60 * 1000));
   }
@@ -189,7 +188,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     const currentStreams = streamsRef.current;
     const currentIndex = activeIndexRef.current;
     if (currentStreams && currentIndex < currentStreams.length - 1) {
-      console.log(`Server ${currentIndex + 1} Failed. Switching to Server ${currentIndex + 2}`);
+      console.log(`[Critical Error] Server ${currentIndex + 1} Failed. Switching to Server ${currentIndex + 2}`);
       setActiveStreamIndex(currentIndex + 1);
     } else {
       console.log("All servers are down.");
@@ -242,10 +241,13 @@ export default function StreamPlayer({ id }: { id: string }) {
 
         player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
         
+        // 🟢 ফিক্স ১: শুধুমাত্র Critical (severity === 2) এরর হলেই সার্ভার সুইচ করবে।
         player.addEventListener('error', (e: any) => {
-          if (e.detail && e.detail.code !== 7000 && e.detail.code !== 7002) {
-            console.error("Shaka Streaming Error:", e.detail.code);
+          if (e.detail && e.detail.severity === 2 && e.detail.code !== 7000 && e.detail.code !== 7002) {
+            console.error("Shaka Critical Error:", e.detail.code);
             triggerNextServer();
+          } else {
+            console.warn("Shaka Recoverable Error Ignored:", e.detail?.code);
           }
         });
 
@@ -305,9 +307,12 @@ export default function StreamPlayer({ id }: { id: string }) {
         }
 
         await playerInstance.load(currentStream.link);
-      } catch (error) {
-        console.error("Initial Load Failed, Switching Server...", error);
-        if (isMounted) triggerNextServer();
+      } catch (error: any) {
+        // 🟢 ফিক্স ২: ইউজার নিজে ক্লিক করলে (7000/7002) সার্ভার লাফাবে না।
+        if (error.code !== 7000 && error.code !== 7002) {
+          console.error("Initial Load Failed, Switching Server...", error.code);
+          if (isMounted) triggerNextServer();
+        }
       } finally {
         if (isMounted) setIsBuffering(false);
       }
