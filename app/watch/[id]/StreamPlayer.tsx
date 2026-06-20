@@ -5,8 +5,8 @@ import useSWR from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
-import 'shaka-player/dist/controls.css';
 import Script from 'next/script';
+import Artplayer from 'artplayer';
 
 interface Stream {
   link_names: string[];
@@ -65,24 +65,15 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
 };
 
 export default function StreamPlayer({ id }: { id: string }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const videoContainerRef = useRef<HTMLDivElement>(null);
-  const [playerInstance, setPlayerInstance] = useState<any>(null);
+  const artRef = useRef<HTMLDivElement>(null);
   
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
   const [reloadTrigger, setReloadTrigger] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
   
-  const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
-  const [showFitToast, setShowFitToast] = useState(false);
   const [isBuffering, setIsBuffering] = useState(true);
   const [allServersDown, setAllServersDown] = useState(false);
-  const [isControlsVisible, setIsControlsVisible] = useState(true);
   const [showCopied, setShowCopied] = useState(false); 
-  
-  const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const streamsRef = useRef<any[] | null>(null);
-  const activeIndexRef = useRef<number>(0);
 
   const { data: rawMatches } = useSWR(LIVE_EVENTS_API ? LIVE_EVENTS_API : null, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
 
@@ -162,6 +153,8 @@ export default function StreamPlayer({ id }: { id: string }) {
   });
 
   const streams = Array.isArray(streamsFromApi) ? streamsFromApi : (streamsFromApi?.streams || null);
+  const streamsRef = useRef<any[] | null>(streams);
+  const activeIndexRef = useRef<number>(activeStreamIndex);
 
   useEffect(() => { streamsRef.current = streams; }, [streams]);
   useEffect(() => { activeIndexRef.current = activeStreamIndex; }, [activeStreamIndex]);
@@ -192,184 +185,129 @@ export default function StreamPlayer({ id }: { id: string }) {
     };
   }, []);
 
-  const handleFitToggle = useCallback(() => {
-    setObjectFit((prev) => {
-      const nextFit = prev === 'contain' ? 'cover' : prev === 'cover' ? 'fill' : 'contain';
-      setShowFitToast(true); 
-      return nextFit;
-    });
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener('toggleObjectFit', handleFitToggle);
-    return () => window.removeEventListener('toggleObjectFit', handleFitToggle);
-  }, [handleFitToggle]);
-
-  useEffect(() => {
-    if (showFitToast) {
-      const timer = setTimeout(() => setShowFitToast(false), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [showFitToast, objectFit]);
-
   const triggerNextServer = useCallback(() => {
     const currentStreams = streamsRef.current;
     const currentIndex = activeIndexRef.current;
     if (currentStreams && currentIndex < currentStreams.length - 1) {
-      console.log(`[Critical Error] Server ${currentIndex + 1} Failed. Switching to Server ${currentIndex + 2}`);
+      console.log(`[Server Issue] Switching to Server ${currentIndex + 2}`);
       setActiveStreamIndex(currentIndex + 1);
     } else {
-      console.log("All servers are down.");
       setAllServersDown(true); 
       setIsBuffering(false);
     }
   }, []);
 
+  // 🚀 🟢 ARTPLAYER & SHAKA CORE INTEGRATION
   useEffect(() => {
-    if (!videoRef.current || !videoContainerRef.current) return;
-    let shaka: any; let player: any; let ui: any;
-
-    const initPlayer = async () => {
-      try {
-        shaka = await import('shaka-player/dist/shaka-player.ui');
-        shaka.polyfill.installAll();
-
-        try {
-          if (shaka.ui.Controls && !(shaka.ui.Controls as any).custom_stretch_registered) {
-              class StretchButton extends shaka.ui.Element {
-                  constructor(parent: HTMLElement, controls: any) {
-                      super(parent, controls);
-                      const button = document.createElement('button');
-                      button.className = 'shaka-custom-stretch-btn shaka-tooltip';
-                      button.setAttribute('aria-label', 'Toggle Fit');
-                      button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
-                      this.eventManager.listen(button, 'click', () => window.dispatchEvent(new CustomEvent('toggleObjectFit')));
-                      parent.appendChild(button);
-                  }
-              }
-              shaka.ui.Controls.registerElement('custom_stretch', { create: (root: HTMLElement, ctrls: any) => new StretchButton(root, ctrls) });
-              (shaka.ui.Controls as any).custom_stretch_registered = true;
-          }
-        } catch (e) {}
-
-        player = new shaka.Player(videoRef.current);
-        ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
-        
-        ui.configure({
-          controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'custom_stretch', 'overflow_menu', 'fullscreen'],
-          addSeekBar: true,
-          trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.LABEL
-        });
-
-        document.addEventListener('fullscreenchange', () => {
-          if (document.fullscreenElement && window.screen && window.screen.orientation && (window.screen.orientation as any).lock) {
-            (window.screen.orientation as any).lock('landscape').catch(() => {});
-          }
-        });
-
-        player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
-        
-        player.addEventListener('error', (e: any) => {
-          // 🟢 ফিক্স: শুধুমাত্র নেটওয়ার্ক রিট্রাই সম্পূর্ণ ফেইল করলে তবেই সার্ভার সুইচ করবে। 
-          // ছোটখাটো এররে আর সার্ভার লাফাবে না।
-          if (e.detail && e.detail.severity === 2 && e.detail.code !== 7000 && e.detail.code !== 7002) {
-            console.error("Shaka Critical Fatal Error:", e.detail.code);
-            triggerNextServer();
-          }
-        });
-
-        setPlayerInstance(player);
-      } catch (err) { 
-        console.error("Init Error", err); 
-      }
-    };
-
-    initPlayer();
-
-    return () => { 
-      if (ui) ui.destroy(); 
-      if (player) player.destroy(); 
-    };
-  }, [triggerNextServer]);
-
-  useEffect(() => {
-    if (!playerInstance || !streams || streams.length === 0 || allServersDown) return;
+    if (!streams || streams.length === 0 || allServersDown) return;
     const currentStream = streams[activeStreamIndex];
     if (!currentStream || !currentStream.link) return;
+    if (!artRef.current) return;
 
+    let artInstance: any = null;
+    let shakaInstance: any = null;
     let isMounted = true;
 
-        const loadVideo = async () => {
+    const setupPlayer = async () => {
       setIsBuffering(true);
-      try {
-        await playerInstance.unload();
+      
+      // ডাইনামিক ইমপোর্ট (Next.js এর SSR এরর এড়ানোর জন্য)
+      const shaka = (await import('shaka-player/dist/shaka-player.compiled')).default || await import('shaka-player/dist/shaka-player.compiled');
+      
+      if (!isMounted) return;
 
-        // 🚀 👑 প্রো-লেভেল Shaka Player কনফিগারেশন (For Zero Buffering)
-        playerInstance.configure({
-          streaming: {
-            bufferingGoal: 10,           // 👈 ফিক্স: লাইভ স্ট্রিমে ১০ সেকেন্ডের বেশি বাফার করার চেষ্টা করবে না
-            rebufferingGoal: 1,          // মাত্র ১ সেকেন্ড লোড হলেই খেলা চালু হয়ে যাবে
-            bufferBehind: 5,             // পেছনের ভিডিও মেমোরিতে জমিয়ে রেখে ফোন স্লো করবে না
-            jumpLargeGaps: true,         
-            ignoreTextStreamFailures: true,
-            retryParameters: { 
-              maxAttempts: 10,           
-              baseDelay: 1000, 
-              backoffFactor: 1.5, 
-              fuzzFactor: 0.5, 
-              timeout: 10000 
-            },
-            stallEnabled: true,
-            stallThreshold: 1,
-            stallSkip: 0.5
-          },
-          manifest: {
-            dash: { ignoreMinBufferTime: true },
-            hls: { ignoreManifestProgramDateTime: true }, 
-            retryParameters: { maxAttempts: 10, baseDelay: 1000, timeout: 10000 }
-          },
-          abr: {
-            enabled: true,
-            switchInterval: 1,               // 👈 ফিক্স: প্রতি ১ সেকেন্ড পরপর নেট স্পিড চেক করবে (Instant React)
-            bandwidthDowngradeTarget: 0.99,  // 👈 ফিক্স: নেট স্পিড একটুখানি (১%) কমলেই সাথে সাথে কোয়ালিটি কমিয়ে দেবে
-            bandwidthUpgradeTarget: 0.50,    // 👈 ফিক্স: নেটওয়ার্ক স্পিড প্রয়োজনের দ্বিগুণ থাকলে তবেই HD তে যাবে
-            defaultBandwidthEstimate: 300000, // 👈 ফিক্স: 300kbps (SD কোয়ালিটি) থেকে প্লে শুরু হবে, যাতে সাথে সাথে চালু হয়
-            restrictToElementSize: true,     // 👑 ম্যাজিক: মোবাইলের ছোট স্ক্রিনে কখনোই 1080p টেনে নেটওয়ার্ক জ্যাম করবে না
-            safeMarginSwitch: true,
-            clearBufferSwitch: true          // 👈 ফিক্স: কোয়ালিটি কমানোর সময় হাই-রেজুলেশনের বাফার ডিলিট করে ইনস্ট্যান্ট লো-কোয়ালিটি প্লে করবে
-          }
-        });
+      artInstance = new Artplayer({
+        container: artRef.current!,
+        url: currentStream.link,
+        type: 'shaka',
+        theme: '#00E5FF',
+        isLive: true,
+        autoplay: true,
+        pip: true,
+        fullscreen: true,
+        fullscreenWeb: true,
+        setting: true,
+        fastForward: true,        // 👈 ExoPlayer এর মতো ডাবল ট্যাপে স্কিপ
+        miniProgressBar: true,    // 👈 নিচে চিকন প্রোগ্রেস বার
+        playsInline: true,
+        autoOrientation: true,    // 👈 মোবাইল ঘুরলে ফুলস্ক্রিন
+        mutex: true,
+        customType: {
+          shaka: async function (video: HTMLVideoElement, url: string, art: any) {
+            shaka.polyfill.installAll();
+            const player = new shaka.Player(video);
+            shakaInstance = player;
+            art.shaka = player; // এক্সপোজ ফর ডেসট্রয়
 
-        if (currentStream.api) {
-          const cleanDrm = currentStream.api.replace(/['"\s]/g, '');
-          if (cleanDrm.includes(':')) {
-            const [kid, key] = cleanDrm.split(':');
-            playerInstance.configure({ drm: { clearKeys: { [kid]: key } } });
+            // 👑 দ্য বেস্ট শাকা কনফিগারেশন (For Zero Buffering & Lowest Initial Load)
+            player.configure({
+              streaming: {
+                bufferingGoal: 15,
+                rebufferingGoal: 1,
+                bufferBehind: 5,
+                jumpLargeGaps: true,
+                retryParameters: { maxAttempts: 5, baseDelay: 1000, timeout: 10000 }
+              },
+              abr: {
+                enabled: true,
+                defaultBandwidthEstimate: 100000,  // 👈 ম্যাজিক: 100kbps (ফোর্স লোয়েস্ট কোয়ালিটি) જેથી শুরুতে 720p না টানে
+                switchInterval: 1,
+                bandwidthDowngradeTarget: 0.95,
+                bandwidthUpgradeTarget: 0.70,
+                clearBufferSwitch: true            // 👈 কোয়ালিটি কমানোর সময় বাফার ডিলিট করে ইনস্ট্যান্ট সুইচ করবে
+              }
+            });
+
+            // DRM
+            if (currentStream.api) {
+              const cleanDrm = currentStream.api.replace(/['"\s]/g, '');
+              if (cleanDrm.includes(':')) {
+                const [kid, key] = cleanDrm.split(':');
+                player.configure({ drm: { clearKeys: { [kid]: key } } });
+              }
+            }
+
+            // ইভেন্টস
+            player.addEventListener('error', (e: any) => {
+              if (e.detail && e.detail.severity === 2 && e.detail.code !== 7000 && e.detail.code !== 7002) {
+                console.error("Shaka Critical Error:", e.detail.code);
+                if (isMounted) triggerNextServer();
+              }
+            });
+
+            player.addEventListener('buffering', (e: any) => {
+              if (isMounted) setIsBuffering(e.buffering);
+            });
+
+            try {
+              await player.load(url);
+              if (isMounted) setIsBuffering(false);
+            } catch (error: any) {
+              if (error.code !== 7000 && error.code !== 7002) {
+                if (isMounted) triggerNextServer();
+              }
+            }
           }
         }
+      });
 
-        await playerInstance.load(currentStream.link);
-      } catch (error: any) {
-        if (error.code !== 7000 && error.code !== 7002) {
-          console.error("Initial Load Failed, Switching Server...", error.code);
-          if (isMounted) triggerNextServer();
-        }
-      } finally {
+      artInstance.on('ready', () => {
         if (isMounted) setIsBuffering(false);
-      }
+      });
     };
 
-    
-    loadVideo();
+    setupPlayer();
 
-    return () => { isMounted = false; };
-  }, [playerInstance, streams, activeStreamIndex, reloadTrigger, allServersDown, triggerNextServer]);
-
-  const handleUserActivity = () => {
-    setIsControlsVisible(true);
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    hideTimerRef.current = setTimeout(() => setIsControlsVisible(false), 3000);
-  };
+    return () => {
+      isMounted = false;
+      if (shakaInstance) {
+        shakaInstance.destroy();
+      }
+      if (artInstance && artInstance.destroy) {
+        artInstance.destroy(false);
+      }
+    };
+  }, [streams, activeStreamIndex, reloadTrigger, allServersDown, triggerNextServer]);
 
   const handleShare = async () => {
     const matchTitle = currentMatch && currentMatch.eventInfo ? `${currentMatch.eventInfo.teamA} VS ${currentMatch.eventInfo.teamB}` : 'Live Match';
@@ -404,49 +342,34 @@ export default function StreamPlayer({ id }: { id: string }) {
 
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
         <div className="lg:col-span-2 flex flex-col">
-          <div 
-            ref={videoContainerRef} 
-            className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group"
-            onMouseMoveCapture={handleUserActivity} onTouchStartCapture={handleUserActivity} onClickCapture={handleUserActivity}
-            onMouseLeave={() => setIsControlsVisible(false)}
-          >
+          
+          {/* 🟢 ARTPLAYER CONTAINER */}
+          <div className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 group">
+            
             {!streams && !allServersDown && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/90 z-10 flex-col gap-3">
+              <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/90 z-20 flex-col gap-3">
                 <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin"></div>
                 <span className="text-[#00E5FF] font-bold text-sm animate-pulse tracking-wider">Fetching Secure Stream...</span>
               </div>
             )}
 
             {isBuffering && !allServersDown && streams && (
-              <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
-                <div className="w-12 h-12 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin mb-3"></div>
-                <p className="text-[#00E5FF] font-bold animate-pulse text-sm">Connecting to Server {activeStreamIndex + 1}...</p>
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-transparent pointer-events-none">
+                <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin"></div>
               </div>
             )}
 
             {allServersDown && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/95 z-50 flex-col gap-4 text-center p-4">
+              <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/95 z-30 flex-col gap-4 text-center p-4">
                 <span className="text-4xl">📡</span>
                 <div className="text-red-400 font-bold tracking-wide">Stream Currently Unavailable</div>
                 <button onClick={() => { setAllServersDown(false); setActiveStreamIndex(0); setReloadTrigger(prev => prev + 1); }} className="mt-2 bg-[#1C1E2B] border border-gray-700 hover:border-[#00E5FF] text-white px-5 py-2 rounded-full text-xs font-bold">Retry Server 1</button>
               </div>
             )}
 
-            <video ref={videoRef} className={`w-full h-full transition-all duration-300 pointer-events-none ${objectFit === 'fill' ? 'object-fill' : objectFit === 'cover' ? 'object-cover' : 'object-contain'}`} autoPlay playsInline />
-            
-            <AnimatePresence>
-              {showFitToast && (
-                <motion.div 
-                  initial={{ opacity: 0, y: -10 }} 
-                  animate={{ opacity: 1, y: 0 }} 
-                  exit={{ opacity: 0, y: -10 }} 
-                  className="absolute top-6 left-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none"
-                >
-                  <span className="w-2 h-2 rounded-full bg-[#00E5FF] animate-pulse"></span>
-                  <span className="text-xs md:text-sm font-bold text-white capitalize">{objectFit === 'contain' ? 'Fit to Screen' : objectFit === 'cover' ? 'Zoom (Cropped)' : 'Stretch (Fill)'}</span>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {/* ARTPLAYER MOUNT POINT */}
+            <div ref={artRef} className="w-full h-full outline-none"></div>
+
           </div>
 
           {streams && streams.length > 0 && (
@@ -522,7 +445,15 @@ export default function StreamPlayer({ id }: { id: string }) {
           </div>
         </div>
       </div>
-      <style dangerouslySetInnerHTML={{__html: `.shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; display: flex; align-items: center; justify-content: center; } .scrollbar-hide::-webkit-scrollbar { display: none; }`}} />
+      
+      {/* 🟢 Artplayer এর কাস্টম স্টাইলস (টু মেক ইট ক্লিন লাইক ExoPlayer) */}
+      <style dangerouslySetInnerHTML={{__html: `
+        .art-video-player .art-bottom { padding-bottom: 5px !important; }
+        .art-video-player .art-progress { height: 4px !important; }
+        .art-video-player .art-progress-played { background-color: #00E5FF !important; }
+        .art-video-player .art-progress-indicator { background-color: #00E5FF !important; box-shadow: 0 0 10px #00E5FF !important; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+      `}} />
       
       <Script 
         src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js"
