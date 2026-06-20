@@ -10,9 +10,8 @@ import Script from 'next/script';
 
 // --- Interfaces ---
 interface Stream {
-  link: string;
-  api: string;
-  title: string;
+  link_names: string[];
+  links: string;
 }
 
 interface EventInfo {
@@ -29,15 +28,13 @@ interface EventInfo {
 interface Match {
   id: number | string;
   eventInfo: EventInfo;
+  streams?: any[]; // নতুন এপিআই থেকে যদি স্ট্রিম আসে
+  links?: string; // নতুন এপিআই এর লিংক ফরম্যাট
 }
 
-interface ApiResponse {
-  streams: Stream[] | null;
-  matchInfo?: Match | null;
-}
-
-// --- Constants & Helpers ---
-const MATCH_API = "/api/proxy-matches";
+// 🚀 তোমার নতুন হাগিং ফেস API লিংকগুলো
+const LIVE_EVENTS_API = "https://ratulxadia-playz-cats-event.hf.space/api/events";
+const STREAM_API_BASE = "https://ratulxadia-playz-cats-event.hf.space/api/stream/";
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
@@ -82,16 +79,24 @@ export default function StreamPlayer({ id }: { id: string }) {
   const [showCopied, setShowCopied] = useState(false); 
   
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const streamsRef = useRef<Stream[] | null>(null);
+  const streamsRef = useRef<any[] | null>(null);
   const activeIndexRef = useRef<number>(0);
 
-  // Data Fetching
-  const { data: rawMatches } = useSWR(MATCH_API, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
+  // 🎯 ১. সাইডবারের জন্য সব লাইভ ইভেন্ট ফেচ করা হচ্ছে
+  const { data: rawMatches } = useSWR(LIVE_EVENTS_API, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
   const matches: Match[] | null = Array.isArray(rawMatches) ? rawMatches : null;
+  const currentMatch = matches ? matches.find((m) => m.id.toString() === id) : null;
 
-  const { data: apiResponse } = useSWR<ApiResponse>(`/api/streams/${id}`, fetcher, { refreshInterval: 15000, revalidateOnFocus: false });
-  const streams = apiResponse?.streams || null;
-  const currentMatch = apiResponse?.matchInfo || (matches ? matches.find((m) => m.id.toString() === id) : null);
+  // 🎯 ২. স্ট্রিম ফেচ করার লজিক (slug বের করে নতুন API কল করা)
+  let streamFetchUrl = null;
+  if (currentMatch && currentMatch.links) {
+    const streamSlug = currentMatch.links.replace("pro/", "").replace(".txt", "");
+    streamFetchUrl = `${STREAM_API_BASE}${streamSlug}`;
+  }
+
+  const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { refreshInterval: 15000, revalidateOnFocus: false });
+  // নতুন ডাটা স্ট্রাকচারে streamsFromApi সরাসরি অ্যারে হিসেবে আসতে পারে
+  const streams = Array.isArray(streamsFromApi) ? streamsFromApi : (streamsFromApi?.streams || null);
 
   useEffect(() => { streamsRef.current = streams; }, [streams]);
   useEffect(() => { activeIndexRef.current = activeStreamIndex; }, [activeStreamIndex]);
@@ -199,7 +204,6 @@ export default function StreamPlayer({ id }: { id: string }) {
 
         player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
         
-        // 🟢 ফিক্স ২: শুধুমাত্র লোড ইন্টারাপ্ট (৭০০০) বাদে ৪MD৪/HTTP এরর সহ সব মেইন নেটওয়ার্ক এররে পরের সার্ভারে নিয়ে যাবে
         player.addEventListener('error', (e: any) => {
           if (e.detail && e.detail.code !== 7000) {
             console.error("Shaka Player Streaming Error Code:", e.detail.code);
@@ -225,10 +229,9 @@ export default function StreamPlayer({ id }: { id: string }) {
   useEffect(() => {
     if (!playerInstance || !streams || streams.length === 0 || allServersDown) return;
     const currentStream = streams[activeStreamIndex];
-    if (!currentStream) return;
+    if (!currentStream || !currentStream.link) return;
 
     const loadVideo = async () => {
-      // 🟢 ফিক্স ৩: SWR রিফ্রেশ দিলেও যদি একই ইউআরএল চালু থাকে, তবে খেলা রিস্টার্ট বা বাফারিং করবে না
       if (playerInstance.getAssetUri && playerInstance.getAssetUri() === currentStream.link) {
         return;
       }
@@ -292,11 +295,9 @@ export default function StreamPlayer({ id }: { id: string }) {
           }
         }
 
-        // 🟢 ফিক্স ৪: জোরপূর্বক http->https রিপ্লেসমেন্ট রিমুভ করা হলো (যাতে অ্যাপ লেভেলে র স্ট্রিম রান করতে পারে)
         await playerInstance.load(currentStream.link);
       } catch (error) {
         console.error("Initial Load Error:", error);
-        // 🟢 ফিক্স ১: ক্যাচ ব্লক থেকে ডাবল সুইচিং রিমুভ করা হলো (যা ইভেন্ট লিসেনার একাই হ্যান্ডেল করবে)
       } finally {
         setIsBuffering(false);
       }
@@ -338,7 +339,7 @@ export default function StreamPlayer({ id }: { id: string }) {
             </button>
           </Link>
           <span className="text-sm md:text-base font-bold text-gray-100 truncate max-w-xs sm:max-w-md tracking-wide">
-            {currentMatch ? `${currentMatch.eventInfo.teamA} VS ${currentMatch.eventInfo.teamB}` : "Live Streaming"}
+            {currentMatch && currentMatch.eventInfo ? `${currentMatch.eventInfo.teamA} VS ${currentMatch.eventInfo.teamB}` : "Live Streaming"}
           </span>
           <div className="w-10"></div>
         </div>
@@ -431,13 +432,13 @@ export default function StreamPlayer({ id }: { id: string }) {
                       : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white active:border-[#00E5FF]"
                   }`}
                 >
-                  {stream.title || `Server ${index + 1}`}
+                  {stream.title || currentMatch?.eventInfo?.link_names?.[index] || `Server ${index + 1}`}
                 </button>
               ))}
             </div>
           )}
 
-          {currentMatch ? (
+          {currentMatch && currentMatch.eventInfo ? (
             <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 mt-3 shadow-lg relative group">
               <button
                 onClick={handleShare}
@@ -501,6 +502,7 @@ export default function StreamPlayer({ id }: { id: string }) {
             )}
 
             {matches && matches.map((match) => {
+              if (!match.eventInfo) return null;
               const status = getMatchStatus(match.eventInfo.startTime, match.eventInfo.endTime, currentTime);
               const isCurrent = match.id.toString() === id;
               
