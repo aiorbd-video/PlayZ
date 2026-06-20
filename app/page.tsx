@@ -7,33 +7,17 @@ import { motion } from 'framer-motion';
 import { fetcher, getMatchStatus, getCategoryIcon } from './utils/helpers';
 import { ChannelCard, MatchCard } from './components/Cards';
 
-const LIVE_EVENTS_API = "https://ratulxadia-playz-cats-event.hf.space/api/events";
+// 🚀 Vercel Environment Variable থেকে লিংক আসবে
+const LIVE_EVENTS_API = process.env.NEXT_PUBLIC_LIVE_EVENTS_API || "";
 
 function MarqueeNotice() {
-  const { data } = useSWR('/api/notice', fetcher, { 
-    refreshInterval: 30000, 
-    revalidateOnFocus: false 
-  });
-
-  if (!data || !data.notice || data.notice.trim() === "" || data.notice === "null") {
-    return null;
-  }
+  const { data } = useSWR('/api/notice', fetcher, { refreshInterval: 30000, revalidateOnFocus: false });
+  if (!data || !data.notice || data.notice.trim() === "" || data.notice === "null") return null;
 
   return (
     <div className="w-full bg-[#1C1E2B] border-b border-gray-800/50 text-[#00E5FF] py-2 overflow-hidden flex items-center shadow-md">
-      <div className="bg-red-500 text-white text-[11px] md:text-xs font-black px-3 py-1 rounded-r-md z-10 shrink-0 uppercase tracking-wider shadow-md animate-pulse">
-        Notice
-      </div>
-      {require('react').createElement(
-        'marquee',
-        {
-          behavior: 'scroll',
-          direction: 'left',
-          scrollamount: '5',
-          className: 'text-xs md:text-sm font-bold tracking-wide pl-4',
-        },
-        data.notice
-      )}
+      <div className="bg-red-500 text-white text-[11px] md:text-xs font-black px-3 py-1 rounded-r-md z-10 shrink-0 uppercase tracking-wider shadow-md animate-pulse">Notice</div>
+      {require('react').createElement('marquee', { behavior: 'scroll', direction: 'left', scrollamount: '5', className: 'text-xs md:text-sm font-bold tracking-wide pl-4' }, data.notice)}
     </div>
   );
 }
@@ -53,9 +37,7 @@ export default function Home() {
     const handlePopState = () => {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get('tab') || 'Live Events';
-      if (tab === 'Sports' || tab === 'Live Events' || tab === 'Categories') {
-        setActiveTab(tab as any);
-      }
+      if (tab === 'Sports' || tab === 'Live Events' || tab === 'Categories') setActiveTab(tab as any);
     };
     handlePopState(); 
     window.addEventListener('popstate', handlePopState);
@@ -68,30 +50,25 @@ export default function Home() {
   }, []);
 
   const handleTabChange = (tab: 'Sports' | 'Live Events' | 'Categories') => {
-    setActiveTab(tab);
-    setSearchInp('');
-    setShowSearch(false);
+    setActiveTab(tab); setSearchInp(''); setShowSearch(false);
     router.push(`/?tab=${encodeURIComponent(tab)}`); 
   };
 
   const handleShare = async () => {
     try {
-      if (navigator.share) {
-        await navigator.share({ title: 'All In One Reborn - Live Sports', url: window.location.href });
-      } else {
-        navigator.clipboard.writeText(window.location.href); alert('Link copied to clipboard!');
-      }
+      if (navigator.share) await navigator.share({ title: 'All In One Reborn - Live Sports', url: window.location.href });
+      else { navigator.clipboard.writeText(window.location.href); alert('Link copied to clipboard!'); }
     } catch (err) { console.log('Share error', err); }
   };
 
-  const { data: rawMatches } = useSWR(LIVE_EVENTS_API, fetcher, { refreshInterval: 30000, revalidateOnFocus: false, dedupingInterval: 15000 });
+  // ✅ লাইভ API কল
+  const { data: rawMatches } = useSWR(LIVE_EVENTS_API ? LIVE_EVENTS_API : null, fetcher, { refreshInterval: 30000, revalidateOnFocus: false, dedupingInterval: 15000 });
   const { data: channelData } = useSWR('/api/channels', fetcher, { refreshInterval: 60000, revalidateOnFocus: false, revalidateOnReconnect: true, dedupingInterval: 20000 });
   const { data: m3uData } = useSWR('/api/m3u', fetcher, { refreshInterval: 90000, revalidateOnFocus: false, dedupingInterval: 30000 });
   
   const channels = channelData?.channels || [];
   const m3uChannels = m3uData?.channels || [];
 
-  // 🎯 টাইমজোন ফিক্স: 'Z' যুক্ত করা হয়েছে যাতে ব্রাউজার বোঝে এটি লন্ডন (UTC) টাইম
   const matches = useMemo(() => {
     if (!rawMatches || !Array.isArray(rawMatches)) return null;
 
@@ -102,10 +79,8 @@ export default function Home() {
       const convertDate = (dStr: string, tStr: string) => {
         if (!dStr || !tStr) return "";
         const parts = dStr.split('/');
-        if (parts.length === 3) {
-          return `${parts[2]}-${parts[1]}-${parts[0]}T${tStr}Z`; // 👈 ম্যাজিক 'Z'
-        }
-        return `${dStr}T${tStr}Z`; // 👈 ম্যাজিক 'Z'
+        if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}T${tStr}Z`; 
+        return `${dStr}T${tStr}Z`; 
       };
 
       const startTime = convertDate(rawEvent.date, rawEvent.time);
@@ -211,7 +186,6 @@ export default function Home() {
               <button onClick={() => handleTabChange('Categories')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${activeTab === 'Categories' ? 'bg-[#2A2D3E] text-[#00E5FF] shadow-md' : 'text-gray-400 hover:text-gray-200'}`}>Playlists</button>
             </div>
             <div className="flex items-center gap-4 text-gray-300">
-              <svg onClick={handleShare} xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 md:h-6 md:w-6 hover:text-[#00E5FF] cursor-pointer transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg>
               <svg onClick={() => setShowSearch(true)} xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 md:h-6 md:w-6 hover:text-[#00E5FF] cursor-pointer transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             </div>
           </>
