@@ -282,33 +282,66 @@ export default function StreamPlayer({ id }: { id: string }) {
         
         // 🟢 হুবহু আপনার অরিজিনাল শাকা কনফিগারেশন ফিরিয়ে আনা হলো (DASH/MPD এর জন্য ১০০% টেস্টেড)
         playerInstance.configure({
-          streaming: {
-            bufferingGoal: 10,
-            rebufferingGoal: 1,
-            bufferBehind: 5,
-            jumpLargeGaps: true,
-            ignoreTextStreamFailures: true,
-            retryParameters: { maxAttempts: 10, baseDelay: 1000, backoffFactor: 1.5, fuzzFactor: 0.5, timeout: 10000 },
-            stallEnabled: true,
-            stallThreshold: 1,
-            stallSkip: 0.5
-          },
-          manifest: {
-            dash: { ignoreMinBufferTime: true },
-            hls: { ignoreManifestProgramDateTime: true },
-            retryParameters: { maxAttempts: 10, baseDelay: 1000, timeout: 10000 }
-          },
-          abr: {
-            enabled: true,
-            switchInterval: 1,
-            bandwidthDowngradeTarget: 0.99,
-            bandwidthUpgradeTarget: 0.50,
-            defaultBandwidthEstimate: 300000,
-            restrictToElementSize: true,
-            safeMarginSwitch: true,
-            clearBufferSwitch: true
-          }
-        });
+  streaming: {
+    bufferingGoal: 15,          // 10 → 15
+    rebufferingGoal: 1,
+    bufferBehind: 10,           // 5 → 10
+
+    jumpLargeGaps: true,
+    smallGapLimit: 2,
+
+    ignoreTextStreamFailures: true,
+
+    retryParameters: {
+      maxAttempts: 15,
+      baseDelay: 500,
+      backoffFactor: 1.5,
+      fuzzFactor: 0.5,
+      timeout: 15000
+    },
+
+    stallEnabled: true,
+    stallThreshold: 1,
+    stallSkip: 0.5,
+
+    inaccurateManifestTolerance: 2,
+    lowLatencyMode: false
+  },
+
+  manifest: {
+    retryParameters: {
+      maxAttempts: 15,
+      baseDelay: 500,
+      timeout: 15000
+    },
+
+    dash: {
+      ignoreMinBufferTime: true,
+      autoCorrectDrift: true
+    },
+
+    hls: {
+      ignoreManifestProgramDateTime: true,
+      sequenceMode: true
+    }
+  },
+
+  abr: {
+    enabled: true,
+
+    switchInterval: 2,
+
+    bandwidthDowngradeTarget: 0.95,
+    bandwidthUpgradeTarget: 0.75,
+
+    defaultBandwidthEstimate: 1000000,
+
+    restrictToElementSize: true,
+
+    clearBufferSwitch: false,
+    safeMarginSwitch: true
+  }
+});
         if (currentStream.api) {
           const cleanDrm = currentStream.api.replace(/['"\s]/g, '');
           if (cleanDrm.includes(':')) {
