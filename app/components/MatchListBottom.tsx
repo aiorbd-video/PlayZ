@@ -20,7 +20,7 @@ const generateSlug = (teamA: string, teamB: string, eventName: string, id: strin
     if (!text) return '';
     return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
   };
-  return `${clean(teamA || 'team-a')}-vs-${clean(teamB || 'team-b')}-${id}`;
+  return `${clean(teamA || 'team-a')}-vs-${clean(teamb || 'team-b')}-${id}`;
 };
 
 const SmartImage = memo(({ src, alt, fill, width, height, className }: any) => {
@@ -211,11 +211,13 @@ export default function MatchListBottom({ currentMatchId }: { currentMatchId: st
           const timeParts = tStr.split(':');
           let hours = parseInt(timeParts[0], 10) || 0;
           const minutes = parseInt(timeParts[1], 10) || 0;
+          const seconds = parseInt(timeParts[2], 10) || 0;
 
-          // 12-hour AM/PM adjustment for matching exact Bangladesh local time
+          // 12-hour gap compensation logic for AM/PM mapping from API
           hours += 12;
 
-          const utcTimestamp = Date.UTC(year, month - 1, day, hours - 6, minutes, 0);
+          // Pure UTC generator preventing double-offset drift across Vercel and Client browsers
+          const utcTimestamp = Date.UTC(year, month - 1, day, hours - 6, minutes, seconds);
           return new Date(utcTimestamp).toISOString();
         } catch (e) { return ""; }
       };
@@ -239,6 +241,11 @@ export default function MatchListBottom({ currentMatchId }: { currentMatchId: st
       };
 
       const startMs = startTime ? new Date(startTime).getTime() : null;
+      const endMs = endTime ? new Date(endTime).getTime() : null;
+
+      // Filter out matches that have already completed based on target end_time
+      if (endMs && now > endMs) return;
+
       if (startMs && now >= startMs - 15 * 60 * 1000) {
         liveList.push(matchObj);
       } else {
