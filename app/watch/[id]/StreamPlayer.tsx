@@ -43,7 +43,6 @@ const getImg = (url: string | undefined | null) => {
   return `${IMG_PROXY}${encodeURIComponent(url)}`;
 };
 
-// 🎯 Auto Detect Stream Type & MIME Hint
 const getMimeType = (url: string) => {
   if (url.includes('.mpd')) return 'application/dash+xml';
   if (url.includes('.m3u8')) return 'application/x-mpegURL';
@@ -63,7 +62,8 @@ export default function StreamPlayer({ id }: { id: string }) {
   const maxRetry = 2;
   const baseRetryDelay = 1000; 
   
-  const failedServersRef = useRef<Map<number, number>>(new Map());
+  // 🎯 Fix 5: Exponential Cooldown Blacklist (stores time & attempts)
+  const failedServersRef = useRef<Map<number, { time: number, attempts: number }>>(new Map());
   const timersRef = useRef<Set<NodeJS.Timeout>>(new Set());
   
   const failoverLockRef = useRef(false);
@@ -84,6 +84,12 @@ export default function StreamPlayer({ id }: { id: string }) {
   const [allServersDown, setAllServersDown] = useState(false);
   const [isControlsVisible, setIsControlsVisible] = useState(true);
   const [showCopied, setShowCopied] = useState(false);
+  
+  const [currentTime, setCurrentTime] = useState(new Date());
+  useEffect(() => {
+    const t = setInterval(() => setCurrentTime(new Date()), 60000);
+    return () => clearInterval(t);
+  }, []);
 
   const { data: rawMatches } = useSWR(LIVE_EVENTS_API ? LIVE_EVENTS_API : null, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
 
@@ -103,25 +109,18 @@ export default function StreamPlayer({ id }: { id: string }) {
           } else if (dStr.includes('-')) {
             const hyphenParts = dStr.split('-');
             if (hyphenParts[0].length === 4) {
-              year = parseInt(hyphenParts[0], 10);
-              month = parseInt(hyphenParts[1], 10);
-              day = parseInt(hyphenParts[2], 10);
+              year = parseInt(hyphenParts[0], 10); month = parseInt(hyphenParts[1], 10); day = parseInt(hyphenParts[2], 10);
             } else {
-              day = parseInt(hyphenParts[0], 10);
-              month = parseInt(hyphenParts[1], 10);
-              year = parseInt(hyphenParts[2], 10);
+              day = parseInt(hyphenParts[0], 10); month = parseInt(hyphenParts[1], 10); year = parseInt(hyphenParts[2], 10);
             }
           }
           const timeParts = tStr.split(':');
           const hours = parseInt(timeParts[0], 10) || 0;
           const minutes = parseInt(timeParts[1], 10) || 0;
-          
           const localTimestamp = new Date(year, month - 1, day, hours, minutes, 0).getTime();
           const utcTimestamp = localTimestamp - (6 * 60 * 60 * 1000); 
           return new Date(utcTimestamp).toISOString();
-        } catch (e) {
-          return "";
-        }
+        } catch (e) { return ""; }
       };
       
       const startTime = convertDate(rawEvent.date, rawEvent.time);
@@ -132,15 +131,10 @@ export default function StreamPlayer({ id }: { id: string }) {
         id: matchId,
         links: rawEvent.links || "",
         eventInfo: {
-          eventCat: rawEvent.category || "Live Event",
-          eventName: rawEvent.eventName || "Live Match",
-          teamA: rawEvent.teamAName || "Team A",
-          teamB: rawEvent.teamBName || "Team B",
-          teamAFlag: rawEvent.teamAFlag || "",
-          teamBFlag: rawEvent.teamBFlag || "",
-          startTime, endTime,
-          eventLogo: rawEvent.eventLogo || "",
-          link_names: rawEvent.link_names || []
+          eventCat: rawEvent.category || "Live Event", eventName: rawEvent.eventName || "Live Match",
+          teamA: rawEvent.teamAName || "Team A", teamB: rawEvent.teamBName || "Team B",
+          teamAFlag: rawEvent.teamAFlag || "", teamBFlag: rawEvent.teamBFlag || "",
+          startTime, endTime, eventLogo: rawEvent.eventLogo || "", link_names: rawEvent.link_names || []
         }
       };
     });
@@ -173,8 +167,9 @@ export default function StreamPlayer({ id }: { id: string }) {
     else if (streamsFromApi.streams && Array.isArray(streamsFromApi.streams)) rawList = streamsFromApi.streams;
     if (!rawList) return null;
     
-    return rawList.filter(s => s && typeof s.link === 'string').map(s => ({
+    return rawList.filter(s => s && (typeof s.link === 'string' || typeof s.url === 'string')).map(s => ({
       ...s,
+      link: s.link || s.url || "",
       title: typeof s.title === 'string' ? s.title : undefined,
       api: typeof s.api === 'string' ? s.api : undefined
     }));
@@ -198,23 +193,16 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   useEffect(() => {
     const blockInspect = (e: MouseEvent) => e.preventDefault();
-    const blockKeys = (e: KeyboardEvent) => {
-      if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'C' || e.key === 'J'))) { e.preventDefault(); }
-    };
-    document.addEventListener('contextmenu', blockInspect);
-    document.addEventListener('keydown', blockKeys);
-    return () => {
-      document.removeEventListener('contextmenu', blockInspect);
-      document.removeEventListener('keydown', blockKeys);
-    };
+    const blockKeys = (e: KeyboardEvent) => { if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'C' || e.key === 'J'))) e.preventDefault(); };
+    document.addEventListener('contextmenu', blockInspect); document.addEventListener('keydown', blockKeys);
+    return () => { document.removeEventListener('contextmenu', blockInspect); document.removeEventListener('keydown', blockKeys); };
   }, []);
 
   const handleFitToggle = useCallback(() => {
     const fitModes: ('contain' | 'cover' | 'fill')[] = ['contain', 'cover', 'fill'];
     setObjectFit(prev => {
       const next = fitModes[(fitModes.indexOf(prev) + 1) % fitModes.length];
-      setShowFitToast(true);
-      return next;
+      setShowFitToast(true); return next;
     });
   }, []);
 
@@ -231,10 +219,9 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }, [showFitToast, objectFit]);
 
-  useEffect(() => {
-    if (videoRef.current) videoRef.current.style.objectFit = objectFit;
-  }, [objectFit]);
+  useEffect(() => { if (videoRef.current) videoRef.current.style.objectFit = objectFit; }, [objectFit]);
 
+  // 🎯 Fix 5: Exponential Backoff Failover Logic
   const safeSwitchServer = useCallback(() => {
     if (failoverLockRef.current) return;
     failoverLockRef.current = true;
@@ -244,15 +231,22 @@ export default function StreamPlayer({ id }: { id: string }) {
       const list = streamsRef.current;
       if (!list) return prevIndex;
       
-      failedServersRef.current.set(prevIndex, Date.now());
+      const currentFail = failedServersRef.current.get(prevIndex) || { time: 0, attempts: 0 };
+      failedServersRef.current.set(prevIndex, { time: Date.now(), attempts: currentFail.attempts + 1 });
+      
       let nextValidIndex = -1;
       const now = Date.now();
       
       for (let i = 0; i < list.length; i++) {
-        const failedTime = failedServersRef.current.get(i);
-        if (!failedTime || now - failedTime > 120000) {
-          nextValidIndex = i;
-          break;
+        const fd = failedServersRef.current.get(i);
+        if (!fd) {
+          nextValidIndex = i; break;
+        } else {
+          // Exponential Cooldown: 60s, 120s, 240s based on attempts
+          const cooldown = 60000 * Math.pow(2, fd.attempts - 1);
+          if (now - fd.time > cooldown) {
+            nextValidIndex = i; break;
+          }
         }
       }
 
@@ -271,6 +265,8 @@ export default function StreamPlayer({ id }: { id: string }) {
     if (failoverTimeoutRef.current) clearTimeout(failoverTimeoutRef.current);
     failoverTimeoutRef.current = setTimeout(() => { failoverLockRef.current = false; }, 3000);
   }, []);
+
+  const getFreshUrl = useCallback((url: string) => { return url + (url.includes('?') ? '&' : '?') + '__t=' + Date.now(); }, []);
 
   const forceReloadStream = useCallback(() => {
     if (playerRef.current && currentlyPlayingUrlRef.current) {
@@ -298,6 +294,7 @@ export default function StreamPlayer({ id }: { id: string }) {
       if (retryCountRef.current < maxRetry) {
         retryCountRef.current++;
         const backoffDelay = baseRetryDelay * retryCountRef.current;
+        console.log(`Retrying in ${backoffDelay}ms...`);
         const t = setTimeout(() => { forceReloadStream(); }, backoffDelay);
         timersRef.current.add(t);
         return;
@@ -312,7 +309,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     isBufferingRef.current = e.buffering;
   };
   // ==========================================
-  // PLAYER INITIALIZATION & RENDERING
+  // PLAYER INITIALIZATION & UI EVENTS
   // ==========================================
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
@@ -367,8 +364,9 @@ export default function StreamPlayer({ id }: { id: string }) {
         videoRef.current?.addEventListener('timeupdate', handleTimeUpdate);
         (ui as any).cleanupTimeUpdate = () => videoRef.current?.removeEventListener('timeupdate', handleTimeUpdate);
 
+        // 🎯 Fix 4: Live Sports Friendly Stall Detection (15s instead of 10s)
         const checkStall = setInterval(() => {
-          if (isBufferingRef.current && (Date.now() - lastProgressRef.current > 10000)) {
+          if (isBufferingRef.current && (Date.now() - lastProgressRef.current > 15000)) {
             console.log("Stall detected via timestamp → Switching server");
             safeSwitchServer();
           }
@@ -451,6 +449,7 @@ export default function StreamPlayer({ id }: { id: string }) {
           }
         });
         
+        // 🎯 ClearKey Setup Maintained Before Load
         const currentStreamObj = streams[activeStreamIndex];
         if (currentStreamObj && currentStreamObj.api) {
           const cleanDrm = currentStreamObj.api.replace(/['"\s]/g, '');
@@ -543,7 +542,6 @@ export default function StreamPlayer({ id }: { id: string }) {
         </div>
       </nav>
 
-      {/* 🎯 Layout optimized to full-width centered layout without any sidebar list */}
       <div className="max-w-5xl mx-auto px-2 sm:px-4 mt-4 flex flex-col">
         <div className="w-full flex flex-col">
           <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group" onMouseMoveCapture={handleUserActivity} onTouchStartCapture={handleUserActivity} onClickCapture={handleUserActivity} onMouseLeave={() => setIsControlsVisible(false)}>
@@ -586,7 +584,8 @@ export default function StreamPlayer({ id }: { id: string }) {
             <div className="flex gap-2 overflow-x-auto scrollbar-hide py-4 my-2 border-b border-gray-800/40 items-center">
               <span className="text-gray-400 font-bold text-xs md:text-sm mr-2 whitespace-nowrap uppercase tracking-wider">Servers:</span>
               {streams.map((stream, index) => {
-                const isFailed = failedServersRef.current.has(index);
+                const fd = failedServersRef.current.get(index);
+                const isFailed = !!fd && (Date.now() - fd.time < 60000 * Math.pow(2, fd.attempts - 1));
                 const serverName = stream.title || (currentMatch?.eventInfo as any)?.link_names?.[index] || `Server ${index + 1}`;
                 return (
                   <button key={index} disabled={isFailed} onClick={() => { failedServersRef.current.delete(index); setAllServersDown(false); setActiveStreamIndex(index); currentlyPlayingUrlRef.current = null; }} className={`px-5 py-2 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border outline-none duration-150 ${activeStreamIndex === index && !allServersDown ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)]" : isFailed ? "bg-red-900/20 border-red-900/50 text-red-500/50 cursor-not-allowed" : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white"}`} >
