@@ -55,11 +55,9 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
   if (!startStr || !endStr) return { type: "upcoming", label: "TBA" };
   const startTime = new Date(startStr);
   let endTime = new Date(endStr);
-
   if (startTime.getTime() === endTime.getTime()) {
     endTime = new Date(startTime.getTime() + (4 * 60 * 60 * 1000));
   }
-
   if (currentTime > endTime) return { type: "ended", label: "Ended" };
   else if (currentTime >= startTime && currentTime <= endTime) return { type: "live", label: "LIVE" };
   else return { type: "upcoming", label: startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) };
@@ -69,7 +67,6 @@ export default function StreamPlayer({ id }: { id: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   
-  // Step 1: playerInstance state বাদ দিয়ে playerRef ব্যবহার করা হলো
   const playerRef = useRef<any>(null);
   const retryCountRef = useRef(0);
   
@@ -86,7 +83,6 @@ export default function StreamPlayer({ id }: { id: string }) {
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
   const streamsRef = useRef<any[] | null>(null);
   const activeIndexRef = useRef<number>(0);
-
   const currentlyPlayingUrlRef = useRef<string | null>(null);
 
   const { data: rawMatches } = useSWR(LIVE_EVENTS_API ? LIVE_EVENTS_API : null, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
@@ -104,7 +100,6 @@ export default function StreamPlayer({ id }: { id: string }) {
       const startTime = convertDate(rawEvent.date, rawEvent.time);
       const endTime = convertDate(rawEvent.end_date || rawEvent.date, rawEvent.end_time || rawEvent.time);
       const matchId = rawEvent.links ? rawEvent.links.replace("pro/", "").replace(".txt", "") : index.toString();
-      
       return {
         id: matchId,
         links: rawEvent.links || "",
@@ -130,10 +125,8 @@ export default function StreamPlayer({ id }: { id: string }) {
   }, [matches, id]);
 
   let streamFetchUrl: string | null = null;
-  let cacheKey: string | null = null;
   if (currentMatch && currentMatch.links && STREAM_API_BASE) {
     const streamSlug = currentMatch.links.replace("pro/", "").replace(".txt", "");
-    cacheKey = `aiorbd_stream_cache_${streamSlug}`;
     if (STREAM_API_BASE.includes("firebaseio.com")) {
       const base = STREAM_API_BASE.endsWith('/') ? STREAM_API_BASE : `${STREAM_API_BASE}/`;
       streamFetchUrl = `${base}${streamSlug}.json`;
@@ -143,18 +136,20 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }
 
-  // 🟢 কোনো লোকাল স্টোরেজ ক্যাশিং নেই। একদম ডাইরেক্ট এবং ফ্রেশ এপিআই ফেচ!
-  const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, {
-    refreshInterval: 30000, // প্রতি ৩০ সেকেন্ডে নতুন লিংক চেক করবে
-    dedupingInterval: 10000,
-    revalidateOnFocus: true, // ইউজার অন্য ট্যাব থেকে ফিরে আসলেই ফ্রেশ লিংক আনবে
-    revalidateOnReconnect: true // নেটওয়ার্ক ড্রপ করে ফিরে আসলেই রিলোড হবে
-  });
-
+  // ম্যাচের মাঝখানে এপিআই-র অটো-রিফ্রেশ পুরোপুরি লক রাখা হলো
+  const { data: streamsFromApi } = useSWR(
+    streamFetchUrl,
+    fetcher,
+    {
+      refreshInterval: 0,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      revalidateIfStale: false
+    }
+  );
 
   const streams = Array.isArray(streamsFromApi) ? streamsFromApi : (streamsFromApi?.streams || null);
 
-  // Step 2: Stream URL memo
   const currentStreamUrl = useMemo(() => {
     if (!streams?.length) return null;
     return streams[activeStreamIndex]?.link || null;
@@ -163,12 +158,8 @@ export default function StreamPlayer({ id }: { id: string }) {
   useEffect(() => { streamsRef.current = streams; }, [streams]);
   useEffect(() => { activeIndexRef.current = activeStreamIndex; }, [activeStreamIndex]);
 
-  // Step 4: Current Time Update
   useEffect(() => {
-    const timer = setInterval(
-      () => setCurrentTime(new Date()),
-      60000
-    );
+    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
 
@@ -215,7 +206,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }, [showFitToast, objectFit]);
 
-  // Step 11: Auto Retry Before Server Switch
   const triggerNextServer = useCallback(async () => {
     if (retryCountRef.current < 2 && playerRef.current) {
       retryCountRef.current++;
@@ -226,7 +216,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
     
     retryCountRef.current = 0;
-    
     const currentStreams = streamsRef.current;
     const currentIndex = activeIndexRef.current;
     
@@ -238,32 +227,22 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }, []);
 
-  // Step 8: Visibility Recovery
   useEffect(() => {
     const handleVisibility = async () => {
       if (document.hidden || !playerRef.current) return;
-      try {
-        await playerRef.current.retryStreaming();
-      } catch {}
+      try { await playerRef.current.retryStreaming(); } catch {}
     };
     document.addEventListener('visibilitychange', handleVisibility);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, []);
 
-  // Step 9: Network Online Recovery
   useEffect(() => {
     const handleOnline = async () => {
       if (!playerRef.current) return;
-      try {
-        await playerRef.current.retryStreaming();
-      } catch {}
+      try { await playerRef.current.retryStreaming(); } catch {}
     };
     window.addEventListener('online', handleOnline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-    };
+    return () => window.removeEventListener('online', handleOnline);
   }, []);
 
   useEffect(() => {
@@ -275,37 +254,16 @@ export default function StreamPlayer({ id }: { id: string }) {
         shaka = await import('shaka-player/dist/shaka-player.ui');
         shaka.polyfill.installAll();
         
-        try {
-          if (shaka.ui.Controls && !(shaka.ui.Controls as any).custom_stretch_registered) {
-            class StretchButton extends shaka.ui.Element {
-              constructor(parent: HTMLElement, controls: any) {
-                super(parent, controls);
-                const button = document.createElement('button');
-                button.className = 'shaka-custom-stretch-btn shaka-tooltip';
-                button.setAttribute('aria-label', 'Toggle Fit');
-                button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
-                this.eventManager.listen(button, 'click', () => window.dispatchEvent(new CustomEvent('toggleObjectFit')));
-                parent.appendChild(button);
-              }
-            }
-            shaka.ui.Controls.registerElement('custom_stretch', { create: (root: HTMLElement, ctrls: any) => new StretchButton(root, ctrls) });
-            (shaka.ui.Controls as any).custom_stretch_registered = true;
-          }
-        } catch (e) {}
-        
         player = new shaka.Player(videoRef.current);
-        // Step 5: Shaka Player Init
         playerRef.current = player;
         
         ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
-        
         ui.configure({
           controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'custom_stretch', 'overflow_menu', 'fullscreen'],
           addSeekBar: true,
           trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.LABEL
         });
         
-        // Step 6: Fullscreen Memory Leak Fix
         const handleFullscreen = () => {
           if (document.fullscreenElement && window.screen?.orientation && (window.screen.orientation as any).lock) {
             (window.screen.orientation as any).lock('landscape').catch(() => {});
@@ -315,24 +273,14 @@ export default function StreamPlayer({ id }: { id: string }) {
         
         player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
         
-        // Step 10: Better Error Handling
         player.addEventListener('error', async (e: any) => {
           const code = e?.detail?.code;
           const severity = e?.detail?.severity;
-          console.log('Shaka Error:', code);
-
-          if (code === 7000 || code === 7002) {
-            return;
-          }
+          if (code === 7000 || code === 7002) return;
           if (code === 1001 || code === 1002 || code === 3016 || code === 3015) {
-            try {
-              await player.retryStreaming();
-              return;
-            } catch {}
+            try { await player.retryStreaming(); return; } catch {}
           }
-          if (severity === 2) {
-            triggerNextServer();
-          }
+          if (severity === 2) triggerNextServer();
         });
         
       } catch (err) {
@@ -342,19 +290,14 @@ export default function StreamPlayer({ id }: { id: string }) {
     
     initPlayer();
     
-    // Cleanup
     return () => {
-      // Fullscreen memory leak fix cleanup
       const handleFullscreen = () => {
         if (document.fullscreenElement && window.screen?.orientation && (window.screen.orientation as any).lock) {
           (window.screen.orientation as any).lock('landscape').catch(() => {});
         }
       };
       document.removeEventListener('fullscreenchange', handleFullscreen);
-      
       if (ui) ui.destroy();
-      
-      // Step 14: Cleanup playerRef
       if (playerRef.current) {
         try { playerRef.current.unload(); } catch {}
         playerRef.current.destroy();
@@ -365,18 +308,14 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   useEffect(() => {
     if (!playerRef.current || !streams || streams.length === 0 || allServersDown || !currentStreamUrl) return;
-
     if (currentlyPlayingUrlRef.current === currentStreamUrl) return;
 
     let isMounted = true;
-    
     const loadVideo = async () => {
       setIsBuffering(true);
-
       try {
         await playerRef.current.unload();
         
-        // Step 13: Better Shaka Config
         playerRef.current.configure({
           streaming: {
             bufferingGoal: 15,
@@ -390,28 +329,12 @@ export default function StreamPlayer({ id }: { id: string }) {
             stallEnabled: true,
             stallThreshold: 1,
             stallSkip: 0.5,
-            retryParameters: {
-              maxAttempts: 15,
-              baseDelay: 500,
-              backoffFactor: 1.5,
-              fuzzFactor: 0.5,
-              timeout: 15000
-            }
+            retryParameters: { maxAttempts: 15, baseDelay: 500, backoffFactor: 1.5, fuzzFactor: 0.5, timeout: 15000 }
           },
           manifest: {
-            retryParameters: {
-              maxAttempts: 15,
-              baseDelay: 500,
-              timeout: 15000
-            },
-            dash: {
-              ignoreMinBufferTime: true,
-              autoCorrectDrift: true
-            },
-            hls: {
-              ignoreManifestProgramDateTime: true,
-              sequenceMode: true
-            }
+            retryParameters: { maxAttempts: 15, baseDelay: 500, timeout: 15000 },
+            dash: { ignoreMinBufferTime: true, autoCorrectDrift: true },
+            hls: { ignoreManifestProgramDateTime: true, sequenceMode: true }
           },
           abr: {
             enabled: true,
@@ -434,27 +357,18 @@ export default function StreamPlayer({ id }: { id: string }) {
           }
         }
         
-        // Step 12: Stream Cache Bypass
-                // 🟢 অরিজিনাল সিকিউর ইউআরএল সরাসরি প্লেয়ারে পুশ করা হলো
         await playerRef.current.load(currentStreamUrl);
-        
-        currentlyPlayingUrlRef.current = currentStreamUrl; 
-
-        
         currentlyPlayingUrlRef.current = currentStreamUrl; 
 
       } catch (error: any) {
         if (error.code !== 7000 && error.code !== 7002) {
-          console.error("Initial Load Failed, Switching Server...", error.code);
           if (isMounted) triggerNextServer();
         }
       } finally {
         if (isMounted) setIsBuffering(false);
       }
     };
-    
     loadVideo();
-    
     return () => { isMounted = false; };
   }, [currentStreamUrl, streams, activeStreamIndex, reloadTrigger, allServersDown, triggerNextServer]);
 
@@ -496,7 +410,7 @@ export default function StreamPlayer({ id }: { id: string }) {
 
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
         <div className="lg:col-span-2 flex flex-col">
-          <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 group" onMouseMoveCapture={handleUserActivity} onTouchStartCapture={handleUserActivity} onClickCapture={handleUserActivity} onMouseLeave={() => setIsControlsVisible(false)} >
+          <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group" onMouseMoveCapture={handleUserActivity} onTouchStartCapture={handleUserActivity} onClickCapture={handleUserActivity} onMouseLeave={() => setIsControlsVisible(false)} >
             
             {!streams && !allServersDown && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/90 z-10 flex-col gap-3">
@@ -506,9 +420,9 @@ export default function StreamPlayer({ id }: { id: string }) {
             )}
 
             {isBuffering && !allServersDown && streams && (
-              <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none">
-                <div className="w-12 h-12 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin mb-3"></div>
-                <p className="text-[#00E5FF] font-bold animate-pulse text-sm">Connecting to Server {activeStreamIndex + 1}...</p>
+              <div className="absolute bottom-16 left-1/2 transform -translate-x-1/2 z-40 bg-black/80 border border-[#00E5FF]/30 px-5 py-2.5 rounded-full flex items-center gap-2 pointer-events-none shadow-[0_0_15px_rgba(0,229,255,0.2)]">
+                <div className="w-4 h-4 border-2 border-[#00E5FF] border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-white font-bold text-xs tracking-wide whitespace-nowrap">Connecting to Server {activeStreamIndex + 1}...</p>
               </div>
             )}
 
@@ -520,7 +434,7 @@ export default function StreamPlayer({ id }: { id: string }) {
               </div>
             )}
 
-            {/* 🎯 Step 7: অপ্টিমাইজড ভিডিও ট্যাগ (Preload & Muted Config) */}
+            {/* 🎯 Step 7: Video Tag Optimization */}
             <video
               ref={videoRef}
               autoPlay
@@ -553,11 +467,7 @@ export default function StreamPlayer({ id }: { id: string }) {
 
           {currentMatch && currentMatch.eventInfo ? (
             <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 mt-3 shadow-lg relative group">
-              <button onClick={handleShare} className="absolute top-4 right-4 bg-gray-800/50 hover:bg-[#00E5FF]/20 text-gray-400 hover:text-[#00E5FF] p-2 rounded-full border border-gray-700/50 transition-all z-10">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                </svg>
-              </button>
+              <button onClick={handleShare} className="absolute top-4 right-4 bg-gray-800/50 hover:bg-[#00E5FF]/20 text-gray-400 hover:text-[#00E5FF] p-2 rounded-full border border-gray-700/50 transition-all z-10"><svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg></button>
               {showCopied && <div className="absolute -top-8 right-2 bg-[#00E5FF] text-black text-[10px] font-bold px-3 py-1 rounded shadow-lg">Link Copied!</div>}
               <div className="text-center text-xs font-bold text-[#00E5FF] uppercase tracking-widest mb-4 pr-8">{currentMatch.eventInfo.eventCat} | {currentMatch.eventInfo.eventName}</div>
               <div className="flex justify-center items-center gap-6 sm:gap-12 py-2">
@@ -605,7 +515,6 @@ export default function StreamPlayer({ id }: { id: string }) {
           </div>
         </div>
       </div>
-
       <style dangerouslySetInnerHTML={{__html: `
         .shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; display: flex; align-items: center; justify-content: center; } 
         .scrollbar-hide::-webkit-scrollbar { display: none; }
