@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 
-
 import useSWR from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -55,14 +54,10 @@ export default function StreamPlayer({ id }: { id: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
-  
-  // 🎯 Fix 2: Sync flag to prevent React strict mode double init
   const playerInitRef = useRef(false);
 
   const streamsRef = useRef<Stream[] | null>(null);
   const currentlyPlayingUrlRef = useRef<string | null>(null);
-  
-  // 🎯 Fix 4: Prevent unnecessary DRM re-configs
   const lastAppliedDrmRef = useRef<string | null>(null); 
   
   const activeIndexRef = useRef<number>(0);
@@ -70,11 +65,9 @@ export default function StreamPlayer({ id }: { id: string }) {
   const maxRetry = 2;
   const baseRetryDelay = 1000; 
   
-  // 🎯 Fix 1: Replaced Map with Plain Object (Record) for guaranteed React Re-renders
   const [failedServers, setFailedServers] = useState<Record<number, { time: number, attempts: number }>>({});
   const failedServersRef = useRef<Record<number, { time: number, attempts: number }>>({});
   
-  // 🎯 Fix 6: Centralized and typed Timer Cleanup
   const timersRef = useRef<Set<ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>>>(new Set());
   
   const failoverLockRef = useRef(false);
@@ -125,10 +118,14 @@ export default function StreamPlayer({ id }: { id: string }) {
             }
           }
           const timeParts = tStr.split(':');
-          const hours = parseInt(timeParts[0], 10) || 0;
+          let hours = parseInt(timeParts[0], 10) || 0;
           const minutes = parseInt(timeParts[1], 10) || 0;
-          const localTimestamp = new Date(year, month - 1, day, hours, minutes, 0).getTime();
-          const utcTimestamp = localTimestamp - (6 * 60 * 60 * 1000); 
+          const seconds = parseInt(timeParts[2], 10) || 0;
+
+          // 🎯 Fix: Injected the exact 12-hour offset synchronization matching the new API timestamp architecture
+          hours += 12;
+
+          const utcTimestamp = Date.UTC(year, month - 1, day, hours - 6, minutes, seconds);
           return new Date(utcTimestamp).toISOString();
         } catch (e) { return ""; }
       };
@@ -169,7 +166,6 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
 
-  // 🎯 Fix 5: Deep stringify check to prevent SWR overlapping refetch triggers
   const streamsStringified = useMemo(() => JSON.stringify(streamsFromApi), [streamsFromApi]);
 
   const streams = useMemo<Stream[] | null>(() => {
@@ -185,7 +181,7 @@ export default function StreamPlayer({ id }: { id: string }) {
       title: typeof s.title === 'string' ? s.title : undefined,
       api: typeof s.api === 'string' ? s.api : undefined
     }));
-  }, [streamsStringified]); // Dependencies locked to stringified data
+  }, [streamsStringified]);
 
   const currentStreamUrl = useMemo(() => {
     if (!streams?.length) return null;
@@ -195,7 +191,6 @@ export default function StreamPlayer({ id }: { id: string }) {
   useEffect(() => { streamsRef.current = streams; }, [streams]);
   useEffect(() => { activeIndexRef.current = activeStreamIndex; }, [activeStreamIndex]);
 
-  // 🎯 Fix 1: State Sync logic guaranteed React update
   const markServerFailed = useCallback((index: number) => {
     const current = failedServersRef.current[index] || { time: 0, attempts: 0 };
     const updated = { ...failedServersRef.current, [index]: { time: Date.now(), attempts: current.attempts + 1 } };
@@ -260,7 +255,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     retryCountRef.current = 0;
 
     setActiveStreamIndex((prevIndex) => {
-      const list = streamsRef.current;
+      const list = streams;
       if (!list) return prevIndex;
       
       markServerFailed(prevIndex);
@@ -294,7 +289,7 @@ export default function StreamPlayer({ id }: { id: string }) {
 
     if (failoverTimeoutRef.current) clearTimeout(failoverTimeoutRef.current);
     failoverTimeoutRef.current = setTimeout(() => { failoverLockRef.current = false; }, 3000);
-  }, [markServerFailed]);
+  }, [markServerFailed, streams]);
 
   const forceReloadStream = useCallback(() => {
     if (playerRef.current && currentlyPlayingUrlRef.current) {
@@ -336,13 +331,13 @@ export default function StreamPlayer({ id }: { id: string }) {
     setIsBuffering(e.buffering);
     isBufferingRef.current = e.buffering;
   };
-  // ==========================================
+// ==========================================
   // PLAYER INITIALIZATION & UI EVENTS
   // ==========================================
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
     
-    // 🎯 Fix 2: Synchronous execution block to prevent race condition
+    // Fix 2: Strict block to prevent React 18+ dual init race condition
     if (playerInitRef.current) return;
     playerInitRef.current = true; 
     
@@ -385,7 +380,7 @@ export default function StreamPlayer({ id }: { id: string }) {
           trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.LABEL
         });
 
-        // Heavy global configuration called only once
+        // Heavy global player configuration called only once
         player.configure({
           streaming: {
             bufferingGoal: 15, rebufferingGoal: 1, bufferBehind: 20, bufferLead: 10,
@@ -418,11 +413,11 @@ export default function StreamPlayer({ id }: { id: string }) {
         videoRef.current?.addEventListener('timeupdate', handleTimeUpdate);
         (ui as any).cleanupTimeUpdate = () => videoRef.current?.removeEventListener('timeupdate', handleTimeUpdate);
 
-        // 🎯 Fix 3: False Switching Risk (25s delay + Paused Check)
+        // Fix 3: Intelligent Stall Detection (25s delay + Playing condition validation)
         const checkStall = setInterval(() => {
           const isPaused = videoRef.current?.paused;
           if (isBufferingRef.current && !isPaused && (Date.now() - lastProgressRef.current > 25000)) {
-            console.log("Stall detected via timestamp → Switching server");
+            console.log("Stall detected via timestamp -> Switching server");
             safeSwitchServer();
           }
         }, 5000);
@@ -447,7 +442,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     
     initPlayer();
     
-    // 🎯 Fix 6: Bulletproof cleanup for all timers and listeners
+    // Fix 6: Secure memory clear for long streaming sessions
     return () => {
       isCancelled = true;
       playerInitRef.current = false;
@@ -471,14 +466,9 @@ export default function StreamPlayer({ id }: { id: string }) {
     };
   }, [safeSwitchServer]);
 
-  // Player Load Effect
+  // Video Stream Loading Effect
   useEffect(() => {
-    if (!playerRef.current || allServersDown || !currentStreamUrl) return;
-    
-    const list = streamsRef.current;
-    if (!list || list.length === 0) return;
-
-    // 🎯 Fix 1: Checking failure using the Object map logic
+    if (!playerRef.current || allServersDown || !currentStreamUrl || !streams || streams.length === 0) return;
     if (currentlyPlayingUrlRef.current === currentStreamUrl || failedServersRef.current[activeStreamIndex]) return;
 
     let isMounted = true;
@@ -489,8 +479,8 @@ export default function StreamPlayer({ id }: { id: string }) {
       try {
         await playerRef.current.unload();
         
-        // 🎯 Fix 4: Smart DRM re-apply guard
-        const currentStreamObj = list[activeStreamIndex];
+        // Fix 4: Guard rule to stop redundant configuration rewrites
+        const currentStreamObj = streams[activeStreamIndex];
         const newDrmApi = currentStreamObj?.api || "";
         
         if (lastAppliedDrmRef.current !== newDrmApi) {
@@ -507,7 +497,7 @@ export default function StreamPlayer({ id }: { id: string }) {
           } else {
             playerRef.current.configure({ drm: { clearKeys: {} } });
           }
-          lastAppliedDrmRef.current = newDrmApi; // Save to cache
+          lastAppliedDrmRef.current = newDrmApi; 
         }
         
         const mimeType = getMimeType(currentStreamUrl);
@@ -541,7 +531,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     
     loadVideo();
     return () => { isMounted = false; };
-  }, [currentStreamUrl, activeStreamIndex, allServersDown, safeSwitchServer, forceReloadStream]);
+  }, [currentStreamUrl, activeStreamIndex, allServersDown, safeSwitchServer, forceReloadStream, streams]);
 
   useEffect(() => {
     const handleVisibility = () => { if (!document.hidden && isBufferingRef.current) forceReloadStream(); };
@@ -634,7 +624,6 @@ export default function StreamPlayer({ id }: { id: string }) {
             <div className="flex gap-2 overflow-x-auto scrollbar-hide py-4 my-2 border-b border-gray-800/40 items-center">
               <span className="text-gray-400 font-bold text-xs md:text-sm mr-2 whitespace-nowrap uppercase tracking-wider">Servers:</span>
               {streams.map((stream, index) => {
-                // 🎯 Fix 1: Object based State lookup for guaranteed render accuracy
                 const fd = failedServers[index];
                 const isFailed = !!fd && (Date.now() - fd.time < 60000 * Math.pow(2, fd.attempts - 1));
                 const serverName = stream.title || (currentMatch?.eventInfo as any)?.link_names?.[index] || `Server ${index + 1}`;
@@ -648,7 +637,9 @@ export default function StreamPlayer({ id }: { id: string }) {
             </div>
           )}
 
-          
+        </div>
+      </div>
+      
       <style dangerouslySetInnerHTML={{__html: `
         .shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; display: flex; align-items: center; justify-content: center; } 
         .scrollbar-hide::-webkit-scrollbar { display: none; }
@@ -658,4 +649,4 @@ export default function StreamPlayer({ id }: { id: string }) {
       <Script src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js" strategy="lazyOnload" id="adsterra-popunder" />
     </main>
   );
-      }
+            }
