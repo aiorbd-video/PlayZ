@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, memo } from 'react';
+import { useState, useEffect, memo, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
@@ -9,6 +9,11 @@ import useSWR from 'swr';
 const LIVE_EVENTS_API = "https://ratulxadia-playz-cats-event.hf.space/api/events";
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 const IMG_PROXY = "https://img.aiorbd.workers.dev/?url=";
+
+const getImg = (url: string | undefined | null) => {
+  if (!url || url === "null" || url === "Null" || url === "") return "/fallback-logo.png";
+  return `${IMG_PROXY}${encodeURIComponent(url)}`;
+};
 
 const generateSlug = (teamA: string, teamB: string, eventName: string, id: string | number) => {
   const clean = (text: string) => {
@@ -53,27 +58,36 @@ const MatchCountdown = memo(({ startTimeStr, status }: { startTimeStr: string, s
     return () => clearInterval(timer);
   }, []);
 
-  const startTime = startTimeStr ? new Date(startTimeStr) : null;
+  const startTime = useMemo(() => {
+    if (!startTimeStr) return null;
+    const parsed = new Date(startTimeStr);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }, [startTimeStr]);
 
   if (status === 'recent') {
     return <div className="text-gray-400 text-xs font-bold uppercase mt-2">Match Ended</div>;
   }
 
-  if (status === 'live') {
-    const elapsedStr = startTime ? (() => {
-      const elapsedMs = time.getTime() - startTime.getTime();
-      const elapsedSecs = Math.max(0, Math.floor(elapsedMs / 1000));
-      const h = Math.floor(elapsedSecs / 3600);
-      const m = Math.floor((elapsedSecs % 3600) / 60);
-      const s = elapsedSecs % 60;
-      return `${h > 0 ? h + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-    })() : "00:00";
+  if (status === 'live' && startTime) {
+    const elapsedMs = time.getTime() - startTime.getTime();
+    const elapsedSecs = Math.max(0, Math.floor(elapsedMs / 1000));
+    const h = Math.floor(elapsedSecs / 3600);
+    const m = Math.floor((elapsedSecs % 3600) / 60);
+    const s = elapsedSecs % 60;
+    const elapsedStr = `${h > 0 ? h + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 
     return (
       <div className="flex flex-col items-center justify-center gap-1">
-        <span className="text-red-500 text-lg md:text-xl animate-pulse drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]">((•))</span>
+        <span className="text-red-500 text-lg md:text-xl animate-pulse">((•))</span>
         <span className="text-red-500 text-[10px] md:text-xs font-bold tracking-wide uppercase">Live</span>
         <span className="text-[#00E5FF] text-[10px] md:text-xs font-mono font-bold bg-[#00E5FF]/10 px-2 py-0.5 rounded shadow-inner tracking-widest">{elapsedStr}</span>
+      </div>
+    );
+  } else if (status === 'live') {
+    return (
+      <div className="flex flex-col items-center justify-center gap-1">
+        <span className="text-red-500 text-lg md:text-xl animate-pulse">((•))</span>
+        <span className="text-red-500 text-[10px] md:text-xs font-bold tracking-wide uppercase">Live</span>
       </div>
     );
   }
@@ -134,7 +148,7 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
           <div className="flex justify-between items-center px-1 md:px-3 mt-auto">
             <div className="flex flex-col items-center gap-1.5 w-[30%]">
               <div className="relative w-12 h-12 md:w-16 md:h-16 rounded-full bg-white overflow-hidden border-2 border-gray-400/50 shadow-sm">
-                <SmartImage src={eventInfo.teamAFlag} alt={eventInfo.teamA || 'Team A'} fill className="object-cover" />
+                <SmartImage src={getImg(eventInfo.teamAFlag)} alt={eventInfo.teamA || 'Team A'} fill className="object-cover" />
               </div>
               <span className="font-bold text-[11px] md:text-sm text-gray-200 truncate w-full text-center mt-1">{eventInfo.teamA || 'Team A'}</span>
             </div>
@@ -145,7 +159,7 @@ const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
 
             <div className="flex flex-col items-center gap-1.5 w-[30%]">
               <div className="relative w-12 h-12 md:w-16 md:h-16 rounded-full bg-white overflow-hidden border-2 border-gray-400/50 shadow-sm">
-                <SmartImage src={eventInfo.teamBFlag} alt={eventInfo.teamB || 'Team B'} fill className="object-cover" />
+                <SmartImage src={getImg(eventInfo.teamBFlag)} alt={eventInfo.teamB || 'Team B'} fill className="object-cover" />
               </div>
               <span className="font-bold text-[11px] md:text-sm text-gray-200 truncate w-full text-center mt-1">{eventInfo.teamB || 'Team B'}</span>
             </div>
@@ -180,39 +194,31 @@ export default function MatchListBottom({ currentMatchId }: { currentMatchId: st
       if (matchId === currentMatchId) return;
 
       const convertDate = (dStr: string, tStr: string) => {
-  if (!dStr || !tStr) return "";
-  try {
-    const parts = dStr.split('/');
-    let day = 1, month = 1, year = 2026;
-    if (parts.length === 3) {
-      day = parseInt(parts[0], 10); 
-      month = parseInt(parts[1], 10); 
-      year = parseInt(parts[2], 10);
-    } else if (dStr.includes('-')) {
-      const hyphenParts = dStr.split('-');
-      if (hyphenParts[0].length === 4) {
-        year = parseInt(hyphenParts[0], 10); month = parseInt(hyphenParts[1], 10); day = parseInt(hyphenParts[2], 10);
-      } else {
-        day = parseInt(hyphenParts[0], 10); month = parseInt(hyphenParts[1], 10); year = parseInt(hyphenParts[2], 10);
-      }
-    }
-    
-    const timeParts = tStr.split(':');
-    let hours = parseInt(timeParts[0], 10) || 0;
-    const minutes = parseInt(timeParts[1], 10) || 0;
-    
-    // 💡 এপিআই যদি ২৪ ঘণ্টার ফরম্যাট না মেনে রাত ১১ টাকে ২৩ না লিখে সরাসরি ১১ লেখে, 
-    // তবে নিচের কমেন্ট করা লাইনটি আনকমেন্ট করে দিতে পারেন:
-    // if (hours < 12 && tStr.toLowerCase().includes('pm')) hours += 12;
+        if (!dStr || !tStr) return "";
+        try {
+          const parts = dStr.split('/');
+          let day = 1, month = 1, year = 2026;
+          if (parts.length === 3) {
+            day = parseInt(parts[0], 10); month = parseInt(parts[1], 10); year = parseInt(parts[2], 10);
+          } else if (dStr.includes('-')) {
+            const hyphenParts = dStr.split('-');
+            if (hyphenParts[0].length === 4) {
+              year = parseInt(hyphenParts[0], 10); month = parseInt(hyphenParts[1], 10); day = parseInt(hyphenParts[2], 10);
+            } else {
+              day = parseInt(hyphenParts[0], 10); month = parseInt(hyphenParts[1], 10); year = parseInt(hyphenParts[2], 10);
+            }
+          }
+          const timeParts = tStr.split(':');
+          let hours = parseInt(timeParts[0], 10) || 0;
+          const minutes = parseInt(timeParts[1], 10) || 0;
 
-    // 🎯 জাদুকরী ফিক্স: সরাসরি Date.UTC দিয়ে বাংলাদেশ সময়কে (UTC+6) স্ট্যান্ডার্ড ISO তে রূপান্তর
-    // যেহেতু বাংলাদেশ ৬ ঘণ্টা এগিয়ে, তাই UTC সময় পেতে আমরা ঘন্টা থেকে ঠিক ৬ বিয়োগ করে জেনারেট করছি।
-    // এটি ব্রাউজার বা সার্ভার যেখানেই রান হোক না কেন, সবসময় নিখুঁত বাংলাদেশ টাইম দেখাবে।
-    const utcTimestamp = Date.UTC(year, month - 1, day, hours - 6, minutes, 0);
-    return new Date(utcTimestamp).toISOString();
-  } catch (e) { return ""; }
-};
+          // 12-hour AM/PM adjustment for matching exact Bangladesh local time
+          hours += 12;
 
+          const utcTimestamp = Date.UTC(year, month - 1, day, hours - 6, minutes, 0);
+          return new Date(utcTimestamp).toISOString();
+        } catch (e) { return ""; }
+      };
 
       const startTime = convertDate(rawEvent.date, rawEvent.time);
       const endTime = convertDate(rawEvent.end_date || rawEvent.date, rawEvent.end_time || rawEvent.time);
