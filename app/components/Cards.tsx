@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, memo } from 'react';
-import Link from 'next/link';
+// 🎯 Link ট্যাগ মুছে ফেলা হয়েছে, আমরা নরমাল <a> ট্যাগ ব্যবহার করবো
 import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { getImg, generateSlug, IMG_PROXY } from '../utils/helpers';
@@ -103,28 +103,26 @@ export const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { star
 MatchCountdown.displayName = 'MatchCountdown';
 
 export const ChannelCard = memo(({ channel, isPlaylist }: { channel: any, isPlaylist?: boolean }) => {
-  // 🟢 সুরক্ষার ধারাবাহিকতা: স্পোর্টস চ্যানেলের আইডি হোমপেজ থেকেও Base64 এনকোড হয়ে বের হবে
   const secureId = isPlaylist ? channel.id : btoa(unescape(encodeURIComponent(channel.id)));
   const linkHref = isPlaylist ? `/playlist/${secureId}` : `/tv/${secureId}`;
 
   return (
     <motion.div whileTap={{ scale: 0.95 }} className="w-full">
-      <Link href={linkHref} className="outline-none block h-full" prefetch={false}>
+      {/* 🎯 Next.js <Link> এর বদলে ব্রাউজার ডিফল্ট <a> ট্যাগ দিয়ে Hard-Reload ফোর্স করা হলো */}
+      <a href={linkHref} className="outline-none block h-full">
         <div className="bg-[#1C1E2B] border border-[#2A8496]/50 rounded-xl p-2 md:p-3 flex flex-col items-center justify-center aspect-[4/5] hover:border-[#00E5FF] hover:shadow-[0_0_15px_rgba(0,229,255,0.2)] transition-all relative overflow-hidden group">
           <div className="w-[50px] h-[50px] md:w-[70px] md:h-[70px] lg:w-[80px] lg:h-[80px] rounded-full bg-white flex items-center justify-center overflow-hidden mb-2 shadow-inner border border-gray-300 transition-transform group-hover:scale-110">
             <SmartImage src={channel.logo} alt={channel.name} width={80} height={80} className="object-contain p-1" />
           </div>
           
-          {/* 🟢 ফিক্সড: মেইন হোমপেজের 'Sports' এবং 'Categories' গ্রিড কার্ডেও Marquee স্ক্রলিং টেক্সট যোগ করা হলো */}
           <div className="w-full overflow-hidden whitespace-nowrap text-center main-marquee-container mt-1">
             <span className={`inline-block font-semibold text-[10px] sm:text-xs md:text-sm text-gray-200 group-hover:text-white ${channel.name.length > 11 ? 'main-marquee-text' : ''}`}>
               {channel.name}
             </span>
           </div>
         </div>
-      </Link>
+      </a>
 
-      {/* হোমপেজ গ্রিড কার্ডের জন্য আলাদা লাইটওয়েট মারকিউ অ্যানিমেশন CSS */}
       <style dangerouslySetInnerHTML={{__html: `
         .main-marquee-container {
            mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
@@ -145,13 +143,13 @@ export const ChannelCard = memo(({ channel, isPlaylist }: { channel: any, isPlay
 ChannelCard.displayName = 'ChannelCard';
 
 export const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
-  // 🎯 এখানে ডাবল চাবি চেক করা হয়েছে (eventInfo অথবা event)
   const eventInfo = match.eventInfo || match.event || {};
   const slugLink = generateSlug(eventInfo.teamA, eventInfo.teamB, eventInfo.eventName, match.id);
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileTap={{ scale: 0.98 }} className="h-full">
-      <Link href={`/watch/${slugLink}`} className="outline-none block h-full mb-3 md:mb-0" prefetch={false}>
+      {/* 🎯 Next.js <Link> এর বদলে ব্রাউজার ডিফল্ট <a> ট্যাগ দিয়ে Hard-Reload ফোর্স করা হলো */}
+      <a href={`/watch/${slugLink}`} className="outline-none block h-full mb-3 md:mb-0">
         <div className="bg-[#1C1E2B] border border-[#2A8496]/70 rounded-[16px] p-4 transition-all hover:border-[#00E5FF] hover:shadow-[0_4px_20px_rgba(0,229,255,0.15)] h-full flex flex-col justify-between">
           
           {(eventInfo.eventCat || eventInfo.eventName) && (
@@ -187,7 +185,7 @@ export const MatchCard = memo(({ match, status }: { match: any; status: string }
             </div>
           </div>
         </div>
-      </Link>
+      </a>
     </motion.div>
   );
 }, (prevProps, nextProps) => prevProps.match.id === nextProps.match.id && prevProps.status === nextProps.status);
