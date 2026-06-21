@@ -68,16 +68,16 @@ export default function StreamPlayer({ id }: { id: string }) {
   const videoContainerRef = useRef<HTMLDivElement>(null);
   
   const playerRef = useRef<any>(null);
-  const retryCountRef = useRef(0);
+  
+  // 🚀 Pro Logic: Retry Config
+  const retryRef = useRef(0);
+  const maxRetry = 2;
   
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
   const [reloadTrigger, setReloadTrigger] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
-  
-  // 🎯 আপনার দেওয়া Fit Modes এবং Object Fit স্টেট
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
   const [showFitToast, setShowFitToast] = useState(false);
-  
   const [isBuffering, setIsBuffering] = useState(true);
   const [allServersDown, setAllServersDown] = useState(false);
   const [isControlsVisible, setIsControlsVisible] = useState(true);
@@ -170,7 +170,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     setAllServersDown(false);
     setReloadTrigger(prev => prev + 1);
     currentlyPlayingUrlRef.current = null;
-    retryCountRef.current = 0;
+    retryRef.current = 0;
   }, [id]);
 
   useEffect(() => {
@@ -188,7 +188,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     };
   }, []);
 
-  // 🎯 আপনার দেওয়া টগল লজিক
   const handleFitToggle = useCallback(() => {
     const fitModes: ('contain' | 'cover' | 'fill')[] = ['contain', 'cover', 'fill'];
     setObjectFit(prev => {
@@ -210,26 +209,64 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }, [showFitToast, objectFit]);
 
-  const triggerNextServer = useCallback(async () => {
-    if (retryCountRef.current < 2 && playerRef.current) {
-      retryCountRef.current++;
-      try {
-        await playerRef.current.retryStreaming();
-        return;
-      } catch {}
-    }
-    
-    retryCountRef.current = 0;
-    const currentStreams = streamsRef.current;
-    const currentIndex = activeIndexRef.current;
-    
-    if (currentStreams && currentIndex < currentStreams.length - 1) {
-      setActiveStreamIndex(currentIndex + 1);
+  // 🚀 Pro Logic: Smart Switch Server
+  const switchServer = useCallback(() => {
+    const list = streamsRef.current;
+    const index = activeIndexRef.current;
+    if (!list) return;
+
+    retryRef.current = 0; // reset retry for next server
+
+    if (index < list.length - 1) {
+      console.log(`Switching Server ${index + 2}`);
+      setActiveStreamIndex(index + 1);
     } else {
+      console.log("All servers failed");
       setAllServersDown(true);
       setIsBuffering(false);
     }
   }, []);
+
+  // 🚀 Pro Logic: Retry + Failover Handle
+  const handleStreamError = useCallback(async (error: any) => {
+    const code = error?.detail?.code;
+    const severity = error?.detail?.severity;
+    
+    console.log("Stream Error:", code);
+
+    // Minor errors ignore
+    if (code === 7000 || code === 7002) return;
+
+    // Retry specific codes or severity 2
+    if (code === 1001 || code === 1002 || code === 6002 || code === 3016 || code === 3015 || severity === 2) {
+      if (retryRef.current < maxRetry) {
+        retryRef.current++;
+        try {
+          console.log("Retrying same server...");
+          await playerRef.current?.retryStreaming?.();
+          return;
+        } catch {}
+      }
+      switchServer();
+    }
+  }, [switchServer]);
+
+  // 🚀 Pro Logic: Buffering Stuck Auto Detect
+  useEffect(() => {
+    let stuckTimer: any;
+    const checkBuffer = () => {
+      if (isBuffering) {
+        stuckTimer = setTimeout(() => {
+          console.log("Buffer stuck → switching server");
+          switchServer();
+        }, 10000); // 10 sec stuck
+      } else {
+        clearTimeout(stuckTimer);
+      }
+    };
+    checkBuffer();
+    return () => clearTimeout(stuckTimer);
+  }, [isBuffering, switchServer]);
 
   useEffect(() => {
     const handleVisibility = async () => {
@@ -249,6 +286,11 @@ export default function StreamPlayer({ id }: { id: string }) {
     return () => window.removeEventListener('online', handleOnline);
   }, []);
 
+  // 🚀 Pro Logic: Smart URL Reload Helper
+  const getFreshUrl = useCallback((url: string) => {
+    return url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+  }, []);
+
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
     let shaka: any; let player: any; let ui: any;
@@ -258,7 +300,6 @@ export default function StreamPlayer({ id }: { id: string }) {
         shaka = await import('shaka-player/dist/shaka-player.ui');
         shaka.polyfill.installAll();
         
-        // 🎯 ম্যাজিক ফিক্স: শাকা প্লেয়ারে কাস্টম স্ট্রেচ বাটন রেজিস্টার করা হলো
         try {
           if (shaka.ui.Controls && !(shaka.ui.Controls as any).custom_stretch_registered) {
             class StretchButton extends shaka.ui.Element {
@@ -281,8 +322,6 @@ export default function StreamPlayer({ id }: { id: string }) {
         playerRef.current = player;
         
         ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
-        
-        // 🎯 'custom_stretch' বাটনটি কন্ট্রোল প্যানেলে যুক্ত করা হলো
         ui.configure({
           controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'custom_stretch', 'overflow_menu', 'fullscreen'],
           addSeekBar: true,
@@ -298,15 +337,8 @@ export default function StreamPlayer({ id }: { id: string }) {
         
         player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
         
-        player.addEventListener('error', async (e: any) => {
-          const code = e?.detail?.code;
-          const severity = e?.detail?.severity;
-          if (code === 7000 || code === 7002) return;
-          if (code === 1001 || code === 1002 || code === 3016 || code === 3015) {
-            try { await player.retryStreaming(); return; } catch {}
-          }
-          if (severity === 2) triggerNextServer();
-        });
+        // 🚀 Step 4: Attach Shaka error event with your production failover logic
+        player.addEventListener('error', handleStreamError);
         
       } catch (err) {
         console.error("Init Error", err);
@@ -329,7 +361,7 @@ export default function StreamPlayer({ id }: { id: string }) {
         playerRef.current = null;
       }
     };
-  }, [triggerNextServer]);
+  }, [handleStreamError]);
 
   useEffect(() => {
     if (!playerRef.current || !streams || streams.length === 0 || allServersDown || !currentStreamUrl) return;
@@ -382,12 +414,26 @@ export default function StreamPlayer({ id }: { id: string }) {
           }
         }
         
-        await playerRef.current.load(currentStreamUrl);
-        currentlyPlayingUrlRef.current = currentStreamUrl; 
+        // 🚀 Step 5: Smart URL reload & load fail handle with your logic
+        const freshUrl = getFreshUrl(currentStreamUrl);
+        try {
+          await playerRef.current.load(freshUrl);
+          currentlyPlayingUrlRef.current = currentStreamUrl;
+        } catch (err: any) {
+          console.log("Load failed:", err?.code);
+          if (retryRef.current < maxRetry) {
+            retryRef.current++;
+            try {
+              await playerRef.current.retryStreaming();
+              return;
+            } catch {}
+          }
+          switchServer();
+        }
 
       } catch (error: any) {
         if (error.code !== 7000 && error.code !== 7002) {
-          if (isMounted) triggerNextServer();
+          if (isMounted) switchServer();
         }
       } finally {
         if (isMounted) setIsBuffering(false);
@@ -395,7 +441,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     };
     loadVideo();
     return () => { isMounted = false; };
-  }, [currentStreamUrl, streams, activeStreamIndex, reloadTrigger, allServersDown, triggerNextServer]);
+  }, [currentStreamUrl, streams, activeStreamIndex, reloadTrigger, allServersDown, getFreshUrl, switchServer]);
 
   const handleUserActivity = () => {
     setIsControlsVisible(true);
@@ -403,17 +449,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     hideTimerRef.current = setTimeout(() => setIsControlsVisible(false), 3000);
   };
 
-  const handleShare = async () => {
-    const matchTitle = currentMatch && currentMatch.eventInfo ? `${currentMatch.eventInfo.teamA} VS ${currentMatch.eventInfo.teamB}` : 'Live Match';
-    const shareUrl = window.location.href;
-    if (navigator.share) {
-      try { await navigator.share({ title: matchTitle, url: shareUrl }); } catch (error) {}
-    } else {
-      navigator.clipboard.writeText(shareUrl);
-      setShowCopied(true);
-      setTimeout(() => setShowCopied(false), 2000);
-    }
-  };
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
@@ -459,7 +494,7 @@ export default function StreamPlayer({ id }: { id: string }) {
               </div>
             )}
 
-            {/* 🎯 Step 7: অপ্টিমাইজড ভিডিও ট্যাগ (Preload & Muted Config) */}
+            {/* 🎯 Step 7: Optimized video tag */}
             <video
               ref={videoRef}
               autoPlay
@@ -469,19 +504,11 @@ export default function StreamPlayer({ id }: { id: string }) {
               className={`w-full h-full transition-all duration-300 pointer-events-none ${objectFit === 'fill' ? 'object-fill' : objectFit === 'cover' ? 'object-cover' : 'object-contain'}`}
             />
 
-            {/* 🎯 কাস্টম ক্রপ/জুম/স্ট্রেচ টোস্ট নোটিফিকেশন */}
             <AnimatePresence>
               {showFitToast && (
-                <motion.div 
-                  initial={{ opacity: 0, y: -10 }} 
-                  animate={{ opacity: 1, y: 0 }} 
-                  exit={{ opacity: 0, y: -10 }} 
-                  className="absolute top-6 left-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none" 
-                >
+                <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="absolute top-6 left-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none" >
                   <span className="w-2 h-2 rounded-full bg-[#00E5FF] animate-pulse"></span>
-                  <span className="text-xs md:text-sm font-bold text-white capitalize">
-                    {objectFit === 'contain' ? 'Fit to Screen' : objectFit === 'cover' ? 'Zoom (Cropped)' : 'Stretch (Fill)'}
-                  </span>
+                  <span className="text-xs md:text-sm font-bold text-white capitalize">{objectFit === 'contain' ? 'Fit to Screen' : objectFit === 'cover' ? 'Zoom (Cropped)' : 'Stretch (Fill)'}</span>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -552,7 +579,6 @@ export default function StreamPlayer({ id }: { id: string }) {
           </div>
         </div>
       </div>
-
       <style dangerouslySetInnerHTML={{__html: `
         .shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; display: flex; align-items: center; justify-content: center; } 
         .scrollbar-hide::-webkit-scrollbar { display: none; }
