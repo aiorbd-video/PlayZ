@@ -23,6 +23,7 @@ interface EventInfo {
   teamBFlag: string;
   startTime: string;
   endTime: string;
+  link_names?: string[];
 }
 
 interface Match {
@@ -64,43 +65,34 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
 };
 
 export default function StreamPlayer({ id }: { id: string }) {
-  // ==========================================
-  // 1. UI & PLAYER REFS
-  // ==========================================
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
-  const playerInitRef = useRef(false);
-
-  // ==========================================
-  // 2. STREAM MANAGER REFS (Failover & Timers)
-  // ==========================================
-  const streamsRef = useRef<Stream[] | null>(null);
-  const currentlyPlayingUrlRef = useRef<string | null>(null);
-  const activeIndexRef = useRef<number>(0);
+  
   const retryCountRef = useRef(0);
   const maxRetry = 2;
-  
-  // 🎯 Fix 4: TTL Based Blacklist (Auto recovery after 2 mins)
-  const failedServersRef = useRef<Map<number, number>>(new Map());
-  
-  // Central Timers
-  const timersRef = useRef<Set<NodeJS.Timeout>>(new Set());
-  const failoverLockRef = useRef(false);
-  const failoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const playerInitRef = useRef(false);
+
   const errorLockRef = useRef(false);
   const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const failoverLockRef = useRef(false);
+  const failoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const stuckTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const streamsRef = useRef<Stream[] | null>(null);
+  const activeIndexRef = useRef<number>(0);
+  const currentlyPlayingUrlRef = useRef<string | null>(null);
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // 🎯 Fix 2 & 3: Stable Handlers & Stale Closure Prevention
+  
+  const failedServersRef = useRef<Map<number, number>>(new Map());
+  const timersRef = useRef<Set<NodeJS.Timeout>>(new Set());
+  
   const bufferingHandlerRef = useRef<any>(null);
   const errorHandlerRef = useRef<any>(null);
   const lastProgressRef = useRef<number>(Date.now());
-  const isBufferingRef = useRef<boolean>(true); // For setInterval access
+  const isBufferingRef = useRef<boolean>(true); 
 
-  // ==========================================
-  // 3. REACT STATE
-  // ==========================================
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
   const [showFitToast, setShowFitToast] = useState(false);
@@ -109,16 +101,12 @@ export default function StreamPlayer({ id }: { id: string }) {
   const [isControlsVisible, setIsControlsVisible] = useState(true);
   const [showCopied, setShowCopied] = useState(false);
   
-  // 🎯 Fix 6: UI Only Clock (No heavy re-renders for core player)
   const [currentTime, setCurrentTime] = useState(new Date());
   useEffect(() => {
     const t = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(t);
   }, []);
 
-  // ==========================================
-  // 4. DATA FETCHING LAYER (SWR)
-  // ==========================================
   const { data: rawMatches } = useSWR(LIVE_EVENTS_API ? LIVE_EVENTS_API : null, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
 
   const matches = useMemo(() => {
@@ -130,7 +118,6 @@ export default function StreamPlayer({ id }: { id: string }) {
         const parts = dStr.split('/');
         let datePart = dStr;
         if (parts.length === 3) datePart = `${parts[2]}-${parts[1]}-${parts[0]}`;
-        // 🎯 Fix 3: Safer timezone parsing (Option A: Keep Local BD Time strings)
         return `${datePart}T${tStr}:00+06:00`;
       };
       
@@ -181,13 +168,17 @@ export default function StreamPlayer({ id }: { id: string }) {
     let rawList: any[] | null = null;
     if (Array.isArray(streamsFromApi)) rawList = streamsFromApi;
     else if (streamsFromApi.streams && Array.isArray(streamsFromApi.streams)) rawList = streamsFromApi.streams;
+    
     if (!rawList) return null;
     
-    return rawList.filter(s => s && typeof s.link === 'string').map(s => ({
-      ...s,
-      title: typeof s.title === 'string' ? s.title : undefined,
-      api: typeof s.api === 'string' ? s.api : undefined
-    }));
+    return rawList
+      .filter(s => s && (typeof s.link === 'string' || typeof s.url === 'string'))
+      .map(s => ({
+        ...s,
+        link: s.link || s.url || "",
+        title: typeof s.title === 'string' ? s.title : undefined,
+        api: typeof s.api === 'string' ? s.api : undefined
+      }));
   }, [streamsFromApi]);
 
   const currentStreamUrl = useMemo(() => {
@@ -206,14 +197,44 @@ export default function StreamPlayer({ id }: { id: string }) {
     retryCountRef.current = 0;
   }, [id]);
 
-  // ==========================================
-  // 5. STREAM MANAGER (Failover & Recovery)
-  // ==========================================
-  
-  // 🎯 Fix 5: Cache-busting using query parameter for universal CDN support
-  const getFreshUrl = useCallback((url: string) => {
-    return url + (url.includes('?') ? '&' : '?') + '__t=' + Date.now();
+  useEffect(() => {
+    const blockInspect = (e: MouseEvent) => e.preventDefault();
+    const blockKeys = (e: KeyboardEvent) => {
+      if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'C' || e.key === 'J'))) { e.preventDefault(); }
+    };
+    document.addEventListener('contextmenu', blockInspect);
+    document.addEventListener('keydown', blockKeys);
+    return () => {
+      document.removeEventListener('contextmenu', blockInspect);
+      document.removeEventListener('keydown', blockKeys);
+    };
   }, []);
+
+  const handleFitToggle = useCallback(() => {
+    const fitModes: ('contain' | 'cover' | 'fill')[] = ['contain', 'cover', 'fill'];
+    setObjectFit(prev => {
+      const next = fitModes[(fitModes.indexOf(prev) + 1) % fitModes.length];
+      setShowFitToast(true);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('toggleObjectFit', handleFitToggle);
+    return () => window.removeEventListener('toggleObjectFit', handleFitToggle);
+  }, [handleFitToggle]);
+
+  useEffect(() => {
+    if (showFitToast) {
+      const t = setTimeout(() => setShowFitToast(false), 2000);
+      timersRef.current.add(t);
+      return () => { clearTimeout(t); timersRef.current.delete(t); };
+    }
+  }, [showFitToast, objectFit]);
+
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.style.objectFit = objectFit;
+  }, [objectFit]);
 
   const safeSwitchServer = useCallback(() => {
     if (failoverLockRef.current) return;
@@ -224,15 +245,12 @@ export default function StreamPlayer({ id }: { id: string }) {
       const list = streamsRef.current;
       if (!list) return prevIndex;
       
-      // 🎯 Fix 4: Add current to TTL Blacklist
       failedServersRef.current.set(prevIndex, Date.now());
-      
       let nextValidIndex = -1;
       const now = Date.now();
       
       for (let i = 0; i < list.length; i++) {
         const failedTime = failedServersRef.current.get(i);
-        // Valid if never failed OR failed more than 2 minutes (120000ms) ago
         if (!failedTime || now - failedTime > 120000) {
           nextValidIndex = i;
           break;
@@ -255,13 +273,15 @@ export default function StreamPlayer({ id }: { id: string }) {
     failoverTimeoutRef.current = setTimeout(() => { failoverLockRef.current = false; }, 3000);
   }, []);
 
+  // 🎯 Fix 2: Removed __t=Date.now() parameter to prevent 403 Forbidden token errors
   const forceReloadStream = useCallback(() => {
     if (playerRef.current && currentlyPlayingUrlRef.current) {
       playerRef.current.unload().then(() => {
-        playerRef.current.load(getFreshUrl(currentlyPlayingUrlRef.current!));
+        // Loads pure original URL without breaking the secure signature
+        playerRef.current.load(currentlyPlayingUrlRef.current!);
       }).catch(() => {});
     }
-  }, [getFreshUrl]);
+  }, []);
 
   const handleStreamError = useCallback(async (error: any) => {
     if (errorLockRef.current) return;
@@ -286,15 +306,23 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }, [forceReloadStream, safeSwitchServer]);
 
-  // Bind safe refs for Shaka events
   errorHandlerRef.current = handleStreamError;
   bufferingHandlerRef.current = (e: any) => {
     setIsBuffering(e.buffering);
     isBufferingRef.current = e.buffering;
   };
-  // ==========================================
-  // 6. PLAYER LAYER (Shaka Logic)
-  // ==========================================
+
+  useEffect(() => {
+    const handleVisibility = () => { if (!document.hidden && isBufferingRef.current) forceReloadStream(); };
+    const handleOnline = () => { forceReloadStream(); };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [forceReloadStream]);
+
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
     if (playerInitRef.current) return;
@@ -344,12 +372,10 @@ export default function StreamPlayer({ id }: { id: string }) {
         document.addEventListener('fullscreenchange', handleFullscreen);
         (ui as any).cleanupFullscreen = () => document.removeEventListener('fullscreenchange', handleFullscreen);
         
-        // 🎯 Fix 1: Named timeupdate handler and strict cleanup
         const handleTimeUpdate = () => { lastProgressRef.current = Date.now(); };
         videoRef.current?.addEventListener('timeupdate', handleTimeUpdate);
         (ui as any).cleanupTimeUpdate = () => videoRef.current?.removeEventListener('timeupdate', handleTimeUpdate);
 
-        // 🎯 Fix 2 & 3: Safe stall detection using stable Ref
         const checkStall = setInterval(() => {
           if (isBufferingRef.current && (Date.now() - lastProgressRef.current > 10000)) {
             console.log("Stall detected via timestamp → Switching server");
@@ -358,7 +384,6 @@ export default function StreamPlayer({ id }: { id: string }) {
         }, 5000);
         timersRef.current.add(checkStall);
         
-        // 🎯 Fix 6: Safe named handler routing to prevent duplicate binds
         const onBuffering = (e: any) => { if (bufferingHandlerRef.current) bufferingHandlerRef.current(e); };
         const onError = (e: any) => { if (errorHandlerRef.current) errorHandlerRef.current(e); };
         
@@ -398,15 +423,14 @@ export default function StreamPlayer({ id }: { id: string }) {
       }
       
       timersRef.current.forEach(clearTimeout);
-      timersRef.current.clear();
       timersRef.current.forEach(clearInterval);
+      timersRef.current.clear();
     };
-  }, []); // 🚀 Clean dependency array!
+  }, [safeSwitchServer]);
 
-  // 🎯 Stream URL Load Watcher
   useEffect(() => {
     if (!playerRef.current || !streams || streams.length === 0 || allServersDown || !currentStreamUrl) return;
-    if (currentlyPlayingUrlRef.current === currentStreamUrl) return;
+    if (currentlyPlayingUrlRef.current === currentStreamUrl || failedServersRef.current.has(activeStreamIndex)) return;
 
     let isMounted = true;
     const loadVideo = async () => {
@@ -447,9 +471,8 @@ export default function StreamPlayer({ id }: { id: string }) {
           }
         }
         
-        const freshUrl = getFreshUrl(currentStreamUrl);
         try {
-          await playerRef.current.load(freshUrl);
+          await playerRef.current.load(currentStreamUrl);
           currentlyPlayingUrlRef.current = currentStreamUrl; 
         } catch (err: any) {
           console.log("Load failed:", err?.code);
@@ -474,60 +497,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     };
     loadVideo();
     return () => { isMounted = false; };
-  }, [currentStreamUrl, streams, activeStreamIndex, allServersDown, getFreshUrl, safeSwitchServer, forceReloadStream]);
-
-  // ==========================================
-  // 7. EVENT LISTENERS & UI EFFECTS
-  // ==========================================
-  useEffect(() => {
-    const handleVisibility = () => { if (!document.hidden && isBufferingRef.current) forceReloadStream(); };
-    const handleOnline = () => { forceReloadStream(); };
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('online', handleOnline);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('online', handleOnline);
-    };
-  }, [forceReloadStream]);
-
-  useEffect(() => {
-    const blockInspect = (e: MouseEvent) => e.preventDefault();
-    const blockKeys = (e: KeyboardEvent) => {
-      if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'C' || e.key === 'J'))) { e.preventDefault(); }
-    };
-    document.addEventListener('contextmenu', blockInspect);
-    document.addEventListener('keydown', blockKeys);
-    return () => {
-      document.removeEventListener('contextmenu', blockInspect);
-      document.removeEventListener('keydown', blockKeys);
-    };
-  }, []);
-
-  const handleFitToggle = useCallback(() => {
-    const fitModes: ('contain' | 'cover' | 'fill')[] = ['contain', 'cover', 'fill'];
-    setObjectFit(prev => {
-      const next = fitModes[(fitModes.indexOf(prev) + 1) % fitModes.length];
-      setShowFitToast(true);
-      return next;
-    });
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener('toggleObjectFit', handleFitToggle);
-    return () => window.removeEventListener('toggleObjectFit', handleFitToggle);
-  }, [handleFitToggle]);
-
-  useEffect(() => {
-    if (showFitToast) {
-      const t = setTimeout(() => setShowFitToast(false), 2000);
-      timersRef.current.add(t);
-      return () => { clearTimeout(t); timersRef.current.delete(t); };
-    }
-  }, [showFitToast, objectFit]);
-
-  useEffect(() => {
-    if (videoRef.current) videoRef.current.style.objectFit = objectFit;
-  }, [objectFit]);
+  }, [currentStreamUrl, streams, activeStreamIndex, allServersDown, safeSwitchServer, forceReloadStream]);
 
   const handleUserActivity = () => {
     setIsControlsVisible(true);
@@ -548,9 +518,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   };
 
-  // ==========================================
-  // 8. RENDER JSX
-  // ==========================================
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
@@ -596,7 +563,7 @@ export default function StreamPlayer({ id }: { id: string }) {
               </div>
             )}
 
-            <video ref={videoRef} autoPlay playsInline preload="auto" muted={false} className={`w-full h-full transition-all duration-300 pointer-events-none`} />
+            <video ref={videoRef} autoPlay playsInline preload="auto" muted={false} className="w-full h-full transition-all duration-300 pointer-events-none" />
 
             <AnimatePresence>
               {showFitToast && (
@@ -613,9 +580,11 @@ export default function StreamPlayer({ id }: { id: string }) {
               <span className="text-gray-400 font-bold text-xs md:text-sm mr-2 whitespace-nowrap uppercase tracking-wider">Servers:</span>
               {streams.map((stream, index) => {
                 const isFailed = failedServersRef.current.has(index);
+                // 🎯 Fix 1: Properly using link_names fallback to restore Server Names
+                const serverName = stream.title || (currentMatch?.eventInfo as any)?.link_names?.[index] || `Server ${index + 1}`;
                 return (
-                  <button key={index} onClick={() => { failedServersRef.current.delete(index); setAllServersDown(false); setActiveStreamIndex(index); currentlyPlayingUrlRef.current = null; }} className={`px-5 py-2 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border outline-none duration-150 ${activeStreamIndex === index && !allServersDown ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)]" : isFailed ? "bg-red-900/20 border-red-900/50 text-red-500/50 hover:bg-red-900/40" : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white"}`} >
-                    {stream.title || `Server ${index + 1}`}
+                  <button key={index} disabled={isFailed} onClick={() => { failedServersRef.current.delete(index); setAllServersDown(false); setActiveStreamIndex(index); currentlyPlayingUrlRef.current = null; }} className={`px-5 py-2 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border outline-none duration-150 ${activeStreamIndex === index && !allServersDown ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)]" : isFailed ? "bg-red-900/20 border-red-900/50 text-red-500/50 cursor-not-allowed" : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white"}`} >
+                    {serverName}
                   </button>
                 );
               })}
@@ -684,4 +653,4 @@ export default function StreamPlayer({ id }: { id: string }) {
       <Script src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js" strategy="lazyOnload" id="adsterra-popunder" />
     </main>
   );
-      }
+}
