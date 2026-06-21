@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
-import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
 import Script from 'next/script';
@@ -11,7 +10,6 @@ import Script from 'next/script';
 interface Stream { title?: string; link: string; api?: string; }
 const LIVE_EVENTS_API = process.env.NEXT_PUBLIC_LIVE_EVENTS_API || "https://ratulxadia-playz-cats-event.hf.space/api/events";
 const STREAM_API_BASE = process.env.NEXT_PUBLIC_STREAM_API_BASE || "https://ratulxadia-playz-cats-event.hf.space/api/stream/";
-const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY || "https://img.aiorbd.workers.dev/?url=";
 
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 
@@ -22,16 +20,18 @@ export default function StreamPlayer({ id }: { id: string }) {
   const playerInitRef = useRef(false);
 
   const currentlyPlayingUrlRef = useRef<string | null>(null);
-  const lastAppliedDrmRef = useRef<string | null>(null); 
-  const lastSwitchTimeRef = useRef<number>(0); 
-  const timersRef = useRef<Set<any>>(new Set());
+  const lastAppliedDrmRef = useRef<string | null>(null);
+  const lastSwitchTimeRef = useRef<number>(0);
 
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
+  const [failedServers, setFailedServers] = useState<Record<number, number>>({});
+  const failedServersRef = useRef<Record<number, number>>({});
+
   const [isBuffering, setIsBuffering] = useState(true);
   const [allServersDown, setAllServersDown] = useState(false);
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
-  const [showFitToast, setShowFitToast] = useState(false);
 
+  // 🎯 ফিক্স ৩: সার্ভারের আসল নাম বের করার জন্য Data Fetching
   const { data: rawMatches } = useSWR(LIVE_EVENTS_API, fetcher, { revalidateOnFocus: false });
 
   const currentMatch = useMemo(() => {
@@ -63,29 +63,61 @@ export default function StreamPlayer({ id }: { id: string }) {
     return streams[activeStreamIndex]?.link || null;
   }, [streams, activeStreamIndex]);
 
-  // Instant Auto Switcher: যেকোনো এরর বা স্টল খাওয়া মাত্র পরবর্তী সার্ভারে শিফট করার চাবি
+  // 🎯 ফিক্স ১: Auto Switcher এখন পারফেক্টলি ফেইল হওয়া সার্ভারগুলোকে স্কিপ করবে
   const safeSwitchServer = useCallback(() => {
     const now = Date.now();
-    if (now - lastSwitchTimeRef.current < 800) return; // Fast throttle guard
+    if (now - lastSwitchTimeRef.current < 2000) return; // Prevent crazy fast loops
     lastSwitchTimeRef.current = now;
 
     setActiveStreamIndex((prev) => {
       if (!streams || streams.length <= 1) return prev;
-      const nextIndex = (prev + 1) % streams.length;
-      if (nextIndex === 0) {
+
+      // বর্তমান সার্ভারকে ফেইল লিস্টে ঢোকানো হলো
+      const updatedFails = { ...failedServersRef.current, [prev]: now };
+      failedServersRef.current = updatedFails;
+      setFailedServers(updatedFails);
+
+      // পরবর্তী ভালো সার্ভার খোঁজা হচ্ছে
+      let nextIdx = -1;
+      for (let i = 1; i <= streams.length; i++) {
+        const checkIdx = (prev + i) % streams.length;
+        const failTime = updatedFails[checkIdx];
+        
+        // যদি ফেইল না করে থাকে অথবা ফেইল করার পর ৩০ সেকেন্ড পার হয়ে থাকে
+        if (!failTime || (now - failTime > 30000)) {
+          nextIdx = checkIdx;
+          break;
+        }
+      }
+
+      if (nextIdx !== -1) {
+        return nextIdx;
+      } else {
         setAllServersDown(true);
         setIsBuffering(false);
         return prev;
       }
-      return nextIndex;
     });
   }, [streams]);
-  // Block 1: প্লেয়ার লাইফসাইকেল ইনিশিয়ালাইজেশন (ব্রাউজারে শুধু একবারই রান হবে)
+
+  // 🎯 ফিক্স ২: ম্যানুয়ালি ক্লিক করলে সার্ভারটিকে ফেইল লিস্ট থেকে মুছে প্লে করার সুযোগ দেওয়া
+  const handleManualSwitch = (idx: number) => {
+    const newFails = { ...failedServersRef.current };
+    delete newFails[idx];
+    failedServersRef.current = newFails;
+    setFailedServers(newFails);
+
+    setActiveStreamIndex(idx);
+    currentlyPlayingUrlRef.current = null;
+    setAllServersDown(false);
+  };
+  // 🎯 ফিক্স ১.১: বাফারিং টাইমার ফিক্স - প্লে হলে টাইমার ক্যানসেল হয়ে যাবে!
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || playerInitRef.current) return;
     playerInitRef.current = true;
 
     let shaka: any; let ui: any; let player: any;
+    let buffTimer: any = null;
 
     const init = async () => {
       try {
@@ -102,20 +134,23 @@ export default function StreamPlayer({ id }: { id: string }) {
         });
 
         player.configure({
-          streaming: { 
-            bufferingGoal: 10, 
+          streaming: {
+            bufferingGoal: 10,
             rebufferingGoal: 2,
-            retryParameters: { maxAttempts: 3, baseDelay: 500, timeout: 10000 } 
+            retryParameters: { maxAttempts: 3, baseDelay: 500, timeout: 10000 }
           }
         });
 
         player.addEventListener('buffering', (e: any) => {
           setIsBuffering(e.buffering);
           if (e.buffering) {
-            const t = setTimeout(() => {
+            // ৮ সেকেন্ড বাফারিংয়ে আটকে থাকলে তবেই সুইচ করবে
+            buffTimer = setTimeout(() => {
               if (playerRef.current?.isBuffering()) safeSwitchServer();
-            }, 6000); // ৬ সেকেন্ড বাফারিং এ আটকে থাকলে অটো সার্ভার চেঞ্জ হবে
-            timersRef.current.add(t);
+            }, 8000); 
+          } else {
+            // 🟢 ভিডিও প্লে হয়ে গেলে টাইমার ক্যানসেল! (অটো জাম্প আর করবে না)
+            if (buffTimer) clearTimeout(buffTimer);
           }
         });
 
@@ -130,14 +165,13 @@ export default function StreamPlayer({ id }: { id: string }) {
 
     return () => {
       playerInitRef.current = false;
+      if (buffTimer) clearTimeout(buffTimer);
       if (ui) ui.destroy();
       if (player) { try { player.destroy(); } catch(err){} }
-      timersRef.current.forEach(clearTimeout);
-      timersRef.current.clear();
     };
   }, [safeSwitchServer]);
 
-  // Block 2: ভিডিও ও DRM লোড ইঞ্জিন (সার্ভার ইনডেক্স বা ইউআরএল চেঞ্জ হলে রিফ্রেশ ছাড়াই সাথে সাথে ফায়ার হবে)
+  // Video Load Engine
   useEffect(() => {
     if (!playerRef.current || !currentStreamUrl || !streams) return;
     if (currentlyPlayingUrlRef.current === currentStreamUrl) return;
@@ -163,7 +197,7 @@ export default function StreamPlayer({ id }: { id: string }) {
         }
 
         const mimeType = currentStreamUrl.includes('.mpd') ? 'application/dash+xml' : currentStreamUrl.includes('.m3u8') ? 'application/x-mpegURL' : undefined;
-        
+
         await playerRef.current.load(currentStreamUrl, null, mimeType);
         currentlyPlayingUrlRef.current = currentStreamUrl;
         setIsBuffering(false);
@@ -178,7 +212,7 @@ export default function StreamPlayer({ id }: { id: string }) {
   return (
     <div className="w-full flex flex-col p-2 sm:p-4 bg-[#11131A]">
       <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-2xl border border-gray-800/60 shaka-video-container">
-        
+
         {isBuffering && !allServersDown && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/60 z-40">
             <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin"></div>
@@ -188,7 +222,7 @@ export default function StreamPlayer({ id }: { id: string }) {
         {allServersDown && (
           <div className="absolute inset-0 flex items-center justify-center bg-[#11131A] z-50 flex-col gap-3 p-4 text-center">
             <span className="text-red-400 font-bold">All Server Connections Failed</span>
-            <button onClick={() => { setAllServersDown(false); setActiveStreamIndex(0); currentlyPlayingUrlRef.current = null; }} className="bg-[#1C1E2B] text-white border border-gray-700 px-5 py-2 rounded-full text-xs font-bold">Reset Pipe Matrix</button>
+            <button onClick={() => { setAllServersDown(false); setActiveStreamIndex(0); currentlyPlayingUrlRef.current = null; failedServersRef.current = {}; setFailedServers({}); }} className="bg-[#1C1E2B] text-white border border-gray-700 px-5 py-2 rounded-full text-xs font-bold">Retry Servers</button>
           </div>
         )}
 
@@ -199,21 +233,23 @@ export default function StreamPlayer({ id }: { id: string }) {
         <div className="flex gap-2 overflow-x-auto py-4 items-center scrollbar-hide">
           <span className="text-gray-400 font-bold text-xs uppercase tracking-wider mr-2">Servers:</span>
           {streams.map((stream, idx) => {
-            const name = stream.title || `Server ${idx + 1}`;
+            // 🎯 ফিক্স ৩: হারানো সার্ভার নেম ফিরিয়ে আনা হলো!
+            const name = stream.title || currentMatch?.link_names?.[idx] || `Server ${idx + 1}`;
+            const isFailed = !!failedServers[idx] && (Date.now() - failedServers[idx] < 30000);
+            
             return (
-              <button key={idx} onClick={() => { setActiveStreamIndex(idx); currentlyPlayingUrlRef.current = null; }} className={`px-5 py-2 rounded-full text-xs font-bold transition-all border ${activeStreamIndex === idx && !allServersDown ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)]" : "bg-[#1C1E2B] border-gray-800 text-gray-400"}`}>
+              <button key={idx} onClick={() => handleManualSwitch(idx)} className={`px-5 py-2 rounded-full text-xs font-bold transition-all border ${activeStreamIndex === idx && !allServersDown ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)]" : isFailed ? "bg-red-900/20 border-red-900/50 text-red-500/50" : "bg-[#1C1E2B] border-gray-800 text-gray-400 hover:text-white"}`}>
                 {name}
               </button>
             );
           })}
         </div>
       )}
-      
+
       <style dangerouslySetInnerHTML={{__html: `
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .shaka-scrim-container { display: none !important; }
       `}} />
-      <Script src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js" strategy="lazyOnload" id="adsterra-popunder" />
     </div>
   );
 }
