@@ -655,7 +655,7 @@ export default function StreamPlayer({ id }: { id: string }) {
           <MatchListBottom currentMatchId={id} />
 
         </div>
-      </div>
+    
       
       {/* 🎨 প্লেয়ার এবং ভিডিওর কাস্টম স্টাইল */}
       <style dangerouslySetInnerHTML={{__html: `
