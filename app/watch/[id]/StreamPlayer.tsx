@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import MatchListBottom from '@/components/MatchListBottom'; // আপনার ফোল্ডার পাথ অনুযায়ী ইম্পোর্ট করুন
-
+import MatchListBottom from '@/components/MatchListBottom'; 
 import useSWR from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -55,24 +54,33 @@ export default function StreamPlayer({ id }: { id: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
+  
+  // 🎯 Fix 2: Sync flag to prevent React strict mode double init
   const playerInitRef = useRef(false);
 
   const streamsRef = useRef<Stream[] | null>(null);
   const currentlyPlayingUrlRef = useRef<string | null>(null);
+  
+  // 🎯 Fix 4: Prevent unnecessary DRM re-configs
+  const lastAppliedDrmRef = useRef<string | null>(null); 
+  
   const activeIndexRef = useRef<number>(0);
   const retryCountRef = useRef(0);
   const maxRetry = 2;
   const baseRetryDelay = 1000; 
   
-  // 🎯 Fix 5: Exponential Cooldown Blacklist (stores time & attempts)
-  const failedServersRef = useRef<Map<number, { time: number, attempts: number }>>(new Map());
-  const timersRef = useRef<Set<NodeJS.Timeout>>(new Set());
+  // 🎯 Fix 1: Replaced Map with Plain Object (Record) for guaranteed React Re-renders
+  const [failedServers, setFailedServers] = useState<Record<number, { time: number, attempts: number }>>({});
+  const failedServersRef = useRef<Record<number, { time: number, attempts: number }>>({});
+  
+  // 🎯 Fix 6: Centralized and typed Timer Cleanup
+  const timersRef = useRef<Set<ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>>>(new Set());
   
   const failoverLockRef = useRef(false);
-  const failoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const failoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const errorLockRef = useRef(false);
-  const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const errorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const bufferingHandlerRef = useRef<any>(null);
   const errorHandlerRef = useRef<any>(null);
@@ -88,6 +96,7 @@ export default function StreamPlayer({ id }: { id: string }) {
   const [showCopied, setShowCopied] = useState(false);
   
   const [currentTime, setCurrentTime] = useState(new Date());
+  
   useEffect(() => {
     const t = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(t);
@@ -105,9 +114,7 @@ export default function StreamPlayer({ id }: { id: string }) {
           const parts = dStr.split('/');
           let day = 1, month = 1, year = 2026;
           if (parts.length === 3) {
-            day = parseInt(parts[0], 10);
-            month = parseInt(parts[1], 10);
-            year = parseInt(parts[2], 10);
+            day = parseInt(parts[0], 10); month = parseInt(parts[1], 10); year = parseInt(parts[2], 10);
           } else if (dStr.includes('-')) {
             const hyphenParts = dStr.split('-');
             if (hyphenParts[0].length === 4) {
@@ -145,7 +152,6 @@ export default function StreamPlayer({ id }: { id: string }) {
   const matchMap = useMemo(() => new Map((matches ?? []).map((m: any) => [String(m.id), m])), [matches]);
 
   const currentMatch = useMemo(() => {
-    if (!matchMap) return null;
     let match = matchMap.get(id);
     if (!match) match = matchMap.get(id.split('-').pop() || id);
     return match || null;
@@ -162,6 +168,9 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
 
+  // 🎯 Fix 5: Deep stringify check to prevent SWR overlapping refetch triggers
+  const streamsStringified = useMemo(() => JSON.stringify(streamsFromApi), [streamsFromApi]);
+
   const streams = useMemo<Stream[] | null>(() => {
     if (!streamsFromApi) return null;
     let rawList: any[] | null = null;
@@ -175,7 +184,7 @@ export default function StreamPlayer({ id }: { id: string }) {
       title: typeof s.title === 'string' ? s.title : undefined,
       api: typeof s.api === 'string' ? s.api : undefined
     }));
-  }, [streamsFromApi]);
+  }, [streamsStringified]); // Dependencies locked to stringified data
 
   const currentStreamUrl = useMemo(() => {
     if (!streams?.length) return null;
@@ -185,13 +194,34 @@ export default function StreamPlayer({ id }: { id: string }) {
   useEffect(() => { streamsRef.current = streams; }, [streams]);
   useEffect(() => { activeIndexRef.current = activeStreamIndex; }, [activeStreamIndex]);
 
+  // 🎯 Fix 1: State Sync logic guaranteed React update
+  const markServerFailed = useCallback((index: number) => {
+    const current = failedServersRef.current[index] || { time: 0, attempts: 0 };
+    const updated = { ...failedServersRef.current, [index]: { time: Date.now(), attempts: current.attempts + 1 } };
+    failedServersRef.current = updated;
+    setFailedServers(updated);
+  }, []);
+
+  const clearServerFailures = useCallback(() => {
+    failedServersRef.current = {};
+    setFailedServers({});
+  }, []);
+
+  const removeServerFailure = useCallback((index: number) => {
+    const updated = { ...failedServersRef.current };
+    delete updated[index];
+    failedServersRef.current = updated;
+    setFailedServers(updated);
+  }, []);
+
   useEffect(() => {
     setActiveStreamIndex(0);
     setAllServersDown(false);
     currentlyPlayingUrlRef.current = null;
-    failedServersRef.current.clear();
+    lastAppliedDrmRef.current = null;
+    clearServerFailures();
     retryCountRef.current = 0;
-  }, [id]);
+  }, [id, clearServerFailures]);
 
   useEffect(() => {
     const blockInspect = (e: MouseEvent) => e.preventDefault();
@@ -223,7 +253,6 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   useEffect(() => { if (videoRef.current) videoRef.current.style.objectFit = objectFit; }, [objectFit]);
 
-  // 🎯 Fix 5: Exponential Backoff Failover Logic
   const safeSwitchServer = useCallback(() => {
     if (failoverLockRef.current) return;
     failoverLockRef.current = true;
@@ -233,18 +262,16 @@ export default function StreamPlayer({ id }: { id: string }) {
       const list = streamsRef.current;
       if (!list) return prevIndex;
       
-      const currentFail = failedServersRef.current.get(prevIndex) || { time: 0, attempts: 0 };
-      failedServersRef.current.set(prevIndex, { time: Date.now(), attempts: currentFail.attempts + 1 });
+      markServerFailed(prevIndex);
       
       let nextValidIndex = -1;
       const now = Date.now();
       
       for (let i = 0; i < list.length; i++) {
-        const fd = failedServersRef.current.get(i);
+        const fd = failedServersRef.current[i];
         if (!fd) {
           nextValidIndex = i; break;
         } else {
-          // Exponential Cooldown: 60s, 120s, 240s based on attempts
           const cooldown = 60000 * Math.pow(2, fd.attempts - 1);
           if (now - fd.time > cooldown) {
             nextValidIndex = i; break;
@@ -266,9 +293,7 @@ export default function StreamPlayer({ id }: { id: string }) {
 
     if (failoverTimeoutRef.current) clearTimeout(failoverTimeoutRef.current);
     failoverTimeoutRef.current = setTimeout(() => { failoverLockRef.current = false; }, 3000);
-  }, []);
-
-  const getFreshUrl = useCallback((url: string) => { return url + (url.includes('?') ? '&' : '?') + '__t=' + Date.now(); }, []);
+  }, [markServerFailed]);
 
   const forceReloadStream = useCallback(() => {
     if (playerRef.current && currentlyPlayingUrlRef.current) {
@@ -315,7 +340,10 @@ export default function StreamPlayer({ id }: { id: string }) {
   // ==========================================
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
+    
+    // 🎯 Fix 2: Synchronous execution block to prevent race condition
     if (playerInitRef.current) return;
+    playerInitRef.current = true; 
     
     let shaka: any; let player: any; let ui: any;
     let isCancelled = false;
@@ -335,7 +363,9 @@ export default function StreamPlayer({ id }: { id: string }) {
                 button.className = 'shaka-custom-stretch-btn shaka-tooltip';
                 button.setAttribute('aria-label', 'Toggle Fit');
                 button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
-                this.eventManager.listen(button, 'click', () => window.dispatchEvent(new CustomEvent('toggleObjectFit')));
+                this.eventManager.listen(button, 'click', () => {
+                  window.dispatchEvent(new CustomEvent('toggleObjectFit'));
+                });
                 parent.appendChild(button);
               }
             }
@@ -353,6 +383,27 @@ export default function StreamPlayer({ id }: { id: string }) {
           addSeekBar: true,
           trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.LABEL
         });
+
+        // Heavy global configuration called only once
+        player.configure({
+          streaming: {
+            bufferingGoal: 15, rebufferingGoal: 1, bufferBehind: 20, bufferLead: 10,
+            startAtSegmentBoundary: true, jumpLargeGaps: true, smallGapLimit: 2,
+            ignoreTextStreamFailures: true, inaccurateManifestTolerance: 2, lowLatencyMode: false,
+            stallEnabled: true, stallThreshold: 1, stallSkip: 0.5,
+            retryParameters: { maxAttempts: 15, baseDelay: 500, timeout: 15000 }
+          },
+          manifest: {
+            retryParameters: { maxAttempts: 15, baseDelay: 500, timeout: 15000 },
+            dash: { ignoreMinBufferTime: true, autoCorrectDrift: true },
+            hls: { ignoreManifestProgramDateTime: true, sequenceMode: true }
+          },
+          abr: {
+            enabled: true, switchInterval: 2, bandwidthDowngradeTarget: 0.95, 
+            bandwidthUpgradeTarget: 0.75, restrictToElementSize: true, 
+            clearBufferSwitch: false, safeMarginSwitch: true
+          }
+        });
         
         const handleFullscreen = () => {
           if (document.fullscreenElement && window.screen?.orientation && (window.screen.orientation as any).lock) {
@@ -366,9 +417,10 @@ export default function StreamPlayer({ id }: { id: string }) {
         videoRef.current?.addEventListener('timeupdate', handleTimeUpdate);
         (ui as any).cleanupTimeUpdate = () => videoRef.current?.removeEventListener('timeupdate', handleTimeUpdate);
 
-        // 🎯 Fix 4: Live Sports Friendly Stall Detection (15s instead of 10s)
+        // 🎯 Fix 3: False Switching Risk (25s delay + Paused Check)
         const checkStall = setInterval(() => {
-          if (isBufferingRef.current && (Date.now() - lastProgressRef.current > 15000)) {
+          const isPaused = videoRef.current?.paused;
+          if (isBufferingRef.current && !isPaused && (Date.now() - lastProgressRef.current > 25000)) {
             console.log("Stall detected via timestamp → Switching server");
             safeSwitchServer();
           }
@@ -386,8 +438,6 @@ export default function StreamPlayer({ id }: { id: string }) {
           player.removeEventListener('error', onError);
         };
         
-        playerInitRef.current = true;
-        
       } catch (err) {
         console.error("Init Error", err);
         playerInitRef.current = false;
@@ -396,9 +446,10 @@ export default function StreamPlayer({ id }: { id: string }) {
     
     initPlayer();
     
+    // 🎯 Fix 6: Bulletproof cleanup for all timers and listeners
     return () => {
       isCancelled = true;
-      if (playerRef.current) playerInitRef.current = false;
+      playerInitRef.current = false;
       
       if (ui) {
         if ((ui as any).cleanupFullscreen) (ui as any).cleanupFullscreen();
@@ -419,9 +470,15 @@ export default function StreamPlayer({ id }: { id: string }) {
     };
   }, [safeSwitchServer]);
 
+  // Player Load Effect
   useEffect(() => {
-    if (!playerRef.current || !streams || streams.length === 0 || allServersDown || !currentStreamUrl) return;
-    if (currentlyPlayingUrlRef.current === currentStreamUrl || failedServersRef.current.has(activeStreamIndex)) return;
+    if (!playerRef.current || allServersDown || !currentStreamUrl) return;
+    
+    const list = streamsRef.current;
+    if (!list || list.length === 0) return;
+
+    // 🎯 Fix 1: Checking failure using the Object map logic
+    if (currentlyPlayingUrlRef.current === currentStreamUrl || failedServersRef.current[activeStreamIndex]) return;
 
     let isMounted = true;
     const loadVideo = async () => {
@@ -431,36 +488,25 @@ export default function StreamPlayer({ id }: { id: string }) {
       try {
         await playerRef.current.unload();
         
-        playerRef.current.configure({
-          streaming: {
-            bufferingGoal: 15, rebufferingGoal: 1, bufferBehind: 20, bufferLead: 10,
-            startAtSegmentBoundary: true, jumpLargeGaps: true, smallGapLimit: 2,
-            ignoreTextStreamFailures: true, inaccurateManifestTolerance: 2, lowLatencyMode: false,
-            stallEnabled: true, stallThreshold: 1, stallSkip: 0.5,
-            retryParameters: { maxAttempts: 15, baseDelay: 500, timeout: 15000 }
-          },
-          manifest: {
-            retryParameters: { maxAttempts: 15, baseDelay: 500, timeout: 15000 },
-            dash: { ignoreMinBufferTime: true, autoCorrectDrift: true },
-            hls: { ignoreManifestProgramDateTime: true, sequenceMode: true }
-          },
-          abr: {
-            enabled: true, switchInterval: 2, bandwidthDowngradeTarget: 0.95, 
-            bandwidthUpgradeTarget: 0.75, restrictToElementSize: true, 
-            clearBufferSwitch: false, safeMarginSwitch: true
-          }
-        });
+        // 🎯 Fix 4: Smart DRM re-apply guard
+        const currentStreamObj = list[activeStreamIndex];
+        const newDrmApi = currentStreamObj?.api || "";
         
-        // 🎯 ClearKey Setup Maintained Before Load
-        const currentStreamObj = streams[activeStreamIndex];
-        if (currentStreamObj && currentStreamObj.api) {
-          const cleanDrm = currentStreamObj.api.replace(/['"\s]/g, '');
-          const parts = cleanDrm.split(':');
-          if (parts.length >= 2) {
-            const kid = parts[0];
-            const key = parts.slice(1).join(':');
-            playerRef.current.configure({ drm: { clearKeys: { [kid]: key } } });
+        if (lastAppliedDrmRef.current !== newDrmApi) {
+          if (newDrmApi) {
+            const cleanDrm = newDrmApi.replace(/['"\s]/g, '');
+            const parts = cleanDrm.split(':');
+            if (parts.length >= 2) {
+              const kid = parts[0];
+              const key = parts.slice(1).join(':');
+              playerRef.current.configure({ drm: { clearKeys: { [kid]: key } } });
+            } else {
+              playerRef.current.configure({ drm: { clearKeys: {} } });
+            }
+          } else {
+            playerRef.current.configure({ drm: { clearKeys: {} } });
           }
+          lastAppliedDrmRef.current = newDrmApi; // Save to cache
         }
         
         const mimeType = getMimeType(currentStreamUrl);
@@ -491,9 +537,10 @@ export default function StreamPlayer({ id }: { id: string }) {
         }
       }
     };
+    
     loadVideo();
     return () => { isMounted = false; };
-  }, [currentStreamUrl, streams, activeStreamIndex, allServersDown, safeSwitchServer, forceReloadStream]);
+  }, [currentStreamUrl, activeStreamIndex, allServersDown, safeSwitchServer, forceReloadStream]);
 
   useEffect(() => {
     const handleVisibility = () => { if (!document.hidden && isBufferingRef.current) forceReloadStream(); };
@@ -566,7 +613,7 @@ export default function StreamPlayer({ id }: { id: string }) {
               <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/95 z-50 flex-col gap-4 text-center p-4">
                 <span className="text-4xl">📡</span>
                 <div className="text-red-400 font-bold tracking-wide">Stream Currently Unavailable</div>
-                <button onClick={() => { setAllServersDown(false); setActiveStreamIndex(0); currentlyPlayingUrlRef.current = null; failedServersRef.current.clear(); }} className="mt-2 bg-[#1C1E2B] border border-gray-700 hover:border-[#00E5FF] text-white px-5 py-2 rounded-full text-xs font-bold">Retry Server 1</button>
+                <button onClick={() => { setAllServersDown(false); setActiveStreamIndex(0); currentlyPlayingUrlRef.current = null; clearServerFailures(); }} className="mt-2 bg-[#1C1E2B] border border-gray-700 hover:border-[#00E5FF] text-white px-5 py-2 rounded-full text-xs font-bold">Retry Server 1</button>
               </div>
             )}
 
@@ -586,11 +633,13 @@ export default function StreamPlayer({ id }: { id: string }) {
             <div className="flex gap-2 overflow-x-auto scrollbar-hide py-4 my-2 border-b border-gray-800/40 items-center">
               <span className="text-gray-400 font-bold text-xs md:text-sm mr-2 whitespace-nowrap uppercase tracking-wider">Servers:</span>
               {streams.map((stream, index) => {
-                const fd = failedServersRef.current.get(index);
+                // 🎯 Fix 1: Object based State lookup for guaranteed render accuracy
+                const fd = failedServers[index];
                 const isFailed = !!fd && (Date.now() - fd.time < 60000 * Math.pow(2, fd.attempts - 1));
                 const serverName = stream.title || (currentMatch?.eventInfo as any)?.link_names?.[index] || `Server ${index + 1}`;
+                
                 return (
-                  <button key={index} disabled={isFailed} onClick={() => { failedServersRef.current.delete(index); setAllServersDown(false); setActiveStreamIndex(index); currentlyPlayingUrlRef.current = null; }} className={`px-5 py-2 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border outline-none duration-150 ${activeStreamIndex === index && !allServersDown ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)]" : isFailed ? "bg-red-900/20 border-red-900/50 text-red-500/50 cursor-not-allowed" : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white"}`} >
+                  <button key={index} disabled={isFailed} onClick={() => { removeServerFailure(index); setAllServersDown(false); setActiveStreamIndex(index); currentlyPlayingUrlRef.current = null; }} className={`px-5 py-2 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border outline-none duration-150 ${activeStreamIndex === index && !allServersDown ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)]" : isFailed ? "bg-red-900/20 border-red-900/50 text-red-500/50 cursor-not-allowed" : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white"}`} >
                     {serverName}
                   </button>
                 );
@@ -598,36 +647,7 @@ export default function StreamPlayer({ id }: { id: string }) {
             </div>
           )}
 
-          {currentMatch && currentMatch.eventInfo ? (
-            <div className="bg-[#1C1E2B] border border border-[#00E5FF]/40 rounded-[20px] p-5 mt-3 shadow-lg relative group">
-              <button onClick={handleShare} className="absolute top-4 right-4 bg-gray-800/50 hover:bg-[#00E5FF]/20 text-gray-400 hover:text-[#00E5FF] p-2 rounded-full border border-gray-700/50 transition-all z-10">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                </svg>
-              </button>
-              {showCopied && <div className="absolute -top-8 right-2 bg-[#00E5FF] text-black text-[10px] font-bold px-3 py-1 rounded shadow-lg">Link Copied!</div>}
-              <div className="text-center text-xs font-bold text-[#00E5FF] uppercase tracking-widest mb-4 pr-8">{currentMatch.eventInfo.eventCat} | {currentMatch.eventInfo.eventName}</div>
-              <div className="flex justify-center items-center gap-6 sm:gap-12 py-2">
-                <div className="flex items-center gap-3 w-[40%] justify-end">
-                  <span className="font-bold text-sm md:text-base text-gray-200 text-right truncate">{currentMatch.eventInfo.teamA}</span>
-                  <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-700/50 flex-shrink-0 relative"><Image unoptimized src={getImg(currentMatch.eventInfo.teamAFlag)} fill className="object-cover" alt="" /></div>
-                </div>
-                <span className="text-gray-400 font-black italic text-sm md:text-base px-2">VS</span>
-                <div className="flex items-center gap-3 w-[40%] justify-start">
-                  <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-700/50 flex-shrink-0 relative"><Image unoptimized src={getImg(currentMatch.eventInfo.teamBFlag)} fill className="object-cover" alt="" /></div>
-                  <span className="font-bold text-sm md:text-base text-gray-200 text-left truncate">{currentMatch.eventInfo.teamB}</span>
-                </div>
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </div>
-      <style dangerouslySetInnerHTML={{__html: `
-        .shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; display: flex; align-items: center; justify-content: center; } 
-        .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .shaka-scrim-container { display: none !important; background: transparent !important; }
-      `}} />
-          {/* 🎯 কারেন্ট ম্যাচ ইনফো কার্ড (আপনার অরিজিনাল কোড) */}
+          {/* Current Match Info Card */}
           {currentMatch && currentMatch.eventInfo ? (
             <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 mt-3 shadow-lg relative group">
               <button onClick={handleShare} className="absolute top-4 right-4 bg-gray-800/50 hover:bg-[#00E5FF]/20 text-gray-400 hover:text-[#00E5FF] p-2 rounded-full border border-gray-700/50 transition-all z-10">
@@ -651,21 +671,18 @@ export default function StreamPlayer({ id }: { id: string }) {
             </div>
           ) : null}
 
-          {/* 🔗 নতুন পার্ট: প্লেয়ারের ঠিক নিচে আপকামিং ও অন্য লাইভ ম্যাচগুলো দেখানোর জন্য */}
           <MatchListBottom currentMatchId={id} />
 
         </div>
-    
+      </div>
       
-      {/* 🎨 প্লেয়ার এবং ভিডিওর কাস্টম স্টাইল */}
       <style dangerouslySetInnerHTML={{__html: `
         .shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; display: flex; align-items: center; justify-content: center; } 
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .shaka-scrim-container { display: none !important; background: transparent !important; }
       `}} />
       
-      {/* 🚀 আপনার দেওয়া পপআন্ডার অ্যাড স্ক্রিপ্ট */}
       <Script src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js" strategy="lazyOnload" id="adsterra-popunder" />
     </main>
   );
-}
+      }
