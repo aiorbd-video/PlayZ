@@ -166,7 +166,6 @@ export default function TvPlayer() {
           setIsBuffering(false);
         });
 
-        setPlayerInstance(player);
       } catch (err) {
         setPlayerError("Player initialization failed.");
         playerInitRef.current = false;
@@ -259,7 +258,7 @@ export default function TvPlayer() {
     return () => {
       isMounted = false;
     };
-  }, [playerInstance, channel]);
+  }, [channel]);
 
   const filteredChannels = useMemo(() => {
     return channels.filter((ch: any) => ch.name.toLowerCase().includes(searchInp.toLowerCase()));
