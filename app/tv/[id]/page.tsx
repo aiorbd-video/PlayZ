@@ -37,14 +37,13 @@ export default function TvPlayer() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   
-  // Enterprise Stability Architecture Refs
+  // Enterprise Stability Architecture Refs Fixed
+  const playerRef = useRef<any>(null);
   const playerInitRef = useRef(false);
   const lastAppliedDrmRef = useRef<string | null>(null);
   const timersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
-  const [playerInstance, setPlayerInstance] = useState<any>(null);
   const [searchInp, setSearchInp] = useState('');
-  
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
   const [showFitToast, setShowFitToast] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
@@ -107,7 +106,6 @@ export default function TvPlayer() {
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
     
-    // Fix 1: Strict guard against React 18+ strict-mode dual initialization race condition
     if (playerInitRef.current) return;
     playerInitRef.current = true; 
     
@@ -153,7 +151,6 @@ export default function TvPlayer() {
           trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.RESOLUTION_BITRATE
         });
 
-        // Offloaded heavy configuration variables called only once during construction
         player.configure({
           streaming: { 
             bufferingGoal: 30, 
@@ -169,6 +166,7 @@ export default function TvPlayer() {
           setIsBuffering(false);
         });
 
+        setPlayerInstance(player);
       } catch (err) {
         setPlayerError("Player initialization failed.");
         playerInitRef.current = false;
@@ -181,9 +179,10 @@ export default function TvPlayer() {
       isCancelled = true;
       playerInitRef.current = false;
       if (ui) ui.destroy();
-      if (player) {
-        try { player.unload(); } catch {}
-        player.destroy();
+      if (playerRef.current) {
+        try { playerRef.current.unload(); } catch {}
+        playerRef.current.destroy();
+        playerRef.current = null;
       }
       
       timersRef.current.forEach(clearTimeout);
@@ -204,7 +203,6 @@ export default function TvPlayer() {
       setIsBuffering(true);
       try {
         
-        // Fix 3: Caching layer guards DRM setup execution block against redundant state shifts
         if (lastAppliedDrmRef.current !== drmData) {
           const clearKeysObj: Record<string, string> = {};
           let parsedData = drmData;
@@ -261,7 +259,7 @@ export default function TvPlayer() {
     return () => {
       isMounted = false;
     };
-  }, [playerRef.current, channel]);
+  }, [playerInstance, channel]);
 
   const filteredChannels = useMemo(() => {
     return channels.filter((ch: any) => ch.name.toLowerCase().includes(searchInp.toLowerCase()));
