@@ -23,7 +23,6 @@ interface EventInfo {
   teamBFlag: string;
   startTime: string;
   endTime: string;
-  link_names?: string[];
 }
 
 interface Match {
@@ -64,30 +63,35 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
   else return { type: "upcoming", label: startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) };
 };
 
+// 🎯 Bonus Pro Feature: Auto Detect Stream Type & MIME Hint
+const getMimeType = (url: string) => {
+  if (url.includes('.mpd')) return 'application/dash+xml';
+  if (url.includes('.m3u8')) return 'application/x-mpegURL';
+  return undefined;
+};
+
 export default function StreamPlayer({ id }: { id: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
-  
-  const retryCountRef = useRef(0);
-  const maxRetry = 2;
   const playerInitRef = useRef(false);
 
-  const errorLockRef = useRef(false);
-  const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  const failoverLockRef = useRef(false);
-  const failoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  const stuckTimerRef = useRef<NodeJS.Timeout | null>(null);
   const streamsRef = useRef<Stream[] | null>(null);
-  const activeIndexRef = useRef<number>(0);
   const currentlyPlayingUrlRef = useRef<string | null>(null);
-  const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const activeIndexRef = useRef<number>(0);
+  const retryCountRef = useRef(0);
+  const maxRetry = 2;
+  const baseRetryDelay = 1000; // 🎯 Base delay for exponential/linear backoff
   
   const failedServersRef = useRef<Map<number, number>>(new Map());
   const timersRef = useRef<Set<NodeJS.Timeout>>(new Set());
   
+  const failoverLockRef = useRef(false);
+  const failoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const errorLockRef = useRef(false);
+  const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const bufferingHandlerRef = useRef<any>(null);
   const errorHandlerRef = useRef<any>(null);
   const lastProgressRef = useRef<number>(Date.now());
@@ -168,17 +172,13 @@ export default function StreamPlayer({ id }: { id: string }) {
     let rawList: any[] | null = null;
     if (Array.isArray(streamsFromApi)) rawList = streamsFromApi;
     else if (streamsFromApi.streams && Array.isArray(streamsFromApi.streams)) rawList = streamsFromApi.streams;
-    
     if (!rawList) return null;
     
-    return rawList
-      .filter(s => s && (typeof s.link === 'string' || typeof s.url === 'string'))
-      .map(s => ({
-        ...s,
-        link: s.link || s.url || "",
-        title: typeof s.title === 'string' ? s.title : undefined,
-        api: typeof s.api === 'string' ? s.api : undefined
-      }));
+    return rawList.filter(s => s && typeof s.link === 'string').map(s => ({
+      ...s,
+      title: typeof s.title === 'string' ? s.title : undefined,
+      api: typeof s.api === 'string' ? s.api : undefined
+    }));
   }, [streamsFromApi]);
 
   const currentStreamUrl = useMemo(() => {
@@ -197,44 +197,9 @@ export default function StreamPlayer({ id }: { id: string }) {
     retryCountRef.current = 0;
   }, [id]);
 
-  useEffect(() => {
-    const blockInspect = (e: MouseEvent) => e.preventDefault();
-    const blockKeys = (e: KeyboardEvent) => {
-      if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'C' || e.key === 'J'))) { e.preventDefault(); }
-    };
-    document.addEventListener('contextmenu', blockInspect);
-    document.addEventListener('keydown', blockKeys);
-    return () => {
-      document.removeEventListener('contextmenu', blockInspect);
-      document.removeEventListener('keydown', blockKeys);
-    };
+  const getFreshUrl = useCallback((url: string) => {
+    return url + (url.includes('?') ? '&' : '?') + '__t=' + Date.now();
   }, []);
-
-  const handleFitToggle = useCallback(() => {
-    const fitModes: ('contain' | 'cover' | 'fill')[] = ['contain', 'cover', 'fill'];
-    setObjectFit(prev => {
-      const next = fitModes[(fitModes.indexOf(prev) + 1) % fitModes.length];
-      setShowFitToast(true);
-      return next;
-    });
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener('toggleObjectFit', handleFitToggle);
-    return () => window.removeEventListener('toggleObjectFit', handleFitToggle);
-  }, [handleFitToggle]);
-
-  useEffect(() => {
-    if (showFitToast) {
-      const t = setTimeout(() => setShowFitToast(false), 2000);
-      timersRef.current.add(t);
-      return () => { clearTimeout(t); timersRef.current.delete(t); };
-    }
-  }, [showFitToast, objectFit]);
-
-  useEffect(() => {
-    if (videoRef.current) videoRef.current.style.objectFit = objectFit;
-  }, [objectFit]);
 
   const safeSwitchServer = useCallback(() => {
     if (failoverLockRef.current) return;
@@ -273,16 +238,19 @@ export default function StreamPlayer({ id }: { id: string }) {
     failoverTimeoutRef.current = setTimeout(() => { failoverLockRef.current = false; }, 3000);
   }, []);
 
-  // 🎯 Fix 2: Removed __t=Date.now() parameter to prevent 403 Forbidden token errors
+  // 🎯 Fix 1: Passing MIME Hint via getMimeType
   const forceReloadStream = useCallback(() => {
     if (playerRef.current && currentlyPlayingUrlRef.current) {
+      const freshUrl = getFreshUrl(currentlyPlayingUrlRef.current);
+      const mimeType = getMimeType(currentlyPlayingUrlRef.current);
+      
       playerRef.current.unload().then(() => {
-        // Loads pure original URL without breaking the secure signature
-        playerRef.current.load(currentlyPlayingUrlRef.current!);
+        playerRef.current.load(freshUrl, null, mimeType).catch(() => {});
       }).catch(() => {});
     }
-  }, []);
+  }, [getFreshUrl]);
 
+  // 🎯 Fix 3: Implemented Delay Backoff for retry
   const handleStreamError = useCallback(async (error: any) => {
     if (errorLockRef.current) return;
     errorLockRef.current = true;
@@ -299,7 +267,13 @@ export default function StreamPlayer({ id }: { id: string }) {
     if (code === 1001 || code === 1002 || code === 6002 || code === 3016 || code === 3015 || severity === 2) {
       if (retryCountRef.current < maxRetry) {
         retryCountRef.current++;
-        forceReloadStream();
+        const backoffDelay = baseRetryDelay * retryCountRef.current; // Linear Backoff (1s, 2s...)
+        
+        console.log(`Retrying in ${backoffDelay}ms...`);
+        const t = setTimeout(() => {
+          forceReloadStream();
+        }, backoffDelay);
+        timersRef.current.add(t);
         return;
       }
       safeSwitchServer();
@@ -311,18 +285,9 @@ export default function StreamPlayer({ id }: { id: string }) {
     setIsBuffering(e.buffering);
     isBufferingRef.current = e.buffering;
   };
-
-  useEffect(() => {
-    const handleVisibility = () => { if (!document.hidden && isBufferingRef.current) forceReloadStream(); };
-    const handleOnline = () => { forceReloadStream(); };
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('online', handleOnline);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('online', handleOnline);
-    };
-  }, [forceReloadStream]);
-
+  // ==========================================
+  // PLAYER LAYER & EFFECTS
+  // ==========================================
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
     if (playerInitRef.current) return;
@@ -423,8 +388,8 @@ export default function StreamPlayer({ id }: { id: string }) {
       }
       
       timersRef.current.forEach(clearTimeout);
-      timersRef.current.forEach(clearInterval);
       timersRef.current.clear();
+      timersRef.current.forEach(clearInterval);
     };
   }, [safeSwitchServer]);
 
@@ -471,14 +436,19 @@ export default function StreamPlayer({ id }: { id: string }) {
           }
         }
         
+        const freshUrl = getFreshUrl(currentStreamUrl);
+        const mimeType = getMimeType(currentStreamUrl); // 🎯 Fix 1 & 2: Added Mime type logic
+        
         try {
-          await playerRef.current.load(currentStreamUrl);
+          await playerRef.current.load(freshUrl, null, mimeType);
           currentlyPlayingUrlRef.current = currentStreamUrl; 
         } catch (err: any) {
           console.log("Load failed:", err?.code);
           if (retryCountRef.current < maxRetry) {
             retryCountRef.current++;
-            forceReloadStream();
+            const backoffDelay = baseRetryDelay * retryCountRef.current; // 🎯 Fix 3: Load block backoff
+            const t = setTimeout(() => forceReloadStream(), backoffDelay);
+            timersRef.current.add(t);
             return;
           }
           if (isMounted) safeSwitchServer();
@@ -497,7 +467,60 @@ export default function StreamPlayer({ id }: { id: string }) {
     };
     loadVideo();
     return () => { isMounted = false; };
-  }, [currentStreamUrl, streams, activeStreamIndex, allServersDown, safeSwitchServer, forceReloadStream]);
+  }, [currentStreamUrl, streams, activeStreamIndex, allServersDown, getFreshUrl, safeSwitchServer, forceReloadStream]);
+
+  // ==========================================
+  // UI EVENT HANDLERS
+  // ==========================================
+  useEffect(() => {
+    const handleVisibility = () => { if (!document.hidden && isBufferingRef.current) forceReloadStream(); };
+    const handleOnline = () => { forceReloadStream(); };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [forceReloadStream]);
+
+  useEffect(() => {
+    const blockInspect = (e: MouseEvent) => e.preventDefault();
+    const blockKeys = (e: KeyboardEvent) => {
+      if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'C' || e.key === 'J'))) { e.preventDefault(); }
+    };
+    document.addEventListener('contextmenu', blockInspect);
+    document.addEventListener('keydown', blockKeys);
+    return () => {
+      document.removeEventListener('contextmenu', blockInspect);
+      document.removeEventListener('keydown', blockKeys);
+    };
+  }, []);
+
+  const handleFitToggle = useCallback(() => {
+    const fitModes: ('contain' | 'cover' | 'fill')[] = ['contain', 'cover', 'fill'];
+    setObjectFit(prev => {
+      const next = fitModes[(fitModes.indexOf(prev) + 1) % fitModes.length];
+      setShowFitToast(true);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('toggleObjectFit', handleFitToggle);
+    return () => window.removeEventListener('toggleObjectFit', handleFitToggle);
+  }, [handleFitToggle]);
+
+  useEffect(() => {
+    if (showFitToast) {
+      const t = setTimeout(() => setShowFitToast(false), 2000);
+      timersRef.current.add(t);
+      return () => { clearTimeout(t); timersRef.current.delete(t); };
+    }
+  }, [showFitToast, objectFit]);
+
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.style.objectFit = objectFit;
+  }, [objectFit]);
 
   const handleUserActivity = () => {
     setIsControlsVisible(true);
@@ -580,7 +603,6 @@ export default function StreamPlayer({ id }: { id: string }) {
               <span className="text-gray-400 font-bold text-xs md:text-sm mr-2 whitespace-nowrap uppercase tracking-wider">Servers:</span>
               {streams.map((stream, index) => {
                 const isFailed = failedServersRef.current.has(index);
-                // 🎯 Fix 1: Properly using link_names fallback to restore Server Names
                 const serverName = stream.title || (currentMatch?.eventInfo as any)?.link_names?.[index] || `Server ${index + 1}`;
                 return (
                   <button key={index} disabled={isFailed} onClick={() => { failedServersRef.current.delete(index); setAllServersDown(false); setActiveStreamIndex(index); currentlyPlayingUrlRef.current = null; }} className={`px-5 py-2 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border outline-none duration-150 ${activeStreamIndex === index && !allServersDown ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)]" : isFailed ? "bg-red-900/20 border-red-900/50 text-red-500/50 cursor-not-allowed" : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white"}`} >
@@ -653,4 +675,4 @@ export default function StreamPlayer({ id }: { id: string }) {
       <Script src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js" strategy="lazyOnload" id="adsterra-popunder" />
     </main>
   );
-}
+              }
