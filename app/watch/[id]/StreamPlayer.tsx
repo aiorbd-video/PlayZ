@@ -243,7 +243,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     revalidateOnReconnect: false,
   });
 
-  // Efficient stream parsing with single memoization pass
+    // Efficient stream parsing with single memoization pass
   const streams = useMemo<Stream[] | null>(() => {
     if (!streamsFromApi) return null;
 
@@ -254,14 +254,16 @@ export default function StreamPlayer({ id }: { id: string }) {
     if (rawList.length === 0) return null;
 
     return rawList
-      .filter((s) => s && (typeof s.link === 'string' || typeof s.url === 'string'))
-      .map((s) => ({
+      // 🎯 ফিক্সড: s এর পাশে : any বসিয়ে দেওয়া হয়েছে
+      .filter((s: any) => s && (typeof s.link === 'string' || typeof s.url === 'string'))
+      .map((s: any) => ({
         ...s,
         link: s.link || s.url || '',
         title: typeof s.title === 'string' ? s.title : undefined,
         api: typeof s.api === 'string' ? s.api : undefined,
       }));
   }, [streamsFromApi]);
+
 
   const currentStreamUrl = useMemo(
     () => streams?.[activeStreamIndex]?.link || null,
