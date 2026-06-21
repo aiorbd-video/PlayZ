@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import MatchListBottom from '@/components/MatchListBottom'; // আপনার ফোল্ডার পাথ অনুযায়ী ইম্পোর্ট করুন
+
 import useSWR from 'swr';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -625,7 +627,45 @@ export default function StreamPlayer({ id }: { id: string }) {
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .shaka-scrim-container { display: none !important; background: transparent !important; }
       `}} />
+          {/* 🎯 কারেন্ট ম্যাচ ইনফো কার্ড (আপনার অরিজিনাল কোড) */}
+          {currentMatch && currentMatch.eventInfo ? (
+            <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 mt-3 shadow-lg relative group">
+              <button onClick={handleShare} className="absolute top-4 right-4 bg-gray-800/50 hover:bg-[#00E5FF]/20 text-gray-400 hover:text-[#00E5FF] p-2 rounded-full border border-gray-700/50 transition-all z-10">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                </svg>
+              </button>
+              {showCopied && <div className="absolute -top-8 right-2 bg-[#00E5FF] text-black text-[10px] font-bold px-3 py-1 rounded shadow-lg">Link Copied!</div>}
+              <div className="text-center text-xs font-bold text-[#00E5FF] uppercase tracking-widest mb-4 pr-8">{currentMatch.eventInfo.eventCat} | {currentMatch.eventInfo.eventName}</div>
+              <div className="flex justify-center items-center gap-6 sm:gap-12 py-2">
+                <div className="flex items-center gap-3 w-[40%] justify-end">
+                  <span className="font-bold text-sm md:text-base text-gray-200 text-right truncate">{currentMatch.eventInfo.teamA}</span>
+                  <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-700/50 flex-shrink-0 relative"><Image unoptimized src={getImg(currentMatch.eventInfo.teamAFlag)} fill className="object-cover" alt="" /></div>
+                </div>
+                <span className="text-gray-400 font-black italic text-sm md:text-base px-2">VS</span>
+                <div className="flex items-center gap-3 w-[40%] justify-start">
+                  <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-700/50 flex-shrink-0 relative"><Image unoptimized src={getImg(currentMatch.eventInfo.teamBFlag)} fill className="object-cover" alt="" /></div>
+                  <span className="font-bold text-sm md:text-base text-gray-200 text-left truncate">{currentMatch.eventInfo.teamB}</span>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {/* 🔗 নতুন পার্ট: প্লেয়ারের ঠিক নিচে আপকামিং ও অন্য লাইভ ম্যাচগুলো দেখানোর জন্য */}
+          <MatchListBottom currentMatchId={id} />
+
+        </div>
+      </div>
+      
+      {/* 🎨 প্লেয়ার এবং ভিডিওর কাস্টম স্টাইল */}
+      <style dangerouslySetInnerHTML={{__html: `
+        .shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; display: flex; align-items: center; justify-content: center; } 
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .shaka-scrim-container { display: none !important; background: transparent !important; }
+      `}} />
+      
+      {/* 🚀 আপনার দেওয়া পপআন্ডার অ্যাড স্ক্রিপ্ট */}
       <Script src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js" strategy="lazyOnload" id="adsterra-popunder" />
     </main>
   );
-        }
+}
