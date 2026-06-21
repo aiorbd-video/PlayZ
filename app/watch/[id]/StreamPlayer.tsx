@@ -11,6 +11,7 @@ import Script from 'next/script';
 interface Stream {
   link_names: string[];
   links: string;
+  api?: string;
 }
 
 interface EventInfo {
@@ -54,9 +55,11 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
   if (!startStr || !endStr) return { type: "upcoming", label: "TBA" };
   const startTime = new Date(startStr);
   let endTime = new Date(endStr);
+
   if (startTime.getTime() === endTime.getTime()) {
     endTime = new Date(startTime.getTime() + (4 * 60 * 60 * 1000));
   }
+
   if (currentTime > endTime) return { type: "ended", label: "Ended" };
   else if (currentTime >= startTime && currentTime <= endTime) return { type: "live", label: "LIVE" };
   else return { type: "upcoming", label: startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) };
@@ -65,7 +68,11 @@ const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => 
 export default function StreamPlayer({ id }: { id: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
-  const [playerInstance, setPlayerInstance] = useState<any>(null);
+  
+  // Step 1: playerInstance state বাদ দিয়ে playerRef ব্যবহার করা হলো
+  const playerRef = useRef<any>(null);
+  const retryCountRef = useRef(0);
+  
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
   const [reloadTrigger, setReloadTrigger] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -75,9 +82,12 @@ export default function StreamPlayer({ id }: { id: string }) {
   const [allServersDown, setAllServersDown] = useState(false);
   const [isControlsVisible, setIsControlsVisible] = useState(true);
   const [showCopied, setShowCopied] = useState(false);
+  
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
   const streamsRef = useRef<any[] | null>(null);
   const activeIndexRef = useRef<number>(0);
+
+  const currentlyPlayingUrlRef = useRef<string | null>(null);
 
   const { data: rawMatches } = useSWR(LIVE_EVENTS_API ? LIVE_EVENTS_API : null, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
 
@@ -94,6 +104,7 @@ export default function StreamPlayer({ id }: { id: string }) {
       const startTime = convertDate(rawEvent.date, rawEvent.time);
       const endTime = convertDate(rawEvent.end_date || rawEvent.date, rawEvent.end_time || rawEvent.time);
       const matchId = rawEvent.links ? rawEvent.links.replace("pro/", "").replace(".txt", "") : index.toString();
+      
       return {
         id: matchId,
         links: rawEvent.links || "",
@@ -140,24 +151,47 @@ export default function StreamPlayer({ id }: { id: string }) {
     } catch (e) { return null; }
   };
 
-  const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, {
-    refreshInterval: 15000,
-    revalidateOnFocus: false,
-    fallbackData: getCachedStreams(),
-    onSuccess: (data) => {
-      if (typeof window !== 'undefined' && cacheKey && data) {
-        localStorage.setItem(cacheKey, JSON.stringify(data));
+  // Step 3: SWR Optimization
+  const { data: streamsFromApi } = useSWR(
+    streamFetchUrl,
+    fetcher,
+    {
+      refreshInterval: 60000,
+      dedupingInterval: 30000,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      fallbackData: getCachedStreams(),
+      onSuccess: (data) => {
+        if (typeof window !== 'undefined' && cacheKey && data) {
+          try {
+            const oldData = localStorage.getItem(cacheKey);
+            const newData = JSON.stringify(data);
+            if (oldData !== newData) {
+              localStorage.setItem(cacheKey, newData);
+            }
+          } catch {}
+        }
       }
     }
-  });
+  );
 
   const streams = Array.isArray(streamsFromApi) ? streamsFromApi : (streamsFromApi?.streams || null);
+
+  // Step 2: Stream URL memo
+  const currentStreamUrl = useMemo(() => {
+    if (!streams?.length) return null;
+    return streams[activeStreamIndex]?.link || null;
+  }, [streams, activeStreamIndex]);
 
   useEffect(() => { streamsRef.current = streams; }, [streams]);
   useEffect(() => { activeIndexRef.current = activeStreamIndex; }, [activeStreamIndex]);
 
+  // Step 4: Current Time Update
   useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 5000);
+    const timer = setInterval(
+      () => setCurrentTime(new Date()),
+      60000
+    );
     return () => clearInterval(timer);
   }, []);
 
@@ -165,6 +199,8 @@ export default function StreamPlayer({ id }: { id: string }) {
     setActiveStreamIndex(0);
     setAllServersDown(false);
     setReloadTrigger(prev => prev + 1);
+    currentlyPlayingUrlRef.current = null;
+    retryCountRef.current = 0;
   }, [id]);
 
   useEffect(() => {
@@ -202,26 +238,66 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }, [showFitToast, objectFit]);
 
-  const triggerNextServer = useCallback(() => {
+  // Step 11: Auto Retry Before Server Switch
+  const triggerNextServer = useCallback(async () => {
+    if (retryCountRef.current < 2 && playerRef.current) {
+      retryCountRef.current++;
+      try {
+        await playerRef.current.retryStreaming();
+        return;
+      } catch {}
+    }
+    
+    retryCountRef.current = 0;
+    
     const currentStreams = streamsRef.current;
     const currentIndex = activeIndexRef.current;
+    
     if (currentStreams && currentIndex < currentStreams.length - 1) {
-      console.log(`[Critical Error] Server ${currentIndex + 1} Failed. Switching to Server ${currentIndex + 2}`);
       setActiveStreamIndex(currentIndex + 1);
     } else {
-      console.log("All servers are down.");
       setAllServersDown(true);
       setIsBuffering(false);
     }
   }, []);
 
+  // Step 8: Visibility Recovery
+  useEffect(() => {
+    const handleVisibility = async () => {
+      if (document.hidden || !playerRef.current) return;
+      try {
+        await playerRef.current.retryStreaming();
+      } catch {}
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
+  // Step 9: Network Online Recovery
+  useEffect(() => {
+    const handleOnline = async () => {
+      if (!playerRef.current) return;
+      try {
+        await playerRef.current.retryStreaming();
+      } catch {}
+    };
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+    };
+  }, []);
+
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
     let shaka: any; let player: any; let ui: any;
+    
     const initPlayer = async () => {
       try {
         shaka = await import('shaka-player/dist/shaka-player.ui');
         shaka.polyfill.installAll();
+        
         try {
           if (shaka.ui.Controls && !(shaka.ui.Controls as any).custom_stretch_registered) {
             class StretchButton extends shaka.ui.Element {
@@ -239,117 +315,154 @@ export default function StreamPlayer({ id }: { id: string }) {
             (shaka.ui.Controls as any).custom_stretch_registered = true;
           }
         } catch (e) {}
+        
         player = new shaka.Player(videoRef.current);
+        // Step 5: Shaka Player Init
+        playerRef.current = player;
+        
         ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
+        
         ui.configure({
           controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'custom_stretch', 'overflow_menu', 'fullscreen'],
           addSeekBar: true,
           trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.LABEL
         });
-        document.addEventListener('fullscreenchange', () => {
-          if (document.fullscreenElement && window.screen && window.screen.orientation && (window.screen.orientation as any).lock) {
+        
+        // Step 6: Fullscreen Memory Leak Fix
+        const handleFullscreen = () => {
+          if (document.fullscreenElement && window.screen?.orientation && (window.screen.orientation as any).lock) {
             (window.screen.orientation as any).lock('landscape').catch(() => {});
           }
-        });
+        };
+        document.addEventListener('fullscreenchange', handleFullscreen);
+        
         player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
-        player.addEventListener('error', (e: any) => {
-          if (e.detail && e.detail.severity === 2 && e.detail.code !== 7000 && e.detail.code !== 7002) {
-            console.error("Shaka Critical Fatal Error:", e.detail.code);
+        
+        // Step 10: Better Error Handling
+        player.addEventListener('error', async (e: any) => {
+          const code = e?.detail?.code;
+          const severity = e?.detail?.severity;
+          console.log('Shaka Error:', code);
+
+          if (code === 7000 || code === 7002) {
+            return;
+          }
+          if (code === 1001 || code === 1002 || code === 3016 || code === 3015) {
+            try {
+              await player.retryStreaming();
+              return;
+            } catch {}
+          }
+          if (severity === 2) {
             triggerNextServer();
           }
         });
-        setPlayerInstance(player);
+        
       } catch (err) {
         console.error("Init Error", err);
       }
     };
+    
     initPlayer();
+    
+    // Cleanup
     return () => {
+      // Fullscreen memory leak fix cleanup
+      const handleFullscreen = () => {
+        if (document.fullscreenElement && window.screen?.orientation && (window.screen.orientation as any).lock) {
+          (window.screen.orientation as any).lock('landscape').catch(() => {});
+        }
+      };
+      document.removeEventListener('fullscreenchange', handleFullscreen);
+      
       if (ui) ui.destroy();
-      if (player) player.destroy();
+      
+      // Step 14: Cleanup playerRef
+      if (playerRef.current) {
+        try { playerRef.current.unload(); } catch {}
+        playerRef.current.destroy();
+        playerRef.current = null;
+      }
     };
   }, [triggerNextServer]);
 
   useEffect(() => {
-    if (!playerInstance || !streams || streams.length === 0 || allServersDown) return;
-    const currentStream = streams[activeStreamIndex];
-    if (!currentStream || !currentStream.link) return;
+    if (!playerRef.current || !streams || streams.length === 0 || allServersDown || !currentStreamUrl) return;
+
+    if (currentlyPlayingUrlRef.current === currentStreamUrl) return;
+
     let isMounted = true;
+    
     const loadVideo = async () => {
       setIsBuffering(true);
+
       try {
-        await playerInstance.unload();
+        await playerRef.current.unload();
         
-        // 🟢 হুবহু আপনার অরিজিনাল শাকা কনফিগারেশন ফিরিয়ে আনা হলো (DASH/MPD এর জন্য ১০০% টেস্টেড)
-        playerInstance.configure({
-  streaming: {
-    bufferingGoal: 15,          // 10 → 15
-    rebufferingGoal: 1,
-    bufferBehind: 10,           // 5 → 10
-
-    jumpLargeGaps: true,
-    smallGapLimit: 2,
-
-    ignoreTextStreamFailures: true,
-
-    retryParameters: {
-      maxAttempts: 15,
-      baseDelay: 500,
-      backoffFactor: 1.5,
-      fuzzFactor: 0.5,
-      timeout: 15000
-    },
-
-    stallEnabled: true,
-    stallThreshold: 1,
-    stallSkip: 0.5,
-
-    inaccurateManifestTolerance: 2,
-    lowLatencyMode: false
-  },
-
-  manifest: {
-    retryParameters: {
-      maxAttempts: 15,
-      baseDelay: 500,
-      timeout: 15000
-    },
-
-    dash: {
-      ignoreMinBufferTime: true,
-      autoCorrectDrift: true
-    },
-
-    hls: {
-      ignoreManifestProgramDateTime: true,
-      sequenceMode: true
-    }
-  },
-
-  abr: {
-    enabled: true,
-
-    switchInterval: 2,
-
-    bandwidthDowngradeTarget: 0.95,
-    bandwidthUpgradeTarget: 0.75,
-
-    defaultBandwidthEstimate: 1000000,
-
-    restrictToElementSize: true,
-
-    clearBufferSwitch: false,
-    safeMarginSwitch: true
-  }
-});
-        if (currentStream.api) {
-          const cleanDrm = currentStream.api.replace(/['"\s]/g, '');
+        // Step 13: Better Shaka Config
+        playerRef.current.configure({
+          streaming: {
+            bufferingGoal: 15,
+            rebufferingGoal: 1,
+            bufferBehind: 10,
+            jumpLargeGaps: true,
+            smallGapLimit: 2,
+            ignoreTextStreamFailures: true,
+            inaccurateManifestTolerance: 2,
+            lowLatencyMode: false,
+            stallEnabled: true,
+            stallThreshold: 1,
+            stallSkip: 0.5,
+            retryParameters: {
+              maxAttempts: 15,
+              baseDelay: 500,
+              backoffFactor: 1.5,
+              fuzzFactor: 0.5,
+              timeout: 15000
+            }
+          },
+          manifest: {
+            retryParameters: {
+              maxAttempts: 15,
+              baseDelay: 500,
+              timeout: 15000
+            },
+            dash: {
+              ignoreMinBufferTime: true,
+              autoCorrectDrift: true
+            },
+            hls: {
+              ignoreManifestProgramDateTime: true,
+              sequenceMode: true
+            }
+          },
+          abr: {
+            enabled: true,
+            switchInterval: 2,
+            bandwidthDowngradeTarget: 0.95,
+            bandwidthUpgradeTarget: 0.75,
+            defaultBandwidthEstimate: 1000000,
+            restrictToElementSize: true,
+            clearBufferSwitch: false,
+            safeMarginSwitch: true
+          }
+        });
+        
+        const currentStreamObj = streams[activeStreamIndex];
+        if (currentStreamObj && currentStreamObj.api) {
+          const cleanDrm = currentStreamObj.api.replace(/['"\s]/g, '');
           if (cleanDrm.includes(':')) {
             const [kid, key] = cleanDrm.split(':');
-            playerInstance.configure({ drm: { clearKeys: { [kid]: key } } });
+            playerRef.current.configure({ drm: { clearKeys: { [kid]: key } } });
           }
         }
-        await playerInstance.load(currentStream.link);
+        
+        // Step 12: Stream Cache Bypass
+        const loadUrl = currentStreamUrl + (currentStreamUrl.includes('?') ? '&' : '?') + '_v=' + Date.now();
+        await playerRef.current.load(loadUrl);
+        
+        currentlyPlayingUrlRef.current = currentStreamUrl; 
+
       } catch (error: any) {
         if (error.code !== 7000 && error.code !== 7002) {
           console.error("Initial Load Failed, Switching Server...", error.code);
@@ -359,9 +472,11 @@ export default function StreamPlayer({ id }: { id: string }) {
         if (isMounted) setIsBuffering(false);
       }
     };
+    
     loadVideo();
+    
     return () => { isMounted = false; };
-  }, [playerInstance, streams, activeStreamIndex, reloadTrigger, allServersDown, triggerNextServer]);
+  }, [currentStreamUrl, streams, activeStreamIndex, reloadTrigger, allServersDown, triggerNextServer]);
 
   const handleUserActivity = () => {
     setIsControlsVisible(true);
@@ -380,7 +495,6 @@ export default function StreamPlayer({ id }: { id: string }) {
       setTimeout(() => setShowCopied(false), 2000);
     }
   };
-
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
@@ -399,24 +513,25 @@ export default function StreamPlayer({ id }: { id: string }) {
           <div className="w-10"></div>
         </div>
       </nav>
+
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
         <div className="lg:col-span-2 flex flex-col">
-          <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group" onMouseMoveCapture={handleUserActivity} onTouchStartCapture={handleUserActivity} onClickCapture={handleUserActivity} onMouseLeave={() => setIsControlsVisible(false)} >
+          <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 group" onMouseMoveCapture={handleUserActivity} onTouchStartCapture={handleUserActivity} onClickCapture={handleUserActivity} onMouseLeave={() => setIsControlsVisible(false)} >
+            
             {!streams && !allServersDown && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/90 z-10 flex-col gap-3">
                 <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin"></div>
                 <span className="text-[#00E5FF] font-bold text-sm animate-pulse tracking-wider">Fetching Secure Stream...</span>
               </div>
             )}
-            
-            {/* 🎯 ফিক্স: আগের সেই বিশ্রী ব্লার ওভারলে স্ক্রিন পুরোপুরি বাদ! এখন নিচে ছোট্ট ফ্লোটিং টোস্ট মেসেজ আকারে কানেক্টিং দেখাবে */}
+
             {isBuffering && !allServersDown && streams && (
-              <div className="absolute bottom-16 left-1/2 transform -translate-x-1/2 z-40 bg-black/80 border border-[#00E5FF]/30 px-5 py-2.5 rounded-full flex items-center gap-2 pointer-events-none shadow-[0_0_15px_rgba(0,229,255,0.2)]">
-                <div className="w-4 h-4 border-2 border-[#00E5FF] border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-white font-bold text-xs tracking-wide whitespace-nowrap">Connecting to Server {activeStreamIndex + 1}...</p>
+              <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none">
+                <div className="w-12 h-12 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin mb-3"></div>
+                <p className="text-[#00E5FF] font-bold animate-pulse text-sm">Connecting to Server {activeStreamIndex + 1}...</p>
               </div>
             )}
-            
+
             {allServersDown && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/95 z-50 flex-col gap-4 text-center p-4">
                 <span className="text-4xl">📡</span>
@@ -424,7 +539,17 @@ export default function StreamPlayer({ id }: { id: string }) {
                 <button onClick={() => { setAllServersDown(false); setActiveStreamIndex(0); setReloadTrigger(prev => prev + 1); }} className="mt-2 bg-[#1C1E2B] border border-gray-700 hover:border-[#00E5FF] text-white px-5 py-2 rounded-full text-xs font-bold">Retry Server 1</button>
               </div>
             )}
-            <video ref={videoRef} className={`w-full h-full transition-all duration-300 pointer-events-none ${objectFit === 'fill' ? 'object-fill' : objectFit === 'cover' ? 'object-cover' : 'object-contain'}`} autoPlay playsInline />
+
+            {/* 🎯 Step 7: অপ্টিমাইজড ভিডিও ট্যাগ (Preload & Muted Config) */}
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              preload="auto"
+              muted={false}
+              className={`w-full h-full transition-all duration-300 pointer-events-none ${objectFit === 'fill' ? 'object-fill' : objectFit === 'cover' ? 'object-cover' : 'object-contain'}`}
+            />
+
             <AnimatePresence>
               {showFitToast && (
                 <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="absolute top-6 left-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none" >
@@ -434,6 +559,7 @@ export default function StreamPlayer({ id }: { id: string }) {
               )}
             </AnimatePresence>
           </div>
+
           {streams && streams.length > 0 && (
             <div className="flex gap-2 overflow-x-auto scrollbar-hide py-4 my-2 border-b border-gray-800/40 items-center">
               <span className="text-gray-400 font-bold text-xs md:text-sm mr-2 whitespace-nowrap uppercase tracking-wider">Servers:</span>
@@ -444,9 +570,14 @@ export default function StreamPlayer({ id }: { id: string }) {
               ))}
             </div>
           )}
+
           {currentMatch && currentMatch.eventInfo ? (
             <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 mt-3 shadow-lg relative group">
-              <button onClick={handleShare} className="absolute top-4 right-4 bg-gray-800/50 hover:bg-[#00E5FF]/20 text-gray-400 hover:text-[#00E5FF] p-2 rounded-full border border-gray-700/50 transition-all z-10"><svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg></button>
+              <button onClick={handleShare} className="absolute top-4 right-4 bg-gray-800/50 hover:bg-[#00E5FF]/20 text-gray-400 hover:text-[#00E5FF] p-2 rounded-full border border-gray-700/50 transition-all z-10">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                </svg>
+              </button>
               {showCopied && <div className="absolute -top-8 right-2 bg-[#00E5FF] text-black text-[10px] font-bold px-3 py-1 rounded shadow-lg">Link Copied!</div>}
               <div className="text-center text-xs font-bold text-[#00E5FF] uppercase tracking-widest mb-4 pr-8">{currentMatch.eventInfo.eventCat} | {currentMatch.eventInfo.eventName}</div>
               <div className="flex justify-center items-center gap-6 sm:gap-12 py-2">
@@ -463,6 +594,7 @@ export default function StreamPlayer({ id }: { id: string }) {
             </div>
           ) : null}
         </div>
+
         <div className="mt-6 lg:mt-0 lg:col-span-1 max-h-[70vh] lg:max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-hide pr-1">
           <div className="flex flex-col gap-3.5">
             <span className="text-xs font-black uppercase tracking-wider text-gray-400 pl-1 mb-1">More Live Events</span>
@@ -493,11 +625,10 @@ export default function StreamPlayer({ id }: { id: string }) {
           </div>
         </div>
       </div>
+
       <style dangerouslySetInnerHTML={{__html: `
         .shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; display: flex; align-items: center; justify-content: center; } 
         .scrollbar-hide::-webkit-scrollbar { display: none; }
-        
-        /* 👑 ফিক্স: শাকার ডিফল্ট কালো ওভারলে স্ক্রিম চিরতরে অফ করা হলো */
         .shaka-scrim-container { display: none !important; background: transparent !important; }
       `}} />
       <Script src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js" strategy="lazyOnload" id="adsterra-popunder" />
