@@ -73,8 +73,11 @@ export default function StreamPlayer({ id }: { id: string }) {
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
   const [reloadTrigger, setReloadTrigger] = useState(0);
   const [currentTime, setCurrentTime] = useState(new Date());
+  
+  // 🎯 আপনার দেওয়া Fit Modes এবং Object Fit স্টেট
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
   const [showFitToast, setShowFitToast] = useState(false);
+  
   const [isBuffering, setIsBuffering] = useState(true);
   const [allServersDown, setAllServersDown] = useState(false);
   const [isControlsVisible, setIsControlsVisible] = useState(true);
@@ -136,7 +139,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }
 
-  // ম্যাচের মাঝখানে এপিআই-র অটো-রিফ্রেশ পুরোপুরি লক রাখা হলো
   const { data: streamsFromApi } = useSWR(
     streamFetchUrl,
     fetcher,
@@ -186,11 +188,13 @@ export default function StreamPlayer({ id }: { id: string }) {
     };
   }, []);
 
+  // 🎯 আপনার দেওয়া টগল লজিক
   const handleFitToggle = useCallback(() => {
-    setObjectFit((prev) => {
-      const nextFit = prev === 'contain' ? 'cover' : prev === 'cover' ? 'fill' : 'contain';
+    const fitModes: ('contain' | 'cover' | 'fill')[] = ['contain', 'cover', 'fill'];
+    setObjectFit(prev => {
+      const next = fitModes[(fitModes.indexOf(prev) + 1) % fitModes.length];
       setShowFitToast(true);
-      return nextFit;
+      return next;
     });
   }, []);
 
@@ -254,10 +258,31 @@ export default function StreamPlayer({ id }: { id: string }) {
         shaka = await import('shaka-player/dist/shaka-player.ui');
         shaka.polyfill.installAll();
         
+        // 🎯 ম্যাজিক ফিক্স: শাকা প্লেয়ারে কাস্টম স্ট্রেচ বাটন রেজিস্টার করা হলো
+        try {
+          if (shaka.ui.Controls && !(shaka.ui.Controls as any).custom_stretch_registered) {
+            class StretchButton extends shaka.ui.Element {
+              constructor(parent: HTMLElement, controls: any) {
+                super(parent, controls);
+                const button = document.createElement('button');
+                button.className = 'shaka-custom-stretch-btn shaka-tooltip';
+                button.setAttribute('aria-label', 'Toggle Fit');
+                button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
+                this.eventManager.listen(button, 'click', () => window.dispatchEvent(new CustomEvent('toggleObjectFit')));
+                parent.appendChild(button);
+              }
+            }
+            shaka.ui.Controls.registerElement('custom_stretch', { create: (root: HTMLElement, ctrls: any) => new StretchButton(root, ctrls) });
+            (shaka.ui.Controls as any).custom_stretch_registered = true;
+          }
+        } catch (e) {}
+
         player = new shaka.Player(videoRef.current);
         playerRef.current = player;
         
         ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
+        
+        // 🎯 'custom_stretch' বাটনটি কন্ট্রোল প্যানেলে যুক্ত করা হলো
         ui.configure({
           controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'custom_stretch', 'overflow_menu', 'fullscreen'],
           addSeekBar: true,
@@ -434,7 +459,7 @@ export default function StreamPlayer({ id }: { id: string }) {
               </div>
             )}
 
-            {/* 🎯 Step 7: Video Tag Optimization */}
+            {/* 🎯 Step 7: অপ্টিমাইজড ভিডিও ট্যাগ (Preload & Muted Config) */}
             <video
               ref={videoRef}
               autoPlay
@@ -444,11 +469,19 @@ export default function StreamPlayer({ id }: { id: string }) {
               className={`w-full h-full transition-all duration-300 pointer-events-none ${objectFit === 'fill' ? 'object-fill' : objectFit === 'cover' ? 'object-cover' : 'object-contain'}`}
             />
 
+            {/* 🎯 কাস্টম ক্রপ/জুম/স্ট্রেচ টোস্ট নোটিফিকেশন */}
             <AnimatePresence>
               {showFitToast && (
-                <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="absolute top-6 left-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none" >
+                <motion.div 
+                  initial={{ opacity: 0, y: -10 }} 
+                  animate={{ opacity: 1, y: 0 }} 
+                  exit={{ opacity: 0, y: -10 }} 
+                  className="absolute top-6 left-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none" 
+                >
                   <span className="w-2 h-2 rounded-full bg-[#00E5FF] animate-pulse"></span>
-                  <span className="text-xs md:text-sm font-bold text-white capitalize">{objectFit === 'contain' ? 'Fit to Screen' : objectFit === 'cover' ? 'Zoom (Cropped)' : 'Stretch (Fill)'}</span>
+                  <span className="text-xs md:text-sm font-bold text-white capitalize">
+                    {objectFit === 'contain' ? 'Fit to Screen' : objectFit === 'cover' ? 'Zoom (Cropped)' : 'Stretch (Fill)'}
+                  </span>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -467,7 +500,11 @@ export default function StreamPlayer({ id }: { id: string }) {
 
           {currentMatch && currentMatch.eventInfo ? (
             <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 mt-3 shadow-lg relative group">
-              <button onClick={handleShare} className="absolute top-4 right-4 bg-gray-800/50 hover:bg-[#00E5FF]/20 text-gray-400 hover:text-[#00E5FF] p-2 rounded-full border border-gray-700/50 transition-all z-10"><svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" /></svg></button>
+              <button onClick={handleShare} className="absolute top-4 right-4 bg-gray-800/50 hover:bg-[#00E5FF]/20 text-gray-400 hover:text-[#00E5FF] p-2 rounded-full border border-gray-700/50 transition-all z-10">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                </svg>
+              </button>
               {showCopied && <div className="absolute -top-8 right-2 bg-[#00E5FF] text-black text-[10px] font-bold px-3 py-1 rounded shadow-lg">Link Copied!</div>}
               <div className="text-center text-xs font-bold text-[#00E5FF] uppercase tracking-widest mb-4 pr-8">{currentMatch.eventInfo.eventCat} | {currentMatch.eventInfo.eventName}</div>
               <div className="flex justify-center items-center gap-6 sm:gap-12 py-2">
@@ -515,6 +552,7 @@ export default function StreamPlayer({ id }: { id: string }) {
           </div>
         </div>
       </div>
+
       <style dangerouslySetInnerHTML={{__html: `
         .shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; display: flex; align-items: center; justify-content: center; } 
         .scrollbar-hide::-webkit-scrollbar { display: none; }
