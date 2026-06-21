@@ -43,27 +43,6 @@ const getImg = (url: string | undefined | null) => {
   return `${IMG_PROXY}${encodeURIComponent(url)}`;
 };
 
-const generateSlug = (teamA?: string, teamB?: string, eventName?: string, id?: string | number) => {
-  const tA = teamA || 'team';
-  const tB = teamB || 'match';
-  const event = eventName || 'live-event';
-  const rawString = `${tA}-vs-${tB}-${event}`;
-  const cleanSlug = rawString.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  return `${cleanSlug}-${id || '0'}`;
-};
-
-const getMatchStatus = (startStr: string, endStr: string, currentTime: Date) => {
-  if (!startStr || !endStr) return { type: "upcoming", label: "TBA" };
-  const startTime = new Date(startStr);
-  let endTime = new Date(endStr);
-  if (startTime.getTime() === endTime.getTime()) {
-    endTime = new Date(startTime.getTime() + (4 * 60 * 60 * 1000));
-  }
-  if (currentTime > endTime) return { type: "ended", label: "Ended" };
-  else if (currentTime >= startTime && currentTime <= endTime) return { type: "live", label: "LIVE" };
-  else return { type: "upcoming", label: startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) };
-};
-
 // 🎯 Auto Detect Stream Type & MIME Hint
 const getMimeType = (url: string) => {
   if (url.includes('.mpd')) return 'application/dash+xml';
@@ -105,12 +84,6 @@ export default function StreamPlayer({ id }: { id: string }) {
   const [allServersDown, setAllServersDown] = useState(false);
   const [isControlsVisible, setIsControlsVisible] = useState(true);
   const [showCopied, setShowCopied] = useState(false);
-  
-  const [currentTime, setCurrentTime] = useState(new Date());
-  useEffect(() => {
-    const t = setInterval(() => setCurrentTime(new Date()), 60000);
-    return () => clearInterval(t);
-  }, []);
 
   const { data: rawMatches } = useSWR(LIVE_EVENTS_API ? LIVE_EVENTS_API : null, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
 
@@ -143,9 +116,8 @@ export default function StreamPlayer({ id }: { id: string }) {
           const hours = parseInt(timeParts[0], 10) || 0;
           const minutes = parseInt(timeParts[1], 10) || 0;
           
-          // 🎯 Fix 2: 100% Cross-Browser Safe ISO Date Parsing (No more Invalid Date)
           const localTimestamp = new Date(year, month - 1, day, hours, minutes, 0).getTime();
-          const utcTimestamp = localTimestamp - (6 * 60 * 60 * 1000); // Adjusting BD +06:00 offset
+          const utcTimestamp = localTimestamp - (6 * 60 * 60 * 1000); 
           return new Date(utcTimestamp).toISOString();
         } catch (e) {
           return "";
@@ -224,6 +196,45 @@ export default function StreamPlayer({ id }: { id: string }) {
     retryCountRef.current = 0;
   }, [id]);
 
+  useEffect(() => {
+    const blockInspect = (e: MouseEvent) => e.preventDefault();
+    const blockKeys = (e: KeyboardEvent) => {
+      if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'C' || e.key === 'J'))) { e.preventDefault(); }
+    };
+    document.addEventListener('contextmenu', blockInspect);
+    document.addEventListener('keydown', blockKeys);
+    return () => {
+      document.removeEventListener('contextmenu', blockInspect);
+      document.removeEventListener('keydown', blockKeys);
+    };
+  }, []);
+
+  const handleFitToggle = useCallback(() => {
+    const fitModes: ('contain' | 'cover' | 'fill')[] = ['contain', 'cover', 'fill'];
+    setObjectFit(prev => {
+      const next = fitModes[(fitModes.indexOf(prev) + 1) % fitModes.length];
+      setShowFitToast(true);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('toggleObjectFit', handleFitToggle);
+    return () => window.removeEventListener('toggleObjectFit', handleFitToggle);
+  }, [handleFitToggle]);
+
+  useEffect(() => {
+    if (showFitToast) {
+      const t = setTimeout(() => setShowFitToast(false), 2000);
+      timersRef.current.add(t);
+      return () => { clearTimeout(t); timersRef.current.delete(t); };
+    }
+  }, [showFitToast, objectFit]);
+
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.style.objectFit = objectFit;
+  }, [objectFit]);
+
   const safeSwitchServer = useCallback(() => {
     if (failoverLockRef.current) return;
     failoverLockRef.current = true;
@@ -261,7 +272,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     failoverTimeoutRef.current = setTimeout(() => { failoverLockRef.current = false; }, 3000);
   }, []);
 
-  // 🎯 Fix 1: Removed query token tampering. Uses pure URL to bypass 403 Forbidden.
   const forceReloadStream = useCallback(() => {
     if (playerRef.current && currentlyPlayingUrlRef.current) {
       const mimeType = getMimeType(currentlyPlayingUrlRef.current);
@@ -288,7 +298,6 @@ export default function StreamPlayer({ id }: { id: string }) {
       if (retryCountRef.current < maxRetry) {
         retryCountRef.current++;
         const backoffDelay = baseRetryDelay * retryCountRef.current;
-        console.log(`Retrying in ${backoffDelay}ms...`);
         const t = setTimeout(() => { forceReloadStream(); }, backoffDelay);
         timersRef.current.add(t);
         return;
@@ -302,8 +311,8 @@ export default function StreamPlayer({ id }: { id: string }) {
     setIsBuffering(e.buffering);
     isBufferingRef.current = e.buffering;
   };
-// ==========================================
-  // PLAYER INITIALIZATION & UI EVENTS
+  // ==========================================
+  // PLAYER INITIALIZATION & RENDERING
   // ==========================================
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
@@ -405,8 +414,8 @@ export default function StreamPlayer({ id }: { id: string }) {
       }
       
       timersRef.current.forEach(clearTimeout);
-      timersRef.current.clear();
       timersRef.current.forEach(clearInterval);
+      timersRef.current.clear();
     };
   }, [safeSwitchServer]);
 
@@ -447,7 +456,6 @@ export default function StreamPlayer({ id }: { id: string }) {
           const cleanDrm = currentStreamObj.api.replace(/['"\s]/g, '');
           const parts = cleanDrm.split(':');
           if (parts.length >= 2) {
-            // 🎯 Fix 1: Typo fixed from 'Part[0]' to standard '0' index to prevent crash
             const kid = parts[0];
             const key = parts.slice(1).join(':');
             playerRef.current.configure({ drm: { clearKeys: { [kid]: key } } });
@@ -457,7 +465,6 @@ export default function StreamPlayer({ id }: { id: string }) {
         const mimeType = getMimeType(currentStreamUrl);
         
         try {
-          // Loads pure URL
           await playerRef.current.load(currentStreamUrl, null, mimeType);
           currentlyPlayingUrlRef.current = currentStreamUrl; 
         } catch (err: any) {
@@ -520,7 +527,7 @@ export default function StreamPlayer({ id }: { id: string }) {
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="max-w-5xl mx-auto flex items-center justify-between">
           <Link href="/">
             <button className="p-2 text-gray-400 hover:text-[#00E5FF] flex items-center gap-2 outline-none transition-colors active:scale-[0.95]">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -536,8 +543,9 @@ export default function StreamPlayer({ id }: { id: string }) {
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-4 lg:grid lg:grid-cols-3 lg:gap-6">
-        <div className="lg:col-span-2 flex flex-col">
+      {/* 🎯 Layout optimized to full-width centered layout without any sidebar list */}
+      <div className="max-w-5xl mx-auto px-2 sm:px-4 mt-4 flex flex-col">
+        <div className="w-full flex flex-col">
           <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group" onMouseMoveCapture={handleUserActivity} onTouchStartCapture={handleUserActivity} onClickCapture={handleUserActivity} onMouseLeave={() => setIsControlsVisible(false)}>
             
             {!streams && !allServersDown && (
@@ -581,7 +589,7 @@ export default function StreamPlayer({ id }: { id: string }) {
                 const isFailed = failedServersRef.current.has(index);
                 const serverName = stream.title || (currentMatch?.eventInfo as any)?.link_names?.[index] || `Server ${index + 1}`;
                 return (
-                  <button key={index} disabled={isFailed} onClick={() => { failedServersRef.current.delete(index); setAllServersDown(false); setActiveStreamIndex(index); currentlyPlayingUrlRef.current = null; }} className={`px-5 py-2 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border outline-none duration-150 ${activeStreamIndex === index && !allServersDown ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)]" : isFailed ? "bg-red-900/20 border-red-900/50 text-red-500/50 hover:bg-red-900/40" : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white"}`} >
+                  <button key={index} disabled={isFailed} onClick={() => { failedServersRef.current.delete(index); setAllServersDown(false); setActiveStreamIndex(index); currentlyPlayingUrlRef.current = null; }} className={`px-5 py-2 rounded-full text-xs md:text-sm font-bold whitespace-nowrap transition-all border outline-none duration-150 ${activeStreamIndex === index && !allServersDown ? "bg-[#1C1E2B] border-[#00E5FF] text-white shadow-[0_0_10px_rgba(0,229,255,0.2)]" : isFailed ? "bg-red-900/20 border-red-900/50 text-red-500/50 cursor-not-allowed" : "bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white"}`} >
                     {serverName}
                   </button>
                 );
@@ -590,7 +598,7 @@ export default function StreamPlayer({ id }: { id: string }) {
           )}
 
           {currentMatch && currentMatch.eventInfo ? (
-            <div className="bg-[#1C1E2B] border border-[#00E5FF]/40 rounded-[20px] p-5 mt-3 shadow-lg relative group">
+            <div className="bg-[#1C1E2B] border border border-[#00E5FF]/40 rounded-[20px] p-5 mt-3 shadow-lg relative group">
               <button onClick={handleShare} className="absolute top-4 right-4 bg-gray-800/50 hover:bg-[#00E5FF]/20 text-gray-400 hover:text-[#00E5FF] p-2 rounded-full border border-gray-700/50 transition-all z-10">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
@@ -612,36 +620,6 @@ export default function StreamPlayer({ id }: { id: string }) {
             </div>
           ) : null}
         </div>
-
-        <div className="mt-6 lg:mt-0 lg:col-span-1 max-h-[70vh] lg:max-h-[calc(100vh-120px)] overflow-y-auto scrollbar-hide pr-1">
-          <div className="flex flex-col gap-3.5">
-            <span className="text-xs font-black uppercase tracking-wider text-gray-400 pl-1 mb-1">More Live Events</span>
-            {matches && matches.map((match: any) => {
-              if (!match.eventInfo) return null;
-              const status = getMatchStatus(match.eventInfo.startTime, match.eventInfo.endTime, currentTime);
-              const isCurrent = id.endsWith(match.id.toString()) || match.id.toString() === id;
-              const slugLink = generateSlug(match.eventInfo.teamA, match.eventInfo.teamB, match.eventInfo.eventName, match.id);
-              return (
-                <Link href={`/watch/${slugLink}`} key={match.id} className="outline-none" prefetch={false}>
-                  <motion.div whileTap={{ scale: 0.97 }} className={`bg-[#1C1E2B] border rounded-[18px] p-4 transition-all duration-150 ${isCurrent ? 'border-[#00E5FF] shadow-md ring-1 ring-[#00E5FF]/30' : 'border-gray-800/80 hover:border-[#00E5FF]/40'}`}>
-                    <div className="text-[11px] text-gray-400 mb-2 truncate uppercase tracking-wide">{match.eventInfo.eventCat} • {match.eventInfo.eventName}</div>
-                    <div className="flex justify-between items-center gap-2">
-                      <div className="flex items-center gap-2 truncate max-w-[40%]">
-                        <img src={getImg(match.eventInfo.teamAFlag)} className="w-5 h-5 rounded-full object-cover min-w-[20px]" alt="" />
-                        <span className="text-xs font-bold truncate text-gray-200">{match.eventInfo.teamA}</span>
-                      </div>
-                      <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase ${status.type === 'live' ? 'bg-red-500/10 text-red-400 border border-red-500/20 animate-pulse' : 'bg-blue-500/10 text-blue-400 border border-blue-500/10'}`}>{status.label}</span>
-                      <div className="flex items-center gap-2 truncate max-w-[40%] justify-end">
-                        <span className="text-xs font-bold truncate text-gray-200 text-right">{match.eventInfo.teamB}</span>
-                        <img src={getImg(match.eventInfo.teamBFlag)} className="w-5 h-5 rounded-full object-cover min-w-[20px]" alt="" />
-                      </div>
-                    </div>
-                  </motion.div>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
       </div>
       <style dangerouslySetInnerHTML={{__html: `
         .shaka-custom-stretch-btn { background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; display: flex; align-items: center; justify-content: center; } 
@@ -651,5 +629,4 @@ export default function StreamPlayer({ id }: { id: string }) {
       <Script src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js" strategy="lazyOnload" id="adsterra-popunder" />
     </main>
   );
-}
-
+        }
