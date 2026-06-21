@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import MatchListBottom from '@/app/components/MatchListBottom';
 
 
 import useSWR from 'swr';
