@@ -180,28 +180,39 @@ export default function MatchListBottom({ currentMatchId }: { currentMatchId: st
       if (matchId === currentMatchId) return;
 
       const convertDate = (dStr: string, tStr: string) => {
-        if (!dStr || !tStr) return "";
-        try {
-          const parts = dStr.split('/');
-          let day = 1, month = 1, year = 2026;
-          if (parts.length === 3) {
-            day = parseInt(parts[0], 10); month = parseInt(parts[1], 10); year = parseInt(parts[2], 10);
-          } else if (dStr.includes('-')) {
-            const hyphenParts = dStr.split('-');
-            if (hyphenParts[0].length === 4) {
-              year = parseInt(hyphenParts[0], 10); month = parseInt(hyphenParts[1], 10); day = parseInt(hyphenParts[2], 10);
-            } else {
-              day = parseInt(hyphenParts[0], 10); month = parseInt(hyphenParts[1], 10); year = parseInt(hyphenParts[2], 10);
-            }
-          }
-          const timeParts = tStr.split(':');
-          const hours = parseInt(timeParts[0], 10) || 0;
-          const minutes = parseInt(timeParts[1], 10) || 0;
-          const localTimestamp = new Date(year, month - 1, day, hours, minutes, 0).getTime();
-          const utcTimestamp = localTimestamp - (6 * 60 * 60 * 1000); 
-          return new Date(utcTimestamp).toISOString();
-        } catch (e) { return ""; }
-      };
+  if (!dStr || !tStr) return "";
+  try {
+    const parts = dStr.split('/');
+    let day = 1, month = 1, year = 2026;
+    if (parts.length === 3) {
+      day = parseInt(parts[0], 10); 
+      month = parseInt(parts[1], 10); 
+      year = parseInt(parts[2], 10);
+    } else if (dStr.includes('-')) {
+      const hyphenParts = dStr.split('-');
+      if (hyphenParts[0].length === 4) {
+        year = parseInt(hyphenParts[0], 10); month = parseInt(hyphenParts[1], 10); day = parseInt(hyphenParts[2], 10);
+      } else {
+        day = parseInt(hyphenParts[0], 10); month = parseInt(hyphenParts[1], 10); year = parseInt(hyphenParts[2], 10);
+      }
+    }
+    
+    const timeParts = tStr.split(':');
+    let hours = parseInt(timeParts[0], 10) || 0;
+    const minutes = parseInt(timeParts[1], 10) || 0;
+    
+    // 💡 এপিআই যদি ২৪ ঘণ্টার ফরম্যাট না মেনে রাত ১১ টাকে ২৩ না লিখে সরাসরি ১১ লেখে, 
+    // তবে নিচের কমেন্ট করা লাইনটি আনকমেন্ট করে দিতে পারেন:
+    // if (hours < 12 && tStr.toLowerCase().includes('pm')) hours += 12;
+
+    // 🎯 জাদুকরী ফিক্স: সরাসরি Date.UTC দিয়ে বাংলাদেশ সময়কে (UTC+6) স্ট্যান্ডার্ড ISO তে রূপান্তর
+    // যেহেতু বাংলাদেশ ৬ ঘণ্টা এগিয়ে, তাই UTC সময় পেতে আমরা ঘন্টা থেকে ঠিক ৬ বিয়োগ করে জেনারেট করছি।
+    // এটি ব্রাউজার বা সার্ভার যেখানেই রান হোক না কেন, সবসময় নিখুঁত বাংলাদেশ টাইম দেখাবে।
+    const utcTimestamp = Date.UTC(year, month - 1, day, hours - 6, minutes, 0);
+    return new Date(utcTimestamp).toISOString();
+  } catch (e) { return ""; }
+};
+
 
       const startTime = convertDate(rawEvent.date, rawEvent.time);
       const endTime = convertDate(rawEvent.end_date || rawEvent.date, rawEvent.end_time || rawEvent.time);
