@@ -1,33 +1,26 @@
 import type { Metadata } from 'next';
 import StreamPlayer from './StreamPlayer';
 
-// 🚀 Vercel Environment Variable থেকে লিংক আসবে (কোনো হার্ডকোড লিংক নেই)
 const LIVE_EVENTS_API = process.env.NEXT_PUBLIC_LIVE_EVENTS_API as string;
-
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL as string;
 const IMG_PROXY = process.env.NEXT_PUBLIC_IMG_PROXY;
 
-// 🎯 ১. সোশিয়াল মিডিয়া শেয়ার ফিক্সের জন্য ডাইনামিক মেটাডাটা জেনারেটর
 export async function generateMetadata(
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Metadata> {
 
   const { id } = await params;
-
-  // 🟢 সুন্দর লিংক থেকে আসল আইডিটা কেটে বের করা হচ্ছে
   const realId = id.includes('-') ? id.split('-').pop() : id;
 
   try {
     if (!LIVE_EVENTS_API) throw new Error("API URL is missing in environment variables");
 
-    // Vercel Env থেকে আসা সোর্স লিংক ব্যবহার করে সার্ভার সাইড ফেচিং
     const res = await fetch(LIVE_EVENTS_API, { next: { revalidate: 15 } });
     if (!res.ok) throw new Error("Failed to fetch");
 
     const rawMatches = await res.json();
     if (!rawMatches || !Array.isArray(rawMatches)) throw new Error("Invalid array");
 
-    // আইডি ম্যাচ করে বর্তমান ম্যাচটি খুঁজে বের করা
     const currentMatch = rawMatches.find((item: any) => {
       const rawEvent = item.event || {};
       const matchId = rawEvent.links ? rawEvent.links.replace("pro/", "").replace(".txt", "") : "";
@@ -117,14 +110,11 @@ export async function generateMetadata(
   }
 }
 
-// 🎯 ২. গুগল সার্চ ইঞ্জিনের জন্য সম্পূর্ণ Schema (JSON-LD) স্ট্রাকচার
 export default async function Page(
   { params }: { params: Promise<{ id: string }> }
 ) {
 
   const { id } = await params;
-  
-  // 🟢 সুন্দর লিংক থেকে আসল আইডি ফিল্টার করা হচ্ছে
   const realId = id.includes('-') ? id.split('-').pop() : id;
   let jsonLd = null;
 
@@ -187,7 +177,12 @@ export default async function Page(
       )}
 
       <div className="max-w-7xl mx-auto">
-        <StreamPlayer id={realId as string} />
+        {/* 🎯 ULTRA ENTERPRISE STABILITY FIX (The Key Prop Trick):
+          এখানে key={realId} দেওয়ার ফলে ইউজার এক ম্যাচ থেকে অন্য ম্যাচে ক্লিক করলেই 
+          পুরনো প্লেয়ার মেমোরি থেকে ১০০% ভ্যানিশ হয়ে যাবে এবং নতুন ম্যাচের জন্য 
+          একদম ফ্রেশ ও নতুন প্লেয়ার মাউন্ট হবে। কোনো মেমোরি ওভারল্যাপ বা রিলোডের ঝামেলাই থাকবে না!
+        */}
+        <StreamPlayer key={realId} id={realId as string} />
       </div>
 
     </main>
