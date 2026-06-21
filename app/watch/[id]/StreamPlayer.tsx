@@ -1,10 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-
 import useSWR from 'swr';
 import Link from 'next/link';
-import Image from 'next/image';
+import Image from 'next/script';
 import { motion, AnimatePresence } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
 import Script from 'next/script';
@@ -60,6 +59,9 @@ export default function StreamPlayer({ id }: { id: string }) {
   const currentlyPlayingUrlRef = useRef<string | null>(null);
   const lastAppliedDrmRef = useRef<string | null>(null); 
   
+  // 🎯 Fix 2: Micro-time lock to strictly block double failover calls during event overlap
+  const lastSwitchTimeRef = useRef<number>(0); 
+  
   const activeIndexRef = useRef<number>(0);
   const retryCountRef = useRef(0);
   const maxRetry = 2;
@@ -89,10 +91,10 @@ export default function StreamPlayer({ id }: { id: string }) {
   const [isControlsVisible, setIsControlsVisible] = useState(true);
   const [showCopied, setShowCopied] = useState(false);
   
+  // 🎯 Fix 3: Snappy 5-second interval state to provide stable, synced render-loop timestamps
   const [currentTime, setCurrentTime] = useState(new Date());
-  
   useEffect(() => {
-    const t = setInterval(() => setCurrentTime(new Date()), 60000);
+    const t = setInterval(() => setCurrentTime(new Date()), 5000);
     return () => clearInterval(t);
   }, []);
 
@@ -122,7 +124,6 @@ export default function StreamPlayer({ id }: { id: string }) {
           const minutes = parseInt(timeParts[1], 10) || 0;
           const seconds = parseInt(timeParts[2], 10) || 0;
 
-          // 🎯 Fix: Injected the exact 12-hour offset synchronization matching the new API timestamp architecture
           hours += 12;
 
           const utcTimestamp = Date.UTC(year, month - 1, day, hours - 6, minutes, seconds);
@@ -166,7 +167,13 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false });
 
-  const streamsStringified = useMemo(() => JSON.stringify(streamsFromApi), [streamsFromApi]);
+  // 🎯 Fix 1: High performance primitive structural hashing to completely eliminate JSON.stringify overhead
+  const streamsHash = useMemo(() => {
+    if (!streamsFromApi) return '';
+    const rawList = Array.isArray(streamsFromApi) ? streamsFromApi : (streamsFromApi.streams || []);
+    if (rawList.length === 0) return 'empty';
+    return `${rawList.length}-${rawList[0]?.link || rawList[0]?.url || ''}-${rawList[rawList.length - 1]?.link || ''}`;
+  }, [streamsFromApi]);
 
   const streams = useMemo<Stream[] | null>(() => {
     if (!streamsFromApi) return null;
@@ -181,7 +188,7 @@ export default function StreamPlayer({ id }: { id: string }) {
       title: typeof s.title === 'string' ? s.title : undefined,
       api: typeof s.api === 'string' ? s.api : undefined
     }));
-  }, [streamsStringified]);
+  }, [streamsHash]); 
 
   const currentStreamUrl = useMemo(() => {
     if (!streams?.length) return null;
@@ -215,6 +222,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     setAllServersDown(false);
     currentlyPlayingUrlRef.current = null;
     lastAppliedDrmRef.current = null;
+    lastSwitchTimeRef.current = 0;
     clearServerFailures();
     retryCountRef.current = 0;
   }, [id, clearServerFailures]);
@@ -250,18 +258,20 @@ export default function StreamPlayer({ id }: { id: string }) {
   useEffect(() => { if (videoRef.current) videoRef.current.style.objectFit = objectFit; }, [objectFit]);
 
   const safeSwitchServer = useCallback(() => {
-    if (failoverLockRef.current) return;
+    const nowMs = Date.now();
+    // 🎯 Fix 2: Airtight guard combining structural lock and millisecond time delta to completely eliminate overlapping race switches
+    if (failoverLockRef.current || (nowMs - lastSwitchTimeRef.current < 2500)) return;
     failoverLockRef.current = true;
+    lastSwitchTimeRef.current = nowMs;
     retryCountRef.current = 0;
 
     setActiveStreamIndex((prevIndex) => {
-      const list = streams;
+      const list = streamsRef.current;
       if (!list) return prevIndex;
       
       markServerFailed(prevIndex);
       
       let nextValidIndex = -1;
-      const now = Date.now();
       
       for (let i = 0; i < list.length; i++) {
         const fd = failedServersRef.current[i];
@@ -269,7 +279,7 @@ export default function StreamPlayer({ id }: { id: string }) {
           nextValidIndex = i; break;
         } else {
           const cooldown = 60000 * Math.pow(2, fd.attempts - 1);
-          if (now - fd.time > cooldown) {
+          if (nowMs - fd.time > cooldown) {
             nextValidIndex = i; break;
           }
         }
@@ -289,7 +299,7 @@ export default function StreamPlayer({ id }: { id: string }) {
 
     if (failoverTimeoutRef.current) clearTimeout(failoverTimeoutRef.current);
     failoverTimeoutRef.current = setTimeout(() => { failoverLockRef.current = false; }, 3000);
-  }, [markServerFailed, streams]);
+  }, [markServerFailed]);
 
   const forceReloadStream = useCallback(() => {
     if (playerRef.current && currentlyPlayingUrlRef.current) {
@@ -325,19 +335,13 @@ export default function StreamPlayer({ id }: { id: string }) {
       safeSwitchServer();
     }
   }, [forceReloadStream, safeSwitchServer]);
-
-  errorHandlerRef.current = handleStreamError;
-  bufferingHandlerRef.current = (e: any) => {
-    setIsBuffering(e.buffering);
-    isBufferingRef.current = e.buffering;
-  };
-// ==========================================
+  // ==========================================
   // PLAYER INITIALIZATION & UI EVENTS
   // ==========================================
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current) return;
     
-    // Fix 2: Strict block to prevent React 18+ dual init race condition
+    // Fix 2: Sync flag block to strictly protect against React StrictMode double init race condition
     if (playerInitRef.current) return;
     playerInitRef.current = true; 
     
@@ -380,7 +384,6 @@ export default function StreamPlayer({ id }: { id: string }) {
           trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.LABEL
         });
 
-        // Heavy global player configuration called only once
         player.configure({
           streaming: {
             bufferingGoal: 15, rebufferingGoal: 1, bufferBehind: 20, bufferLead: 10,
@@ -413,7 +416,6 @@ export default function StreamPlayer({ id }: { id: string }) {
         videoRef.current?.addEventListener('timeupdate', handleTimeUpdate);
         (ui as any).cleanupTimeUpdate = () => videoRef.current?.removeEventListener('timeupdate', handleTimeUpdate);
 
-        // Fix 3: Intelligent Stall Detection (25s delay + Playing condition validation)
         const checkStall = setInterval(() => {
           const isPaused = videoRef.current?.paused;
           if (isBufferingRef.current && !isPaused && (Date.now() - lastProgressRef.current > 25000)) {
@@ -442,7 +444,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     
     initPlayer();
     
-    // Fix 6: Secure memory clear for long streaming sessions
+    // Fix 6: Multi-tier centralized garbage cleaner to eliminate session leaks
     return () => {
       isCancelled = true;
       playerInitRef.current = false;
@@ -479,7 +481,7 @@ export default function StreamPlayer({ id }: { id: string }) {
       try {
         await playerRef.current.unload();
         
-        // Fix 4: Guard rule to stop redundant configuration rewrites
+        // Fix 4: Cached comparison layer blocks DRM engine rewrite loop
         const currentStreamObj = streams[activeStreamIndex];
         const newDrmApi = currentStreamObj?.api || "";
         
@@ -624,8 +626,9 @@ export default function StreamPlayer({ id }: { id: string }) {
             <div className="flex gap-2 overflow-x-auto scrollbar-hide py-4 my-2 border-b border-gray-800/40 items-center">
               <span className="text-gray-400 font-bold text-xs md:text-sm mr-2 whitespace-nowrap uppercase tracking-wider">Servers:</span>
               {streams.map((stream, index) => {
+                // 🎯 Fix 3: Deterministic evaluation bound to the interval state instead of mutating Date.now() inside loops
                 const fd = failedServers[index];
-                const isFailed = !!fd && (Date.now() - fd.time < 60000 * Math.pow(2, fd.attempts - 1));
+                const isFailed = !!fd && (currentTime.getTime() - fd.time < 60000 * Math.pow(2, fd.attempts - 1));
                 const serverName = stream.title || (currentMatch?.eventInfo as any)?.link_names?.[index] || `Server ${index + 1}`;
                 
                 return (
@@ -649,4 +652,4 @@ export default function StreamPlayer({ id }: { id: string }) {
       <Script src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js" strategy="lazyOnload" id="adsterra-popunder" />
     </main>
   );
-            }
+                                                                                                                                                                                                  }
