@@ -455,8 +455,11 @@ export default function StreamPlayer({ id }: { id: string }) {
     };
   }, [safeSwitchServer]);
 
+    // Video Stream Loading Effect
   useEffect(() => {
-    if (!playerRef.current || allServersDown || !currentStreamUrl || !streams || streams.length === 0) return;
+    // 🎯 FIX: playerInitRef.current যদি false থাকে, তার মানে প্লেয়ার এখনো ব্রাউজারে পুরোপুরি মাউন্ট হয় নাই। 
+    // তাই প্লেয়ার রেডি না হওয়া পর্যন্ত লোড প্রসেস ব্লক করে দেওয়া হলো।
+    if (!playerRef.current || !playerInitRef.current || allServersDown || !currentStreamUrl || !streams || streams.length === 0) return;
     if (currentlyPlayingUrlRef.current === currentStreamUrl || failedServersRef.current[activeStreamIndex]) return;
 
     let isMounted = true;
@@ -515,8 +518,16 @@ export default function StreamPlayer({ id }: { id: string }) {
       }
     };
     
-    loadVideo();
-    return () => { isMounted = false; };
+    // 🎯 ১ মিলি-সেকেন্ডের একটা অতি ক্ষুদ্র ডিলে (Macro-task queue) দেওয়া হলো 
+    // যাতে ডম (DOM) এলিমেন্টগুলো ১০০% প্লেয়ারের সাথে সিঙ্ক হয়ে যায়।
+    const t = setTimeout(() => {
+      loadVideo();
+    }, 50);
+    
+    return () => { 
+      isMounted = false; 
+      clearTimeout(t);
+    };
   }, [currentStreamUrl, activeStreamIndex, allServersDown, safeSwitchServer, forceReloadStream, streams]);
 
   useEffect(() => {
