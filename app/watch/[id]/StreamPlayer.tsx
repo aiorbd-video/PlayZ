@@ -143,37 +143,14 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }
 
-  const getCachedStreams = () => {
-    if (typeof window === 'undefined' || !cacheKey) return null;
-    try {
-      const cached = localStorage.getItem(cacheKey);
-      return cached ? JSON.parse(cached) : null;
-    } catch (e) { return null; }
-  };
+  // 🟢 কোনো লোকাল স্টোরেজ ক্যাশিং নেই। একদম ডাইরেক্ট এবং ফ্রেশ এপিআই ফেচ!
+  const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, {
+    refreshInterval: 30000, // প্রতি ৩০ সেকেন্ডে নতুন লিংক চেক করবে
+    dedupingInterval: 10000,
+    revalidateOnFocus: true, // ইউজার অন্য ট্যাব থেকে ফিরে আসলেই ফ্রেশ লিংক আনবে
+    revalidateOnReconnect: true // নেটওয়ার্ক ড্রপ করে ফিরে আসলেই রিলোড হবে
+  });
 
-  // Step 3: SWR Optimization
-  const { data: streamsFromApi } = useSWR(
-    streamFetchUrl,
-    fetcher,
-    {
-      refreshInterval: 60000,
-      dedupingInterval: 30000,
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-      fallbackData: getCachedStreams(),
-      onSuccess: (data) => {
-        if (typeof window !== 'undefined' && cacheKey && data) {
-          try {
-            const oldData = localStorage.getItem(cacheKey);
-            const newData = JSON.stringify(data);
-            if (oldData !== newData) {
-              localStorage.setItem(cacheKey, newData);
-            }
-          } catch {}
-        }
-      }
-    }
-  );
 
   const streams = Array.isArray(streamsFromApi) ? streamsFromApi : (streamsFromApi?.streams || null);
 
@@ -458,8 +435,11 @@ export default function StreamPlayer({ id }: { id: string }) {
         }
         
         // Step 12: Stream Cache Bypass
-        const loadUrl = currentStreamUrl + (currentStreamUrl.includes('?') ? '&' : '?') + '_v=' + Date.now();
-        await playerRef.current.load(loadUrl);
+                // 🟢 অরিজিনাল সিকিউর ইউআরএল সরাসরি প্লেয়ারে পুশ করা হলো
+        await playerRef.current.load(currentStreamUrl);
+        
+        currentlyPlayingUrlRef.current = currentStreamUrl; 
+
         
         currentlyPlayingUrlRef.current = currentStreamUrl; 
 
