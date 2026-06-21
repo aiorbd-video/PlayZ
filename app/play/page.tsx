@@ -29,8 +29,14 @@ function PlayerContent() {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
-  const [playerInstance, setPlayerInstance] = useState<any>(null);
+  const playerRef = useRef<any>(null);
   
+  // Enterprise Core Stability Refs
+  const playerInitRef = useRef(false);
+  const lastAppliedDrmRef = useRef<string | null>(null);
+  const timersRef = useRef<Set<ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>>>(new Set());
+
+  const [playerInstance, setPlayerInstance] = useState<any>(null);
   const [playlistChannels, setPlaylistChannels] = useState<any[]>([]);
   const [searchInp, setSearchInp] = useState('');
   
@@ -39,7 +45,7 @@ function PlayerContent() {
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [isBuffering, setIsBuffering] = useState(true);
 
-  // কাস্টম প্রোটেকশন (Inspect Element Lock)
+  // Core Client Security Layers
   useEffect(() => {
     const blockInspect = (e: MouseEvent) => e.preventDefault();
     const blockKeys = (e: KeyboardEvent) => {
@@ -71,63 +77,81 @@ function PlayerContent() {
   useEffect(() => {
     if (showFitToast) {
       const timer = setTimeout(() => setShowFitToast(false), 2000);
-      return () => clearTimeout(timer);
+      timersRef.current.add(timer);
+      return () => {
+        clearTimeout(timer);
+        timersRef.current.delete(timer);
+      };
     }
   }, [showFitToast, objectFit]);
-
-  // 🟢 প্রোডাকশন-সেফ ডায়নামিক শাকা প্লেয়ার ইনিশিয়ালাইজেশন
+  // ==========================================
+  // PLAYER INITIALIZATION & UI EVENTS
+  // ==========================================
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || typeof window === 'undefined') return;
+
+    // Fix 1: Guard against strict-mode dual initialization race condition
+    if (playerInitRef.current) return;
+    playerInitRef.current = true;
 
     let shaka: any;
     let player: any;
     let ui: any;
+    let isCancelled = false;
 
     const initPlayer = async () => {
       try {
         shaka = await import('shaka-player/dist/shaka-player.ui');
+        if (isCancelled) return;
         shaka.polyfill.installAll();
 
         try {
           if (shaka.ui.Controls && !(shaka.ui.Controls as any).custom_stretch_registered) {
-              class StretchButton extends shaka.ui.Element {
-                  constructor(parent: HTMLElement, controls: any) {
-                      super(parent, controls);
-                      const button = document.createElement('button');
-                      button.className = 'shaka-custom-stretch-btn shaka-tooltip';
-                      button.setAttribute('aria-label', 'Toggle Fit');
-                      button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white" style="pointer-events:none;"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
-                      
-                      this.eventManager.listen(button, 'click', () => {
-                          window.dispatchEvent(new CustomEvent('toggleObjectFit'));
-                      });
-                      parent.appendChild(button);
-                  }
+            class StretchButton extends shaka.ui.Element {
+              constructor(parent: HTMLElement, controls: any) {
+                super(parent, controls);
+                const button = document.createElement('button');
+                button.className = 'shaka-custom-stretch-btn shaka-tooltip';
+                button.setAttribute('aria-label', 'Toggle Fit');
+                button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white" style="pointer-events:none;"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
+                
+                this.eventManager.listen(button, 'click', () => {
+                  window.dispatchEvent(new CustomEvent('toggleObjectFit'));
+                });
+                parent.appendChild(button);
               }
-              shaka.ui.Controls.registerElement('custom_stretch', {
-                  create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
-              });
-              (shaka.ui.Controls as any).custom_stretch_registered = true;
+            }
+            shaka.ui.Controls.registerElement('custom_stretch', {
+              create: (rootElement: HTMLElement, controls: any) => new StretchButton(rootElement, controls)
+            });
+            (shaka.ui.Controls as any).custom_stretch_registered = true;
           }
         } catch (e) {}
 
         player = new shaka.Player(videoRef.current);
+        playerRef.current = player;
+
         ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
-        
         ui.configure({
-          controlPanelElements: [
-            'play_pause', 
-            'time_and_duration', 
-            'spacer', 
-            'mute', 
-            'volume', 
-            'custom_stretch', 
-            'overflow_menu',  
-            'fullscreen'
-          ],
+          controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'custom_stretch', 'overflow_menu', 'fullscreen'],
           addSeekBar: true,
-          // 🟢 ফিক্স: 1080p, 2K, 4K এর পাশে Mbps (Bitrate) দেখানোর জন্য
           trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.RESOLUTION_BITRATE
+        });
+
+        // Offloaded heavy global configuration settings loaded only once on initialization
+        player.configure({
+          streaming: {
+            bufferingGoal: 30,
+            rebufferingGoal: 5,
+            bufferBehind: 15,
+            retryParameters: { maxAttempts: 5, baseDelay: 1000, backoffFactor: 2, timeout: 20000 }
+          },
+          abr: { 
+            enabled: true, 
+            defaultBandwidthEstimate: 2000000,
+            restrictions: { maxHeight: 4320, maxWidth: 7680 } 
+          },
+          manifest: { dash: { ignoreMinBufferTime: true } }
         });
 
         player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
@@ -141,53 +165,43 @@ function PlayerContent() {
       } catch (err) {
         console.error("Player initialization failed.");
         setPlayerError("Player initialization failed.");
+        playerInitRef.current = false;
       }
     };
 
     initPlayer();
 
     return () => {
+      isCancelled = true;
+      playerInitRef.current = false;
       if (ui) ui.destroy();
-      if (player) player.destroy();
+      if (player) {
+        try { player.unload(); } catch {}
+        player.destroy();
+      }
+      timersRef.current.forEach(clearTimeout);
+      timersRef.current.forEach(clearInterval);
+      timersRef.current.clear();
     };
   }, []);
 
-  // 🟢 ভিডিও লোড, Unload ফিক্স এবং আইরনক্ল্যাড DRM পার্সার
+  // Video Stream Load Side-Effect Layer
   useEffect(() => {
-    if (!playerInstance || !streamUrl) return;
+    if (!playerRef.current || !streamUrl) return;
 
+    let isMounted = true;
     const loadVideo = async () => {
       setPlayerError(null);
       setIsBuffering(true);
       try {
-        // 🟢 ফিক্স: প্লেয়ারের মেমোরি ক্লিন করা হচ্ছে যাতে চ্যানেল পরিবর্তন করলে আটকে না থাকে
-        await playerInstance.unload(); 
-
-        const playerConfig: any = {
-          streaming: {
-              bufferingGoal: 30,
-              rebufferingGoal: 5,
-              bufferBehind: 15,
-              retryParameters: { maxAttempts: 5, baseDelay: 1000, backoffFactor: 2, timeout: 20000 }
-          },
-          abr: { 
-              enabled: true, 
-              defaultBandwidthEstimate: 2000000,
-              // 🟢 ফিক্স: 2K, 4K এর জন্য রেজোলিউশন লিমিট আনলক করা হলো
-              restrictions: { maxHeight: 4320, maxWidth: 7680 } 
-          },
-          manifest: { dash: { ignoreMinBufferTime: true } }
-        };
-
-        const drmData = drmKeyString;
         
-        // 아이রনক্ল্যাড মাল্টি-ফরম্যাট DRM পার্সার
-        if (drmData) {
+        // Fix 3: Cached token state guard completely mitigates DRM reload loops
+        if (lastAppliedDrmRef.current !== drmKeyString) {
           const clearKeysObj: Record<string, string> = {};
-          let parsedData: any = drmData;
+          let parsedData: any = drmKeyString;
 
-          if (typeof drmData === 'string') {
-            const trimmed = drmData.trim();
+          if (typeof drmKeyString === 'string') {
+            const trimmed = drmKeyString.trim();
             if (trimmed.startsWith('{')) {
               try { parsedData = JSON.parse(trimmed); } catch (e) {}
             }
@@ -206,31 +220,37 @@ function PlayerContent() {
           }
 
           if (Object.keys(clearKeysObj).length > 0) {
-            playerConfig.drm = { clearKeys: clearKeysObj };
+            playerRef.current.configure({ drm: { clearKeys: clearKeysObj } });
+          } else {
+            playerRef.current.configure({ drm: { clearKeys: {} } });
           }
+          lastAppliedDrmRef.current = drmKeyString;
         }
 
-        playerInstance.configure(playerConfig);
-
         let finalStreamUrl = streamUrl;
-        // 🟢 HTTP টু HTTPS আপগ্রেড (Mixed Content বাইপাস এবং Redirect সাপোর্ট)
         if (window.location.protocol === 'https:' && finalStreamUrl.toLowerCase().startsWith('http://')) {
             finalStreamUrl = finalStreamUrl.replace(/^http:\/\//i, 'https://');
         }
 
-        await playerInstance.load(finalStreamUrl);
-        setIsBuffering(false);
+        await playerRef.current.unload();
+        await playerRef.current.load(finalStreamUrl);
+        if (isMounted) setIsBuffering(false);
       } catch (e) {
         console.error("Load Error", e);
-        setPlayerError("Failed to load stream. Please try another channel.");
-        setIsBuffering(false);
+        if (isMounted) {
+          setPlayerError("Failed to load stream. Please try another channel.");
+          setIsBuffering(false);
+        }
       }
     };
 
     loadVideo();
-  }, [playerInstance, streamUrl, drmKeyString]);
+    return () => {
+      isMounted = false;
+    };
+  }, [playerRef.current, streamUrl, drmKeyString]);
 
-  // প্লেলিস্ট পার্সিং
+  // Playlist Parsing Management
   useEffect(() => {
     if (!playlistId) return;
     fetch('/api/m3u')
@@ -369,10 +389,10 @@ function PlayerContent() {
         @keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
       `}} />
       <Script 
-  src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js"
-  strategy="lazyOnload" 
-  id="adsterra-popunder"
-/>
+        src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js"
+        strategy="lazyOnload" 
+        id="adsterra-popunder"
+      />
     </main>
   );
 }
@@ -388,4 +408,4 @@ export default function PlayPage() {
       <PlayerContent />
     </Suspense>
   );
-}
+          }
