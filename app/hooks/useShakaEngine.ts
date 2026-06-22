@@ -106,19 +106,24 @@ export function useShakaEngine({
         const ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
         uiRef.current = ui;
         
-        ui.configure({
+                ui.configure({
           controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'custom_stretch', 'overflow_menu', 'fullscreen'],
           addSeekBar: true,
         });
 
         player.configure({
           streaming: {
-            bufferingGoal: 12, rebufferingGoal: 2, bufferBehind: 20, stallEnabled: false, 
+            bufferingGoal: 4, 
+            rebufferingGoal: 2, 
+            liveSyncDuration: 4, // 🎯 এই লাইনটি অ্যাড করা হলো (সব লিংকের লাইভ টাইমিং গ্যাপ ফিক্স করবে)
+            bufferBehind: 20, 
+            stallEnabled: false, 
             retryParameters: { maxAttempts: 5, baseDelay: 1000, backoffFactor: 2 }
           },
           abr: { enabled: true, switchInterval: 8 },
           manifest: { dash: { autoCorrectDrift: true }, hls: { ignoreManifestProgramDateTime: true } }
         });
+
 
         const netEngine = player.getNetworkingEngine();
         if (netEngine) {
