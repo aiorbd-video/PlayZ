@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, forwardRef, useImperativeHandle, useEffect } from 'react';
+import { useState, forwardRef, useImperativeHandle } from 'react';
 
 export interface PlayerLogsHandle {
   addLog: (message: string, type?: 'info' | 'success' | 'error' | 'warn') => void;
@@ -16,7 +16,7 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
   const [statusType, setStatusType] = useState<'info' | 'success' | 'error' | 'warn'>('info');
   const [shareText, setShareText] = useState('Share Stream');
 
-  // ব্যাকগ্রাউন্ডে Shaka Engine থেকে আসা ডাটা রিড করে স্ট্যাটাস আপডেট করা
+  // ব্যাকগ্রাউন্ড ট্র্যাকিং (কোড ব্রেকিং প্রটেকশন)
   useImperativeHandle(ref, () => ({
     addLog: (message: string, type = 'info') => {
       if (message.includes('live on-screen')) {
@@ -39,21 +39,42 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
     },
   }));
 
-  // ওয়ান-ক্লিক শেয়ার লজিক (ক্লিপবোর্ড কপি)
-  const handleShare = () => {
+  // 🎯 নেটিভ ডিজিটাল সোশ্যাল শেয়ার ইঞ্জিন (WhatsApp, Messenger, OS Share ready)
+  const handleShare = async () => {
     if (typeof window !== 'undefined') {
-      navigator.clipboard.writeText(window.location.href);
-      setShareText('Link Copied! 🚀');
-      setTimeout(() => setShareText('Share Stream'), 2000);
+      const shareData = {
+        title: matchTitle || 'Live Stream Broadcast',
+        text: `🔥 PlayZ লাইভ স্ট্রিমিংয়ে সরাসরি খেলা চলছে! জলদি জয়েন করো: ${matchTitle || ''}\n`,
+        url: window.location.href,
+      };
+
+      // চেক করা হচ্ছে ব্রাউজার আধুনিক Web Share API সাপোর্ট করে কিনা
+      if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+        try {
+          await navigator.share(shareData);
+          setShareText('Shared! 🎉');
+          setTimeout(() => setShareText('Share Stream'), 2000);
+        } catch (err) {
+          // ইউজার শেয়ার ক্যানসেল করলে কোনো এরর দেখাবে না
+        }
+      } else {
+        // 🛠️ স্মার্ট টিভি বা ওল্ড ব্রাউজারের জন্য ব্যাকআপ ফলব্যাক (লিংক কপি)
+        try {
+          await navigator.clipboard.writeText(window.location.href);
+          setShareText('Link Copied! 🚀');
+          setTimeout(() => setShareText('Share Stream'), 2000);
+        } catch (clipErr) {
+          setShareText('Share Failed');
+        }
+      }
     }
   };
 
   return (
     <div className="mt-6 w-full bg-gradient-to-br from-[#1A1D2E] to-[#131522] rounded-2xl border border-gray-800/60 p-5 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-5 transition-all duration-300">
       
-      {/* বাম পাশ: ম্যাচ ডিটেইলস এবং লাইভ ইন্ডিকেটর */}
+      {/* বাম পাশ: লাইভ স্ট্যাটাস ও ম্যাচ ইন্ডিকেটর */}
       <div className="flex items-center gap-4 w-full sm:w-auto">
-        {/* টিভি-রেডি বড় ব্লিংকিং লাইভ ডট */}
         <div className="relative flex h-4 w-4 shrink-0">
           <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
             statusType === 'success' ? 'bg-emerald-400' : statusType === 'error' ? 'bg-rose-400' : 'bg-cyan-400'
@@ -63,7 +84,6 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
           }`}></span>
         </div>
 
-        {/* ম্যাচ টাইটেল ও সাবস্ট্যাটাস */}
         <div className="flex flex-col truncate">
           <span className="text-[11px] font-black tracking-widest text-[#00E5FF] uppercase">
             {statusText}
@@ -74,18 +94,15 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
         </div>
       </div>
 
-      {/* ডান পাশ: অ্যাকশন বাটন (শেয়ার) */}
+      {/* ডান পাশ: কাস্টম ডিজিটাল শেয়ার বাটন */}
       <div className="w-full sm:w-auto flex justify-end shrink-0 border-t border-gray-800/40 sm:border-none pt-4 sm:pt-0">
         <button
           onClick={handleShare}
-          className="w-full sm:w-auto px-5 py-2.5 bg-[#1C1E2D] hover:bg-[#25283C] active:scale-95 text-xs font-black rounded-xl border border-gray-700/50 text-gray-200 flex items-center justify-center gap-2 transition-all cursor-pointer outline-none shadow-md hover:text-[#00E5FF] hover:border-[#00E5FF]/40 group"
+          className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-[#00E5FF]/10 to-[#00E5FF]/5 hover:from-[#00E5FF]/20 hover:to-[#00E5FF]/10 active:scale-95 text-xs font-black rounded-xl border border-[#00E5FF]/20 text-[#00E5FF] flex items-center justify-center gap-2.5 transition-all cursor-pointer outline-none shadow-lg shadow-cyan-950/20 group hover:border-[#00E5FF]/40"
         >
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="group-hover:rotate-12 transition-transform">
-            <circle cx="18" cy="5" r="3"></circle>
-            <circle cx="6" cy="12" r="3"></circle>
-            <circle cx="18" cy="19" r="3"></circle>
-            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
-            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
           </svg>
           {shareText}
         </button>
