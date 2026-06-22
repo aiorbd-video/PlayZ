@@ -5,7 +5,7 @@ import useSWR from 'swr';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
-
+import Script from 'next/script';
 import { PlayerLogs, type PlayerLogsHandle } from '../../components/PlayerLogs';
 import { useShakaEngine } from '../../hooks/useShakaEngine';
 
