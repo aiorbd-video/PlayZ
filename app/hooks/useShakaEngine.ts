@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PlayerLogsHandle } from '../components/PlayerLogs';
 
 interface UseShakaEngineProps {
@@ -46,6 +46,9 @@ export function useShakaEngine({
   const stallIntervalRef = useRef<any>(null);
   const initInProgressRef = useRef<boolean>(false);
   const isCurrentlyLoadingRef = useRef<boolean>(false);
+
+  // 🎯 ফিক্সড: প্লেয়ার রেডি কিনা তা ট্র‍্যাক করার জন্য স্টেট
+  const [isEngineReady, setIsEngineReady] = useState(false);
 
   // ১. প্লেয়ার ও ইউআই ওয়ান-টাইম ইনিশিয়ালাইজেশন
   useEffect(() => {
@@ -108,7 +111,6 @@ export function useShakaEngine({
           addSeekBar: true,
         });
 
-        // 🎯 ৫ বার রিট্রাই ব্যাকঅফ কনফিগ (Enterprise Recovery Layout)
         player.configure({
           streaming: {
             bufferingGoal: 12, rebufferingGoal: 2, bufferBehind: 20, stallEnabled: false, 
@@ -139,24 +141,17 @@ export function useShakaEngine({
 
         const onBuffering = (e: any) => setIsBuffering(e.buffering);
         
-        // 🎯 এন্টারপ্রাইজ লেভেল এরর ফিল্টারিং (The Severity Engine)
         const onError = async (event: any) => {
           const error = event.detail;
-
-          // ⚠️ শাকা যদি নিজে রিট্রাই করতে পারে (Severity 1), আমরা মাঝখান থেকে ডিস্টার্ব করব না!
           if (error && error.severity === 1) {
-            loggerRef.current?.addLog(`Minor glitch ${error.code} detected. Shaka internal engine is silently retrying...`, 'warn');
+            loggerRef.current?.addLog(`Minor glitch ${error.code} detected. Retrying...`, 'warn');
             return;
           }
-
-          // 🚨 শাকা যখন পুরোপুরি হাল ছেড়ে দিবে (Severity 2 - Critical), শুধু তখনই ফেইলওভার হবে!
           if (error && error.severity === 2) {
             const fatalCodes = [1001, 1002, 6007, 3016];
             if (fatalCodes.includes(error.code)) {
               loggerRef.current?.addLog(`Fatal Player Crash ${error.code}. Switching server...`, 'error');
               safeSwitchServer();
-            } else {
-              loggerRef.current?.addLog(`Critical Error ${error.code} ignored as non-fatal code.`, 'warn');
             }
           }
         };
@@ -170,6 +165,9 @@ export function useShakaEngine({
         };
 
         loggerRef.current?.addLog('Live IPTV Engine Mounted successfully!', 'success');
+        
+        // 🎯 ইঞ্জিন রেডি সিগন্যাল পাঠানো হলো
+        setIsEngineReady(true);
 
       } catch (err: any) {
         initInProgressRef.current = false;
@@ -181,6 +179,7 @@ export function useShakaEngine({
 
     return () => {
       initInProgressRef.current = false;
+      setIsEngineReady(false);
       if (playerRef.current && playerRef.current.__cleanupListeners) playerRef.current.__cleanupListeners();
       if (p2pEngineRef.current) { p2pEngineRef.current.destroy(); p2pEngineRef.current = null; }
       if (uiRef.current) { uiRef.current.destroy(); uiRef.current = null; }
@@ -190,7 +189,9 @@ export function useShakaEngine({
 
   // ২. স্ট্রিম লোড রানার
   useEffect(() => {
-    if (!playerRef.current || allServersDown || !currentStreamUrl || !streams?.length) return;
+    // 🎯 ফিক্সড: isEngineReady এবং streams ডিপেন্ডেন্সি চেক
+    if (!isEngineReady || !playerRef.current || allServersDown || !currentStreamUrl || !streams?.length) return;
+    
     let isMounted = true;
 
     const loadStreamSource = async () => {
@@ -285,5 +286,5 @@ export function useShakaEngine({
       clearTimeout(delayTimer);
       if (stallIntervalRef.current) { clearInterval(stallIntervalRef.current); stallIntervalRef.current = null; }
     };
-  }, [currentStreamUrl, activeStreamIndex, allServersDown]);
-}
+  }, [currentStreamUrl, activeStreamIndex, allServersDown, isEngineReady, streams]); // 🎯 ফিক্সড: ডিপেন্ডেন্সি অ্যারে কারেকশন
+            }
