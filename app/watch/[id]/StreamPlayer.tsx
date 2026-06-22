@@ -5,6 +5,8 @@ import useSWR from 'swr';
 import Link from 'next/link';
 import 'shaka-player/dist/controls.css';
 
+import { PlayerLogs, type PlayerLogsHandle } from '../../components/PlayerLogs';
+
 import { PlayerLogs } from '../../components/PlayerLogs';
 import { useShakaEngine } from '../../hooks/useShakaEngine';
 interface Stream { title?: string; link: string; api?: string; }
