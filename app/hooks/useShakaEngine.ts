@@ -16,6 +16,34 @@ interface UseShakaEngineProps {
   getMimeType: (url: string) => string | undefined;
 }
 
+// 🎯 ৬. Better DRM Parsing Helper
+const parseClearKeys = (drmData: string | object | undefined): Record<string, string> => {
+  if (!drmData) return {};
+  try {
+    let data = typeof drmData === 'string' ? drmData.trim() : drmData;
+    if (typeof data === 'string' && data.startsWith('{')) {
+      data = JSON.parse(data);
+    }
+    if (typeof data === 'object' && data !== null) {
+      return Object.fromEntries(
+        Object.entries(data)
+          .map(([kid, key]) => [
+            kid.replace(/['"\s{}:]/g, ''),
+            String(key).replace(/['"\s{}:]/g, '')
+          ])
+          .filter(([kid, key]) => kid && key)
+      );
+    }
+    if (typeof data === 'string' && data.includes(':')) {
+      const parts = data.replace(/['"\s{}]/g, '').split(':');
+      if (parts.length === 2) return { [parts[0]]: parts[1] };
+    }
+    return {};
+  } catch {
+    return {};
+  }
+};
+
 export function useShakaEngine({
   currentStreamUrl,
   activeStreamIndex,
@@ -31,6 +59,7 @@ export function useShakaEngine({
   const playerRef = useRef<any>(null);
   const uiRef = useRef<any>(null);
   const playerInitRef = useRef<boolean>(false);
+  const stallIntervalRef = useRef<any>(null);
 
   // ১. প্লেয়ার ও ইউআই ওয়ান-টাইম ইনিশিয়ালাইজেশন
   useEffect(() => {
@@ -54,31 +83,74 @@ export function useShakaEngine({
           addSeekBar: true,
         });
 
+        // 🎯 ৩ ও ৯. Low Latency & Live IPTV Config
         player.configure({
           streaming: {
-            bufferingGoal: 15,
-            rebufferingGoal: 2,
-            bufferBehind: 20,
-            retryParameters: { maxAttempts: 5, baseDelay: 1000 }
+            bufferingGoal: 8,
+            rebufferingGoal: 1,
+            bufferBehind: 10,
+            inaccurateManifestTolerance: 0,
+            stallEnabled: true,
+            stallThreshold: 2,
+            stallSkip: 0.1,
+            retryParameters: { maxAttempts: 3, baseDelay: 1000 }
+          },
+          abr: {
+            enabled: true,
+            switchInterval: 3,
           }
         });
 
-        player.addEventListener('buffering', (e: any) => {
-          setIsBuffering(e.buffering);
-        });
+        // 🎯 ৪. Networking Filter
+        const netEngine = player.getNetworkingEngine();
+        if (netEngine) {
+          netEngine.registerRequestFilter((type: any, request: any) => {
+            request.allowCrossSiteCredentials = true;
+            try {
+              if (navigator.userAgent) {
+                request.headers['User-Agent'] = navigator.userAgent;
+              }
+            } catch (e) {
+              // Some browsers block modifying User-Agent header
+            }
+          });
+        }
 
-        // 🎯 ফিক্সড: শুধুমাত্র Critical (Severity 2) এরর হলেই সার্ভার চেঞ্জ হবে
-        player.addEventListener('error', (event: any) => {
+        // 🎯 ৭. Memory Leak Fix (Proper Listener Management)
+        const onBuffering = (e: any) => setIsBuffering(e.buffering);
+
+        // 🎯 ১ ও ৫. Smart Error Handler & Auto Recover
+        const onError = async (event: any) => {
           const error = event.detail;
-          if (error && error.severity === 2) {
-            loggerRef.current?.addLog(`Critical Player Error Code: ${error.code}`, 'error');
+          const switchCodes = [1001, 1002, 6007, 3016];
+
+          if (switchCodes.includes(error.code)) {
+            loggerRef.current?.addLog(`Fatal Error ${error.code}, attempting recovery...`, 'error');
+            try {
+              const recovered = await player.retryStreaming();
+              if (recovered) {
+                loggerRef.current?.addLog(`Stream auto-recovered after error ${error.code}!`, 'success');
+                return;
+              }
+            } catch (retryErr) {
+               loggerRef.current?.addLog(`Recovery failed. Switching server...`, 'warn');
+            }
             safeSwitchServer();
           } else {
-            loggerRef.current?.addLog(`Minor Recoverable Error: ${error?.code} (Ignored)`, 'warn');
+            loggerRef.current?.addLog(`Recoverable/Ignored Error ${error.code}`, 'warn');
           }
-        });
+        };
 
-        loggerRef.current?.addLog('Core Engine Mounted and Ready successfully!', 'success');
+        player.addEventListener('buffering', onBuffering);
+        player.addEventListener('error', onError);
+
+        // Store cleanup function on the player instance for easy unmounting
+        playerRef.current.__cleanupListeners = () => {
+          player.removeEventListener('buffering', onBuffering);
+          player.removeEventListener('error', onError);
+        };
+
+        loggerRef.current?.addLog('Live IPTV Engine Mounted successfully!', 'success');
       } catch (err) {
         playerInitRef.current = false;
         loggerRef.current?.addLog('Core Mount Failed!', 'error');
@@ -89,6 +161,9 @@ export function useShakaEngine({
 
     return () => {
       playerInitRef.current = false;
+      if (playerRef.current && playerRef.current.__cleanupListeners) {
+        playerRef.current.__cleanupListeners();
+      }
       if (uiRef.current) { uiRef.current.destroy(); uiRef.current = null; }
       if (playerRef.current) { playerRef.current.destroy(); playerRef.current = null; }
     };
@@ -102,59 +177,58 @@ export function useShakaEngine({
 
     const loadStreamSource = async () => {
       setIsBuffering(true);
-      loggerRef.current?.addLog(`Loading Stream Source for Index [${activeStreamIndex}]`, 'info');
+      loggerRef.current?.addLog(`Loading Source: Server [${activeStreamIndex + 1}]`, 'info');
 
       try {
         await playerRef.current.unload();
 
         const currentStream = streams[activeStreamIndex];
-        const drmData = currentStream?.api || '';
-        const clearKeysObj: Record<string, string> = {};
-        let parsedData: any = drmData;
-
-        if (typeof drmData === 'string') {
-          const trimmed = drmData.trim();
-          if (trimmed.startsWith('{')) {
-            try { parsedData = JSON.parse(trimmed); } catch (e) {}
-          }
-        }
-
-        if (typeof parsedData === 'object' && parsedData !== null) {
-          Object.entries(parsedData).forEach(([k, v]) => {
-            const cleanKid = k.replace(/['"\s{}:]/g, '');
-            const cleanKey = String(v).replace(/['"\s{}:]/g, '');
-            if (cleanKid && cleanKey) clearKeysObj[cleanKid] = cleanKey;
-          });
-        } else if (typeof parsedData === 'string' && parsedData.includes(':')) {
-          const parts = parsedData.replace(/['"\s{}]/g, '').split(':');
-          if (parts.length === 2) clearKeysObj[parts[0]] = parts[1];
-        }
+        const clearKeysObj = parseClearKeys(currentStream?.api);
 
         if (Object.keys(clearKeysObj).length > 0) {
-          loggerRef.current?.addLog(`Injecting DRM Keys...`, 'success');
+          loggerRef.current?.addLog(`DRM Keys Parsed & Injected`, 'success');
           playerRef.current.configure({ drm: { clearKeys: clearKeysObj } });
         } else {
           playerRef.current.configure({ drm: { clearKeys: {} } });
         }
 
         const mimeType = getMimeType(currentStreamUrl);
-        await playerRef.current.load(currentStreamUrl, null, mimeType);
+        
+        // 🎯 ৮. Fast Server Failover (10s Timeout)
+        const loadPromise = playerRef.current.load(currentStreamUrl, null, mimeType);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('10s Load Timeout Limit Reached')), 10000)
+        );
+
+        await Promise.race([loadPromise, timeoutPromise]);
 
         if (videoRef.current && isMounted) {
           videoRef.current.play()
-            .then(() => loggerRef.current?.addLog('Video is actively rendering on-screen!', 'success'))
-            .catch((e) => loggerRef.current?.addLog(`Autoplay deferred: Click play to start.`, 'warn'));
+            .then(() => loggerRef.current?.addLog('Playback live on-screen!', 'success'))
+            .catch(() => loggerRef.current?.addLog('Autoplay deferred. Waiting for interaction.', 'warn'));
         }
 
         if (isMounted) setIsBuffering(false);
+
+        // 🎯 ২. Stall Detection (Starts only after successful load)
+        if (stallIntervalRef.current) clearInterval(stallIntervalRef.current);
+        let lastTime = 0;
+        stallIntervalRef.current = setInterval(() => {
+          const video = videoRef.current;
+          if (!video) return;
+          if (!video.paused && !video.seeking && video.currentTime === lastTime) {
+            loggerRef.current?.addLog('Playback stall detected (frozen frame)', 'error');
+            safeSwitchServer();
+          }
+          lastTime = video.currentTime;
+        }, 15000);
+
       } catch (err: any) {
-        // 🎯 ফিক্সড: Load Interrupted (7000/7002) এরর হলে সার্ভার চেঞ্জ করবে না!
         if (err.code === 7000 || err.code === 7002) {
-          loggerRef.current?.addLog(`Load Interrupted (${err.code}). Safe to ignore.`, 'info');
+          loggerRef.current?.addLog(`Load Interrupted (${err.code}). Ignored.`, 'info');
           return;
         }
-        
-        loggerRef.current?.addLog(`Source Loading Failed: ${err.message || err.code}`, 'error');
+        loggerRef.current?.addLog(`Loading Failed: ${err.message || err.code}`, 'error');
         if (isMounted) safeSwitchServer();
       }
     };
@@ -166,6 +240,7 @@ export function useShakaEngine({
     return () => {
       isMounted = false;
       clearTimeout(delayTimer);
+      if (stallIntervalRef.current) clearInterval(stallIntervalRef.current);
     };
   }, [currentStreamUrl, activeStreamIndex, allServersDown, streams]);
 }
