@@ -43,12 +43,15 @@ export function useShakaEngine({
   const playerRef = useRef<any>(null);
   const uiRef = useRef<any>(null);
   const p2pEngineRef = useRef<any>(null);
-  const playerInitRef = useRef<boolean>(false);
   const stallIntervalRef = useRef<any>(null);
+  
+  // ডাবল ইনিশিয়ালাইজেশন ট্র্যাকিং পিন
+  const initInProgressRef = useRef<boolean>(false);
 
+  // ১. প্লেয়ার ও ইউআই ওয়ান-টাইম ইনিশিয়ালাইজেশন
   useEffect(() => {
-    if (!videoRef.current || !videoContainerRef.current || playerInitRef.current) return;
-    playerInitRef.current = true;
+    if (!videoRef.current || !videoContainerRef.current || initInProgressRef.current) return;
+    initInProgressRef.current = true;
 
     let shaka: any;
     const initInstance = async () => {
@@ -58,7 +61,7 @@ export function useShakaEngine({
         shaka = await import('shaka-player/dist/shaka-player.ui');
         shaka.polyfill.installAll();
 
-        // 🎯 P2P সেফটি ব্লক (TS Fix: p2pModule কে strictly 'any' বলা হয়েছে)
+        // P2P সেফটি ব্লক
         let P2PEngine: any = null;
         try {
           const p2pModule: any = await import('p2p-media-loader-shaka');
@@ -96,9 +99,6 @@ export function useShakaEngine({
             loggerRef.current?.addLog('🚀 P2P WebRTC Network Layer Injected!', 'success');
 
             p2pEngineRef.current.on('peer_connect', () => loggerRef.current?.addLog('P2P: New Peer Connected!', 'info'));
-            p2pEngineRef.current.on('piece_bytes_downloaded', (method: string, bytes: number) => {
-              if (method === 'p2p') loggerRef.current?.addLog(`P2P: Downloaded ${(bytes / 1024).toFixed(1)} KB from peers!`, 'success');
-            });
           } catch (e: any) {
             loggerRef.current?.addLog(`P2P setup failed: ${e.message}`, 'warn');
           }
@@ -144,8 +144,12 @@ export function useShakaEngine({
         };
 
         loggerRef.current?.addLog('Live IPTV Engine Mounted successfully!', 'success');
+        
+        // 🎯 মাউন্ট হওয়ার সাথে সাথে জোরপূর্বক ১ম সোর্স লোড রান করানো (The Fix)
+        window.dispatchEvent(new CustomEvent('shakaEngineReady'));
+
       } catch (err: any) {
-        playerInitRef.current = false;
+        initInProgressRef.current = false;
         loggerRef.current?.addLog(`Core Mount Failed: ${err.message || err}`, 'error');
       }
     };
@@ -153,20 +157,24 @@ export function useShakaEngine({
     initInstance();
 
     return () => {
-      playerInitRef.current = false;
+      initInProgressRef.current = false;
       if (playerRef.current && playerRef.current.__cleanupListeners) playerRef.current.__cleanupListeners();
       if (p2pEngineRef.current) { p2pEngineRef.current.destroy(); p2pEngineRef.current = null; }
       if (uiRef.current) { uiRef.current.destroy(); uiRef.current = null; }
       if (playerRef.current) { playerRef.current.destroy(); playerRef.current = null; }
     };
-  }, [safeSwitchServer, currentStreamUrl]);
+  }, [safeSwitchServer]);
 
+  // ২. স্ট্রিম লোড রানার
   useEffect(() => {
-    if (!playerRef.current || allServersDown || !currentStreamUrl || !streams?.length) return;
-
     let isMounted = true;
 
     const loadStreamSource = async () => {
+      // যদি প্লেয়ার অবজেক্ট এখনও মেমোরিতে রেডি না হয়, তবে একটু অপেক্ষা করে আবার ট্রাই করবে
+      if (!playerRef.current) {
+        return;
+      }
+
       if (stallIntervalRef.current) { clearInterval(stallIntervalRef.current); stallIntervalRef.current = null; }
 
       setIsBuffering(true);
@@ -239,11 +247,19 @@ export function useShakaEngine({
       }
     };
 
-    const delayTimer = setTimeout(() => { loadStreamSource(); }, 50);
+    // ইঞ্জিন রেডি হওয়া বা সোর্স চেঞ্জ হওয়ার ইভেন্ট ট্র্যাকার
+    const handleEngineReady = () => { if (isMounted) loadStreamSource(); };
+    window.addEventListener('shakaEngineReady', handleEngineReady);
+
+    // সেফটি বাফার কল
+    const delayTimer = setTimeout(() => {
+      if (playerRef.current) loadStreamSource();
+    }, 100);
 
     return () => {
       isMounted = false;
       clearTimeout(delayTimer);
+      window.removeEventListener('shakaEngineReady', handleEngineReady);
       if (stallIntervalRef.current) { clearInterval(stallIntervalRef.current); stallIntervalRef.current = null; }
     };
   }, [currentStreamUrl, activeStreamIndex, allServersDown, streams]);
