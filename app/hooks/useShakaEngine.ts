@@ -42,11 +42,10 @@ export function useShakaEngine({
 }: UseShakaEngineProps) {
   const playerRef = useRef<any>(null);
   const uiRef = useRef<any>(null);
-  const p2pEngineRef = useRef<any>(null); // 🎯 P2P ইঞ্জিন রেফারেন্স
+  const p2pEngineRef = useRef<any>(null);
   const playerInitRef = useRef<boolean>(false);
   const stallIntervalRef = useRef<any>(null);
 
-  // ১. প্লেয়ার, ইউআই এবং P2P ইঞ্জিন ইনিশিয়ালাইজেশন
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || playerInitRef.current) return;
     playerInitRef.current = true;
@@ -56,13 +55,14 @@ export function useShakaEngine({
       try {
         loggerRef.current?.addLog('Core: Creating pristine Shaka Instance...', 'info');
         
-        // ডাইনামিক ইম্পোর্ট (SSR সেফ রাখার জন্য)
         shaka = await import('shaka-player/dist/shaka-player.ui');
+        
+        // 🎯 TS Ignore যোগ করা হলো কারণ p2p-media-loader-shaka এর টাইপ ফাইল নেই
+        // @ts-ignore
         const { Engine: P2PEngine } = await import('p2p-media-loader-shaka');
 
         shaka.polyfill.installAll();
 
-        // 🎯 কাস্টম Stretch বাটন
         if (shaka.ui.Controls && !(shaka.ui.Controls as any).custom_stretch_registered) {
           class StretchButton extends shaka.ui.Element {
             constructor(parent: HTMLElement, controls: any) {
@@ -82,11 +82,10 @@ export function useShakaEngine({
         const player = new shaka.Player(videoRef.current);
         playerRef.current = player;
 
-        // 🎯 P2P নেটওয়ার্ক লেয়ার সেটআপ
         if (P2PEngine.isSupported()) {
           p2pEngineRef.current = new P2PEngine({
             segments: {
-              swarmId: currentStreamUrl || 'playz-live-swarm', // এই আইডি দিয়ে একই লিংকের ইউজাররা কানেক্ট হবে
+              swarmId: currentStreamUrl || 'playz-live-swarm',
             },
             loader: {
               cachedSegmentExpiration: 86400000,
@@ -97,7 +96,6 @@ export function useShakaEngine({
           p2pEngineRef.current.initShakaPlayer(player);
           loggerRef.current?.addLog('🚀 P2P WebRTC Network Layer Injected!', 'success');
 
-          // P2P ইভেন্ট লগিং (অপশনাল, শুধু আপনার দেখার জন্য)
           p2pEngineRef.current.on('peer_connect', () => loggerRef.current?.addLog('P2P: New Peer Connected!', 'info'));
           p2pEngineRef.current.on('piece_bytes_downloaded', (method: string, bytes: number) => {
             if (method === 'p2p') loggerRef.current?.addLog(`P2P: Downloaded ${(bytes / 1024).toFixed(1)} KB from peers!`, 'success');
@@ -161,7 +159,6 @@ export function useShakaEngine({
     };
   }, [safeSwitchServer, currentStreamUrl]);
 
-  // ২. স্ট্রিম লোড রানার
   useEffect(() => {
     if (!playerRef.current || allServersDown || !currentStreamUrl || !streams?.length) return;
 
@@ -174,7 +171,6 @@ export function useShakaEngine({
       loggerRef.current?.addLog(`Loading Source: Server [${activeStreamIndex + 1}]`, 'info');
 
       try {
-        // P2P ইঞ্জিনকে নতুন স্ট্রিমের আইডি বোঝানো
         if (p2pEngineRef.current) {
           p2pEngineRef.current.setStreamId(currentStreamUrl);
         }
