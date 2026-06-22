@@ -58,10 +58,10 @@ const IMG_PROXY =
 const CONFIG = {
   maxRetry: 2,
   baseRetryDelay: 1000,
-  failoverCooldown: 2500,
+  failoverCooldown: 500, // 🎯 ফিক্সড: ২.৫ সেকেন্ড থেকে কমিয়ে ৫০০ms করা হলো যাতে সাথে সাথে সুইচ হয়
   stallDetectionDelay: 25000,
   stallCheckInterval: 5000,
-  serverBlacklistDuration: 60000,
+  serverBlacklistDuration: 30000, // 🎯 ফিক্সড: ৬০ সেকেন্ডের জায়গায় ৩০ সেকেন্ড করা হলো
   controlsHideDelay: 3000,
 } as const;
 
@@ -91,7 +91,6 @@ const convertDate = (dStr: string, tStr: string): string => {
       month = 1,
       year = 2026;
 
-    // Parse date
     if (dStr.includes('/')) {
       const parts = dStr.split('/');
       [day, month, year] = [
@@ -116,7 +115,6 @@ const convertDate = (dStr: string, tStr: string): string => {
       }
     }
 
-    // Parse time (add 12 hours for timezone conversion)
     const timeParts = tStr.split(':');
     let hours = (parseInt(timeParts[0], 10) || 0) + 12;
     const minutes = parseInt(timeParts[1], 10) || 0;
@@ -134,34 +132,27 @@ const convertDate = (dStr: string, tStr: string): string => {
 // ============================================================================
 
 export default function StreamPlayer({ id }: { id: string }) {
-  // Refs for DOM and player instances
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
 
-  // Player state tracking
   const playerInitRef = useRef(false);
   const isCancelledRef = useRef(false);
 
-  // Stream management
   const streamsRef = useRef<Stream[] | null>(null);
   const currentlyPlayingUrlRef = useRef<string | null>(null);
   const lastAppliedDrmRef = useRef<string | null>(null);
 
-  // Failover and retry logic
   const lastFailoverTimeRef = useRef(0);
   const failoverLockRef = useRef(false);
   const retryCountRef = useRef(0);
 
-  // Timer management (for cleanup)
   const timersRef = useRef<Set<ReturnType<typeof setTimeout | typeof setInterval>>>(
     new Set()
   );
 
-  // Progress tracking for stall detection
   const lastProgressRef = useRef(Date.now());
 
-  // UI State
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
   const [showFitToast, setShowFitToast] = useState(false);
@@ -171,10 +162,6 @@ export default function StreamPlayer({ id }: { id: string }) {
   const [showCopied, setShowCopied] = useState(false);
   const [failedServers, setFailedServers] = useState<Record<string, ServerFailureRecord>>({});
   const [currentTime, setCurrentTime] = useState(new Date());
-
-  // ========================================================================
-  // DATA FETCHING
-  // ========================================================================
 
   const { data: rawMatches } = useSWR(LIVE_EVENTS_API ? LIVE_EVENTS_API : null, fetcher, {
     revalidateIfStale: false,
@@ -243,7 +230,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     revalidateOnReconnect: false,
   });
 
-    // Efficient stream parsing with single memoization pass
   const streams = useMemo<Stream[] | null>(() => {
     if (!streamsFromApi) return null;
 
@@ -254,7 +240,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     if (rawList.length === 0) return null;
 
     return rawList
-      // 🎯 ফিক্সড: s এর পাশে : any বসিয়ে দেওয়া হয়েছে
       .filter((s: any) => s && (typeof s.link === 'string' || typeof s.url === 'string'))
       .map((s: any) => ({
         ...s,
@@ -264,32 +249,17 @@ export default function StreamPlayer({ id }: { id: string }) {
       }));
   }, [streamsFromApi]);
 
-
   const currentStreamUrl = useMemo(
     () => streams?.[activeStreamIndex]?.link || null,
     [streams, activeStreamIndex]
   );
 
-  // ========================================================================
-  // LIFECYCLE: SYNC REFS
-  // ========================================================================
-
-  useEffect(() => {
-    streamsRef.current = streams;
-  }, [streams]);
-
-  // ========================================================================
-  // LIFECYCLE: TIME UPDATE FOR UI
-  // ========================================================================
+  useEffect(() => { streamsRef.current = streams; }, [streams]);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 5000);
     return () => clearInterval(timer);
   }, []);
-
-  // ========================================================================
-  // LIFECYCLE: RESET ON ID CHANGE
-  // ========================================================================
 
   useEffect(() => {
     setActiveStreamIndex(0);
@@ -301,33 +271,18 @@ export default function StreamPlayer({ id }: { id: string }) {
     retryCountRef.current = 0;
   }, [id]);
 
-  // ========================================================================
-  // LIFECYCLE: DEVELOPER TOOLS PROTECTION
-  // ========================================================================
-
   useEffect(() => {
     const blockInspect = (e: MouseEvent) => e.preventDefault();
     const blockKeys = (e: KeyboardEvent) => {
-      if (
-        e.key === 'F12' ||
-        (e.ctrlKey && e.shiftKey && ['I', 'C', 'J'].includes(e.key))
-      ) {
-        e.preventDefault();
-      }
+      if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && ['I', 'C', 'J'].includes(e.key))) e.preventDefault();
     };
-
     document.addEventListener('contextmenu', blockInspect);
     document.addEventListener('keydown', blockKeys);
-
     return () => {
       document.removeEventListener('contextmenu', blockInspect);
       document.removeEventListener('keydown', blockKeys);
     };
   }, []);
-
-  // ========================================================================
-  // HANDLERS: SERVER FAILURE TRACKING
-  // ========================================================================
 
   const markServerFailed = useCallback((index: number) => {
     setFailedServers((prev) => {
@@ -346,13 +301,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     });
   }, []);
 
-  const clearServerFailures = useCallback(() => {
-    setFailedServers({});
-  }, []);
-
-  // ========================================================================
-  // HANDLERS: OBJECT FIT TOGGLE
-  // ========================================================================
+  const clearServerFailures = useCallback(() => { setFailedServers({}); }, []);
 
   const handleFitToggle = useCallback(() => {
     const fitModes = ['contain', 'cover', 'fill'] as const;
@@ -372,27 +321,18 @@ export default function StreamPlayer({ id }: { id: string }) {
     if (showFitToast) {
       const timer = setTimeout(() => setShowFitToast(false), 2000);
       timersRef.current.add(timer);
-      return () => {
-        clearTimeout(timer);
-        timersRef.current.delete(timer);
-      };
+      return () => { clearTimeout(timer); timersRef.current.delete(timer); };
     }
   }, [showFitToast]);
 
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.style.objectFit = objectFit;
-    }
+    if (videoRef.current) videoRef.current.style.objectFit = objectFit;
   }, [objectFit]);
 
-  // ========================================================================
-  // HANDLERS: FAILOVER LOGIC
-  // ========================================================================
-
+  // 🎯 ফিক্সড: Auto Switcher এখন চোখের পলকে কাজ করবে
   const safeSwitchServer = useCallback(() => {
     const now = Date.now();
 
-    // Prevent overlapping failover calls
     if (failoverLockRef.current || now - lastFailoverTimeRef.current < CONFIG.failoverCooldown) {
       return;
     }
@@ -407,37 +347,35 @@ export default function StreamPlayer({ id }: { id: string }) {
 
       markServerFailed(prevIndex);
 
-      // Find next available server
-      for (let i = 0; i < list.length; i++) {
-        const failureRecord = failedServers[i];
+      for (let i = 1; i <= list.length; i++) {
+        const checkIndex = (prevIndex + i) % list.length;
+        const failureRecord = failedServers[checkIndex];
+        
         if (!failureRecord) {
-          console.log(`[Failover] Switching to Server ${i + 1}`);
-          return i;
+          console.log(`[Failover] Switching to Server ${checkIndex + 1}`);
+          return checkIndex;
         }
 
-        // Check if server cooldown has expired
         const cooldown = CONFIG.serverBlacklistDuration * Math.pow(2, failureRecord.attempts - 1);
         if (now - failureRecord.time > cooldown) {
-          console.log(`[Failover] Retrying Server ${i + 1} after cooldown`);
-          return i;
+          console.log(`[Failover] Retrying Server ${checkIndex + 1} after cooldown`);
+          return checkIndex;
         }
       }
 
-      // All servers are down
       console.log('[Failover] All servers blacklisted. Stream Unavailable.');
       setAllServersDown(true);
       setIsBuffering(false);
       return prevIndex;
     });
 
-    // Release lock after delay
+    // 🎯 লক টাইমার ৩ সেকেন্ড থেকে ৫০০ms করা হলো যাতে ডাবল এরর আসলে আটকে না থাকে
     const lockTimer = setTimeout(() => {
       failoverLockRef.current = false;
-    }, 3000);
+    }, 500);
     timersRef.current.add(lockTimer);
   }, [markServerFailed, failedServers]);
-
-  // ========================================================================
+// ========================================================================
   // HANDLERS: STREAM LOADING & ERROR
   // ========================================================================
 
@@ -462,14 +400,9 @@ export default function StreamPlayer({ id }: { id: string }) {
 
       console.log('[Stream Error]', { code, severity });
 
-      // Ignore non-critical errors
       if (code === 7000 || code === 7002) return;
 
-      // Recoverable errors - retry before failover
-      if (
-        [1001, 1002, 6002, 3016, 3015].includes(code) ||
-        severity === 2
-      ) {
+      if ([1001, 1002, 6002, 3016, 3015].includes(code) || severity === 2) {
         if (retryCountRef.current < CONFIG.maxRetry) {
           retryCountRef.current++;
           const backoffDelay = CONFIG.baseRetryDelay * retryCountRef.current;
@@ -511,7 +444,6 @@ export default function StreamPlayer({ id }: { id: string }) {
 
         shaka.polyfill.installAll();
 
-        // Register custom stretch button
         if (shaka.ui.Controls && !(shaka.ui.Controls as any).custom_stretch_registered) {
           class StretchButton extends shaka.ui.Element {
             constructor(parent: HTMLElement, controls: any) {
@@ -551,7 +483,6 @@ export default function StreamPlayer({ id }: { id: string }) {
           trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.LABEL,
         });
 
-        // Configure player for optimal streaming
         player.configure({
           streaming: {
             bufferingGoal: 15,
@@ -585,7 +516,6 @@ export default function StreamPlayer({ id }: { id: string }) {
           },
         });
 
-        // Setup fullscreen handler
         const handleFullscreen = () => {
           if (
             document.fullscreenElement &&
@@ -597,29 +527,21 @@ export default function StreamPlayer({ id }: { id: string }) {
         };
         document.addEventListener('fullscreenchange', handleFullscreen);
 
-        // Setup progress tracking for stall detection
         const handleTimeUpdate = () => {
           lastProgressRef.current = Date.now();
         };
         videoRef.current?.addEventListener('timeupdate', handleTimeUpdate);
 
-        // Periodic stall detection
         const stallCheckTimer = setInterval(() => {
           const isPaused = videoRef.current?.paused;
           const timeSinceProgress = Date.now() - lastProgressRef.current;
 
-          if (
-            !isPaused &&
-            isBuffering &&
-            timeSinceProgress > CONFIG.stallDetectionDelay
-          ) {
-            console.log('[Stall Detection] Stall detected -> Switching server');
+          if (!isPaused && isBuffering && timeSinceProgress > CONFIG.stallDetectionDelay) {
             safeSwitchServer();
           }
         }, CONFIG.stallCheckInterval);
         timersRef.current.add(stallCheckTimer);
 
-        // Setup event handlers
         const onBuffering = (e: any) => {
           setIsBuffering(true);
         };
@@ -630,7 +552,6 @@ export default function StreamPlayer({ id }: { id: string }) {
         player.addEventListener('buffering', onBuffering);
         player.addEventListener('error', onError);
 
-        // Store cleanup functions
         const cleanup = () => {
           document.removeEventListener('fullscreenchange', handleFullscreen);
           videoRef.current?.removeEventListener('timeupdate', handleTimeUpdate);
@@ -638,7 +559,6 @@ export default function StreamPlayer({ id }: { id: string }) {
           player.removeEventListener('error', onError);
         };
 
-        // Attach cleanup to UI for later
         (ui as any).cleanup = cleanup;
       } catch (err) {
         console.error('[Init Error]', err);
@@ -648,7 +568,6 @@ export default function StreamPlayer({ id }: { id: string }) {
 
     initPlayer();
 
-    // Cleanup on unmount
     return () => {
       isCancelledRef.current = true;
       playerInitRef.current = false;
@@ -659,14 +578,11 @@ export default function StreamPlayer({ id }: { id: string }) {
       }
 
       if (playerRef.current) {
-        try {
-          playerRef.current.unload();
-        } catch {}
+        try { playerRef.current.unload(); } catch {}
         playerRef.current.destroy();
         playerRef.current = null;
       }
 
-      // Clear all timers
       timersRef.current.forEach((timer) => {
         clearTimeout(timer as any);
         clearInterval(timer as any);
@@ -699,30 +615,43 @@ export default function StreamPlayer({ id }: { id: string }) {
       try {
         await playerRef.current.unload();
 
-        // Setup DRM if needed
         const currentStream = streams[activeStreamIndex];
         const newDrmApi = currentStream?.api || '';
 
+        // 🎯 ফিক্সড: আপনার অরিজিনাল শক্তিশালী JSON DRM Parser রিস্টোর করা হয়েছে
         if (lastAppliedDrmRef.current !== newDrmApi) {
-          if (newDrmApi) {
-            const cleanDrm = newDrmApi.replace(/['"\s]/g, '');
-            const [kid, ...keyParts] = cleanDrm.split(':');
-            const key = keyParts.join(':');
+          const clearKeysObj: Record<string, string> = {};
+          let parsedData: any = newDrmApi;
 
-            if (kid && key) {
-              playerRef.current.configure({
-                drm: { clearKeys: { [kid]: key } },
-              });
-            } else {
-              playerRef.current.configure({ drm: { clearKeys: {} } });
+          if (typeof newDrmApi === 'string') {
+            const trimmed = newDrmApi.trim();
+            if (trimmed.startsWith('{')) {
+              try { parsedData = JSON.parse(trimmed); } catch (e) {}
             }
+          }
+
+          if (typeof parsedData === 'object' && parsedData !== null) {
+            Object.entries(parsedData).forEach(([k, v]) => {
+              const cleanKid = k.replace(/['"\s{}:]/g, '');
+              const cleanKey = String(v).replace(/['"\s{}:]/g, '');
+              if (cleanKid && cleanKey) clearKeysObj[cleanKid] = cleanKey;
+            });
+          } else if (typeof parsedData === 'string' && parsedData.includes(':')) {
+            const cleanStr = parsedData.replace(/['"\s{}]/g, '');
+            const parts = cleanStr.split(':');
+            if (parts.length === 2) {
+              clearKeysObj[parts[0]] = parts[1];
+            }
+          }
+
+          if (Object.keys(clearKeysObj).length > 0) {
+            playerRef.current.configure({ drm: { clearKeys: clearKeysObj } });
           } else {
             playerRef.current.configure({ drm: { clearKeys: {} } });
           }
           lastAppliedDrmRef.current = newDrmApi;
         }
 
-        // Load stream
         const mimeType = getMimeType(currentStreamUrl);
         await playerRef.current.load(currentStreamUrl, null, mimeType);
         currentlyPlayingUrlRef.current = currentStreamUrl;
@@ -735,14 +664,8 @@ export default function StreamPlayer({ id }: { id: string }) {
 
         if (error?.code !== 7000 && error?.code !== 7002) {
           if (isMounted) {
-            if (retryCountRef.current < CONFIG.maxRetry) {
-              retryCountRef.current++;
-              const backoffDelay = CONFIG.baseRetryDelay * retryCountRef.current;
-              const retryTimer = setTimeout(forceReloadStream, backoffDelay);
-              timersRef.current.add(retryTimer);
-            } else {
-              safeSwitchServer();
-            }
+            // Error আসলে সাথে সাথে SwitchServer কল হবে, কারণ cooldown 500ms এ নামানো হয়েছে
+            safeSwitchServer();
           }
         }
       }
@@ -760,7 +683,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     streams,
     failedServers,
     safeSwitchServer,
-    forceReloadStream,
   ]);
 
   // ========================================================================
@@ -825,7 +747,6 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
-      {/* Navigation */}
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <Link href="/">
@@ -837,12 +758,7 @@ export default function StreamPlayer({ id }: { id: string }) {
                 viewBox="0 0 24 24"
                 stroke="currentColor"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2.5}
-                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
-                />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
               <span className="text-sm font-bold hidden sm:inline">Back to Home</span>
             </button>
@@ -854,11 +770,9 @@ export default function StreamPlayer({ id }: { id: string }) {
         </div>
       </nav>
 
-      {/* Main Content */}
       <div className="max-w-5xl mx-auto px-2 sm:px-4 mt-4">
-        {/* Video Container */}
         <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-none sm:rounded-[20px] overflow-hidden shadow-xl border border-gray-800 shaka-video-container group" onMouseMove={handleUserActivity} onTouchStart={handleUserActivity} onClick={handleUserActivity} onMouseLeave={() => setIsControlsVisible(false)}>
-          {/* Loading State */}
+          
           {!streams && !allServersDown && (
             <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/90 z-10 flex-col gap-3">
               <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin" />
@@ -868,7 +782,6 @@ export default function StreamPlayer({ id }: { id: string }) {
             </div>
           )}
 
-          {/* Buffering State */}
           {isBuffering && !allServersDown && streams && (
             <div className="absolute bottom-16 left-1/2 transform -translate-x-1/2 z-40 bg-black/80 border border-[#00E5FF]/30 px-5 py-2.5 rounded-full flex items-center gap-2 pointer-events-none shadow-[0_0_15px_rgba(0,229,255,0.2)]">
               <div className="w-4 h-4 border-2 border-[#00E5FF] border-t-transparent rounded-full animate-spin" />
@@ -878,7 +791,6 @@ export default function StreamPlayer({ id }: { id: string }) {
             </div>
           )}
 
-          {/* Error State */}
           {allServersDown && (
             <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/95 z-50 flex-col gap-4 text-center p-4">
               <span className="text-4xl">📡</span>
@@ -899,17 +811,8 @@ export default function StreamPlayer({ id }: { id: string }) {
             </div>
           )}
 
-          {/* Video Element */}
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            preload="auto"
-            muted={false}
-            className="w-full h-full transition-all duration-300 pointer-events-none"
-          />
+          <video ref={videoRef} autoPlay playsInline preload="auto" muted={false} className="w-full h-full transition-all duration-300 pointer-events-none" />
 
-          {/* Fit Toast */}
           <AnimatePresence>
             {showFitToast && (
               <motion.div
@@ -920,18 +823,13 @@ export default function StreamPlayer({ id }: { id: string }) {
               >
                 <span className="w-2 h-2 rounded-full bg-[#00E5FF] animate-pulse" />
                 <span className="text-xs md:text-sm font-bold text-white capitalize">
-                  {objectFit === 'contain'
-                    ? 'Fit to Screen'
-                    : objectFit === 'cover'
-                      ? 'Zoom (Cropped)'
-                      : 'Stretch (Fill)'}
+                  {objectFit === 'contain' ? 'Fit to Screen' : objectFit === 'cover' ? 'Zoom (Cropped)' : 'Stretch (Fill)'}
                 </span>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
 
-        {/* Server Selector */}
         {streams && streams.length > 0 && (
           <div className="flex gap-2 overflow-x-auto scrollbar-hide py-4 my-2 border-b border-gray-800/40 items-center">
             <span className="text-gray-400 font-bold text-xs md:text-sm mr-2 whitespace-nowrap uppercase tracking-wider">
@@ -939,16 +837,8 @@ export default function StreamPlayer({ id }: { id: string }) {
             </span>
             {streams.map((stream, index) => {
               const failureRecord = failedServers[index];
-              const isFailed =
-                failureRecord &&
-                currentTime.getTime() -
-                  failureRecord.time <
-                  CONFIG.serverBlacklistDuration * Math.pow(2, failureRecord.attempts - 1);
-
-              const serverName =
-                stream.title ||
-                currentMatch?.eventInfo.link_names?.[index] ||
-                `Server ${index + 1}`;
+              const isFailed = failureRecord && currentTime.getTime() - failureRecord.time < CONFIG.serverBlacklistDuration * Math.pow(2, failureRecord.attempts - 1);
+              const serverName = stream.title || currentMatch?.eventInfo.link_names?.[index] || `Server ${index + 1}`;
 
               return (
                 <button
@@ -976,7 +866,6 @@ export default function StreamPlayer({ id }: { id: string }) {
         )}
       </div>
 
-      {/* Styles */}
       <style dangerouslySetInnerHTML={{
         __html: `
           .shaka-custom-stretch-btn {
@@ -995,11 +884,8 @@ export default function StreamPlayer({ id }: { id: string }) {
         `,
       }} />
 
-      <Script
-        src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js"
-        strategy="lazyOnload"
-        id="adsterra-popunder"
-      />
+      <Script src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js" strategy="lazyOnload" id="adsterra-popunder" />
     </main>
   );
-}
+                                }
+
