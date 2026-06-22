@@ -15,7 +15,6 @@ interface PlayerLogsProps {
   matchObj?: any;
 }
 
-// 🎯 Helpers
 const IMG_PROXY = "https://wsrv.nl/?url=";
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 
@@ -25,7 +24,6 @@ const generateSlug = (teamA: string, teamB: string, eventName: string, id: strin
   return `${cleanName}-${id}`;
 };
 
-// 🎯 আপনার দেওয়া অরজিনাল SmartImage
 const SmartImage = memo(({ src, alt, fill, width, height, className }: any) => {
   const originalSrc = (!src || src === "null" || src === "Null" || src === "") ? "/fallback-logo.png" : src;
   const [imgSrc, setImgSrc] = useState(originalSrc);
@@ -114,7 +112,7 @@ const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { startTimeSt
            In {diffMins.toString().padStart(2, '0')}m {diffSecs.toString().padStart(2, '0')}s
         </div>
       ) : (
-        <div className="text-gray-300 text-[10px] md:text-xs mt-2 font-semibold">
+        <div className="text-gray-300 text-[10px] md:text-xs mt-2 font-semibold whitespace-nowrap">
            Starting in {diffHours}h {diffMins}m
         </div>
       )}
@@ -172,7 +170,6 @@ const MatchCardComponent = memo(({ match, status }: { match: any; status: string
 }, (prevProps, nextProps) => prevProps.match.id === nextProps.match.id && prevProps.status === nextProps.status);
 MatchCardComponent.displayName = 'MatchCardComponent';
 
-// 🎯 Main PlayerLogs Component
 export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ matchObj }, ref) => {
   
   useImperativeHandle(ref, () => ({
@@ -182,12 +179,37 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
 
   const { data: rawMatches } = useSWR('https://ratulxadia-playz-cats-event.hf.space/api/events', fetcher, { revalidateOnFocus: false });
 
-  // রানিং ম্যাচটা বাদ দিয়ে বাকিগুলো ফিল্টার করা হচ্ছে
   const otherMatches = (rawMatches || [])
     .map((item: any, index: number) => {
       const eventInfo = item.eventInfo || item.event || {};
       const matchId = eventInfo.links ? eventInfo.links.replace('pro/', '').replace('.txt', '') : index.toString();
       
+      // 🎯 THE FIX: API থেকে date এবং time কে যুক্ত করে startTime বানানো হচ্ছে
+      let mappedStartTime = eventInfo.startTime || '';
+      if (!mappedStartTime && eventInfo.date && eventInfo.time) {
+        let d = eventInfo.date;
+        // DD/MM/YYYY কে YYYY/MM/DD তে কনভার্ট করছি যাতে আপনার MatchCountdown এর new Date() পারফেক্টলি কাজ করে
+        if (d.includes('/')) {
+           const p = d.split('/');
+           if (p[0].length === 2 && p[2].length === 4) {
+              d = `${p[2]}/${p[1]}/${p[0]}`; 
+           }
+        }
+        mappedStartTime = `${d} ${eventInfo.time}`;
+      }
+
+      let mappedEndTime = eventInfo.endTime || '';
+      if (!mappedEndTime && eventInfo.end_date && eventInfo.end_time) {
+        let ed = eventInfo.end_date;
+        if (ed.includes('/')) {
+           const p = ed.split('/');
+           if (p[0].length === 2 && p[2].length === 4) {
+              ed = `${p[2]}/${p[1]}/${p[0]}`; 
+           }
+        }
+        mappedEndTime = `${ed} ${eventInfo.end_time}`;
+      }
+
       return {
         id: matchId,
         status: item.status || eventInfo.status || '',
@@ -199,8 +221,8 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
           teamB: eventInfo.teamB || eventInfo.teamBName || 'Team B',
           teamAFlag: eventInfo.teamAFlag && eventInfo.teamAFlag !== 'null' ? eventInfo.teamAFlag : '/fallback-logo.png',
           teamBFlag: eventInfo.teamBFlag && eventInfo.teamBFlag !== 'null' ? eventInfo.teamBFlag : '/fallback-logo.png',
-          startTime: eventInfo.startTime || '',
-          endTime: eventInfo.endTime || ''
+          startTime: mappedStartTime, // 🎯 জোড়া লাগানো পারফেক্ট টাইম
+          endTime: mappedEndTime
         }
       };
     })
@@ -218,7 +240,6 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
         </h2>
       </div>
       
-      {/* 🎯 আপনার অরজিনাল MatchCardComponent দিয়ে গ্রিড রেন্ডার করা হলো */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {otherMatches.map((match: any) => (
           <MatchCardComponent key={match.id} match={match} status={match.status} />
