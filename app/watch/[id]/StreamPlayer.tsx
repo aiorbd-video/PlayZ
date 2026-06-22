@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
+import { motion, AnimatePresence } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
 
-// 🎯 ফিক্সড: ইম্পোর্ট পাথ একদম ঠিক করে দেওয়া হয়েছে
 import { PlayerLogs, type PlayerLogsHandle } from '../../components/PlayerLogs';
 import { useShakaEngine } from '../../hooks/useShakaEngine';
 
@@ -31,12 +31,40 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   const streamsRef = useRef<Stream[] | null>(null);
   const lastFailoverTimeRef = useRef(0);
+  const timersRef = useRef<Set<any>>(new Set());
 
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
   const [isBuffering, setIsBuffering] = useState(true);
   const [allServersDown, setAllServersDown] = useState(false);
   const [failedServers, setFailedServers] = useState<Record<string, ServerFailureRecord>>({});
   const [currentTime, setCurrentTime] = useState(new Date());
+
+  // 🎯 ObjectFit State
+  const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
+  const [showFitToast, setShowFitToast] = useState(false);
+
+  // ObjectFit টগল লিসেনার (Zoom/Stretch/Fill)
+  const handleFitToggle = useCallback(() => {
+    const fitModes = ['contain', 'cover', 'fill'] as const;
+    setObjectFit((prev) => {
+      const next = fitModes[(fitModes.indexOf(prev) + 1) % fitModes.length];
+      setShowFitToast(true);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('toggleObjectFit', handleFitToggle);
+    return () => window.removeEventListener('toggleObjectFit', handleFitToggle);
+  }, [handleFitToggle]);
+
+  useEffect(() => {
+    if (showFitToast) {
+      const timer = setTimeout(() => setShowFitToast(false), 2000);
+      timersRef.current.add(timer);
+      return () => { clearTimeout(timer); timersRef.current.delete(timer); };
+    }
+  }, [showFitToast]);
 
   const { data: rawMatches } = useSWR(LIVE_EVENTS_API, fetcher, { revalidateOnFocus: false });
   
@@ -71,12 +99,20 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { revalidateOnFocus: false });
 
+  // 🎯 Smart Server Sorting: DASH (.mpd) সার্ভারগুলোকে লিস্টের আগে আনা হলো
   const streams = useMemo<Stream[] | null>(() => {
     if (!streamsFromApi) return null;
     const rawList = Array.isArray(streamsFromApi) ? streamsFromApi : streamsFromApi.streams || [];
-    return rawList.filter((s: any) => s && (s.link || s.url)).map((s: any) => ({
+    
+    const parsedStreams = rawList.filter((s: any) => s && (s.link || s.url)).map((s: any) => ({
       link: s.link || s.url || '', title: s.title, api: s.api,
     }));
+
+    return parsedStreams.sort((a, b) => {
+      const aIsDash = a.link.includes('.mpd') ? 1 : 0;
+      const bIsDash = b.link.includes('.mpd') ? 1 : 0;
+      return bIsDash - aIsDash; // DASH সার্ভারগুলো লিস্টের শুরুতে চলে আসবে
+    });
   }, [streamsFromApi]);
 
   const currentStreamUrl = useMemo(() => streams?.[activeStreamIndex]?.link || null, [streams, activeStreamIndex]);
@@ -99,12 +135,12 @@ export default function StreamPlayer({ id }: { id: string }) {
       const list = streamsRef.current;
       if (!list) return prevIndex;
       
-      loggerRef.current?.addLog(`Server [${prevIndex}] stream dead. Swapping link...`, 'warn');
+      loggerRef.current?.addLog(`Server [${prevIndex + 1}] stream dead. Swapping link...`, 'warn');
       setFailedServers((p) => ({ ...p, [prevIndex]: { time: Date.now(), attempts: (p[prevIndex]?.attempts || 0) + 1 } }));
 
       const nextIdx = (prevIndex + 1) % list.length;
       if (nextIdx === 0) {
-        loggerRef.current?.addLog('Matrix Status: All clearkey options returned runtime errors.', 'error');
+        loggerRef.current?.addLog('Matrix Status: All options returned runtime errors.', 'error');
         setAllServersDown(true);
         setIsBuffering(false);
       }
@@ -118,7 +154,7 @@ export default function StreamPlayer({ id }: { id: string }) {
   });
 
   const handleManualSwitch = (idx: number) => {
-    loggerRef.current?.addLog(`Manual Server Swap Triggered to Pipe index: ${idx}`, 'info');
+    loggerRef.current?.addLog(`Manual Server Swap Triggered to Pipe index: ${idx + 1}`, 'info');
     setAllServersDown(false);
     setActiveStreamIndex(idx);
   };
@@ -154,7 +190,23 @@ export default function StreamPlayer({ id }: { id: string }) {
             </div>
           )}
 
-          <video ref={videoRef} autoPlay playsInline className="w-full h-full" />
+          {/* 🎯 Video Tag with ObjectFit Style */}
+          <video ref={videoRef} autoPlay playsInline className="w-full h-full" style={{ objectFit }} />
+
+          {/* 🎯 Fit Mode Toast Popup */}
+          <AnimatePresence>
+            {showFitToast && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+                className="absolute top-6 left-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none"
+              >
+                <span className="w-2 h-2 rounded-full bg-[#00E5FF] animate-pulse" />
+                <span className="text-xs md:text-sm font-bold text-white capitalize">
+                  {objectFit === 'contain' ? 'Fit to Screen' : objectFit === 'cover' ? 'Zoom (Cropped)' : 'Stretch (Fill)'}
+                </span>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {streams && (
@@ -173,6 +225,15 @@ export default function StreamPlayer({ id }: { id: string }) {
 
         <PlayerLogs ref={loggerRef} />
       </div>
+
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          .shaka-custom-stretch-btn {
+            background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; display: flex; align-items: center; justify-content: center;
+          }
+          .shaka-custom-stretch-btn:hover { opacity: 1; }
+        `
+      }} />
     </main>
   );
 }
