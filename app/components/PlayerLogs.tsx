@@ -1,112 +1,94 @@
 'use client';
 
-import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { useState, forwardRef, useImperativeHandle, useEffect } from 'react';
 
 export interface PlayerLogsHandle {
   addLog: (message: string, type?: 'info' | 'success' | 'error' | 'warn') => void;
   clearLogs: () => void;
 }
 
-export const PlayerLogs = forwardRef<PlayerLogsHandle>((_, ref) => {
-  // ব্যাকগ্রাউন্ডে লগ রিসিভ সচল রাখা হলো (টাইপস্ক্রিপ্ট সেফটির জন্য)
-  const [p2pPeers, setP2pPeers] = useState<number>(0);
-  const [p2pSavedKB, setP2pSavedKB] = useState<number>(0);
-  const [currentStatus, setCurrentStatus] = useState<{ msg: string; type: string }>({
-    msg: 'ইঞ্জিন প্রস্তুত। লাইভ স্ট্রিম কানেক্ট হচ্ছে...',
-    type: 'info'
-  });
+interface PlayerLogsProps {
+  matchTitle?: string;
+}
 
+export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ matchTitle }, ref) => {
+  const [statusText, setStatusText] = useState('ইঞ্জিন প্রস্তুত। লাইভ সিঙ্ক হচ্ছে...');
+  const [statusType, setStatusType] = useState<'info' | 'success' | 'error' | 'warn'>('info');
+  const [shareText, setShareText] = useState('Share Stream');
+
+  // ব্যাকগ্রাউন্ডে Shaka Engine থেকে আসা ডাটা রিড করে স্ট্যাটাস আপডেট করা
   useImperativeHandle(ref, () => ({
     addLog: (message: string, type = 'info') => {
-      // ১. টেকনিক্যাল লগের ভেতর থেকে P2P ডাটা ফিল্টার করে রিয়েল-টাইম ড্যাশবোর্ডে রূপান্তর
-      if (message.includes('New Peer Connected')) {
-        setP2pPeers((prev) => prev + 1);
-        setCurrentStatus({ msg: 'নতুন হাই-স্পিড পিয়ার কানেক্টেড!', type: 'success' });
-      } 
-      else if (message.includes('Downloaded') && message.includes('KB from peers')) {
-        const match = message.match(/Downloaded\s+([\d.]+)\s+KB/);
-        if (match && match[1]) {
-          setP2pSavedKB((prev) => prev + parseFloat(match[1]));
-        }
-      }
-      // ২. সাধারণ ইউজারদের বোঝার মতো করে এরর মেসেজ ট্রান্সলেট করা
-      else if (type === 'error' || message.includes('Failed')) {
-        setCurrentStatus({ msg: 'নেটওয়ার্ক ড্রপ হয়েছে। বিকল্প সার্ভারে অটো-শিফট করা হচ্ছে...', type: 'error' });
-      } 
-      else if (message.includes('live on-screen')) {
-        setCurrentStatus({ msg: 'লাইভ ব্রডকাস্ট সফলভাবে সচল হয়েছে। এনজয় করুন!', type: 'success' });
-      }
-      else if (message.includes('Autoplay deferred')) {
-        setCurrentStatus({ msg: 'ব্রাউজার অটো-প্লে ব্লক করেছে। স্ক্রিনের প্লে বাটনে ক্লিক করুন।', type: 'warn' });
+      if (message.includes('live on-screen')) {
+        setStatusText('সরাসরি সম্প্রচার সচল আছে (Ultra HD)');
+        setStatusType('success');
+      } else if (message.includes('Switching server') || type === 'error') {
+        setStatusText('নেটওয়ার্ক ড্রপ! বিকল্প লাইনে অটো-শিফট হচ্ছে...');
+        setStatusType('error');
+      } else if (message.includes('Loading Source')) {
+        setStatusText('লাইভ ফিড বাফারিং ও অপ্টিমাইজ করা হচ্ছে...');
+        setStatusType('info');
+      } else if (message.includes('Autoplay deferred')) {
+        setStatusText('ব্রাউজার পলিসি! খেলা সচল করতে স্ক্রিনে ক্লিক করুন');
+        setStatusType('warn');
       }
     },
     clearLogs: () => {
-      setP2pPeers(0);
-      setP2pSavedKB(0);
+      setStatusText('ইঞ্জিন প্রস্তুত');
+      setStatusType('info');
     },
   }));
 
+  // ওয়ান-ক্লিক শেয়ার লজিক (ক্লিপবোর্ড কপি)
+  const handleShare = () => {
+    if (typeof window !== 'undefined') {
+      navigator.clipboard.writeText(window.location.href);
+      setShareText('Link Copied! 🚀');
+      setTimeout(() => setShareText('Share Stream'), 2000);
+    }
+  };
+
   return (
-    <div className="mt-6 bg-[#161824] rounded-2xl border border-gray-800/80 shadow-2xl overflow-hidden">
-      {/* টপ বার: সার্ভার হেলথ */}
-      <div className="p-4 bg-gray-950/50 border-b border-gray-850 flex flex-wrap justify-between items-center gap-3">
-        <div className="flex items-center gap-2">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-          </span>
-          <span className="text-xs font-bold uppercase tracking-wider text-gray-300">
-            Stream Optimizer Dashboard
-          </span>
+    <div className="mt-6 w-full bg-gradient-to-br from-[#1A1D2E] to-[#131522] rounded-2xl border border-gray-800/60 p-5 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-5 transition-all duration-300">
+      
+      {/* বাম পাশ: ম্যাচ ডিটেইলস এবং লাইভ ইন্ডিকেটর */}
+      <div className="flex items-center gap-4 w-full sm:w-auto">
+        {/* টিভি-রেডি বড় ব্লিংকিং লাইভ ডট */}
+        <div className="relative flex h-4 w-4 shrink-0">
+          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+            statusType === 'success' ? 'bg-emerald-400' : statusType === 'error' ? 'bg-rose-400' : 'bg-cyan-400'
+          }`}></span>
+          <span className={`relative inline-flex rounded-full h-4 w-4 ${
+            statusType === 'success' ? 'bg-emerald-500' : statusType === 'error' ? 'bg-rose-500' : 'bg-cyan-500'
+          }`}></span>
         </div>
-        
-        {/* রিয়েল-টাইম কানেকশন স্ট্যাটাস */}
-        <div className={`text-xs font-medium px-3 py-1 rounded-full border bg-opacity-10 ${
-          currentStatus.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
-          currentStatus.type === 'error' ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' :
-          currentStatus.type === 'warn' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
-          'bg-cyan-500/10 border-cyan-500/20 text-cyan-400'
-        }`}>
-          {currentStatus.msg}
+
+        {/* ম্যাচ টাইটেল ও সাবস্ট্যাটাস */}
+        <div className="flex flex-col truncate">
+          <span className="text-[11px] font-black tracking-widest text-[#00E5FF] uppercase">
+            {statusText}
+          </span>
+          <h2 className="text-base sm:text-lg font-black text-white truncate max-w-[280px] sm:max-w-[400px] md:max-w-[500px] mt-0.5 tracking-wide">
+            {matchTitle || 'Live Stream Broadcast'}
+          </h2>
         </div>
       </div>
 
-      <div className="p-5 grid grid-cols-1 md:grid-cols-3 gap-5">
-        {/* কার্ড ১: P2P নেটওয়ার্ক স্ট্যাটাস */}
-        <div className="bg-[#1C1F30] p-4 rounded-xl border border-gray-800/50 flex flex-col justify-between">
-          <div>
-            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">P2P Peer Network</h4>
-            <p className="text-[11px] text-gray-500 leading-relaxed">অন্যান্য ইউজারদের সাথে শেয়ারিং মোড।</p>
-          </div>
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-cyan-400 tracking-tight">{p2pPeers}</span>
-            <span className="text-xs text-gray-400 font-medium">Active Peers</span>
-          </div>
-        </div>
-
-        {/* কার্ড ২: ব্যান্ডউইথ সেভার */}
-        <div className="bg-[#1C1F30] p-4 rounded-xl border border-gray-800/50 flex flex-col justify-between">
-          <div>
-            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-1">Server Bandwidth Saved</h4>
-            <p className="text-[11px] text-gray-500 leading-relaxed">WebRTC টেকনোলজিতে আপনার সাশ্রয়কৃত ডাটা।</p>
-          </div>
-          <div className="mt-4 flex items-baseline gap-2">
-            <span className="text-2xl font-black text-emerald-400 tracking-tight">
-              {p2pSavedKB > 1024 ? `${(p2pSavedKB / 1024).toFixed(2)} MB` : `${p2pSavedKB.toFixed(0)} KB`}
-            </span>
-            <span className="text-xs text-gray-400 font-medium">Data Saved</span>
-          </div>
-        </div>
-
-        {/* কার্ড ৩: ইউজার গাইড / ট্রাবলশুট */}
-        <div className="bg-[#1C1F30] p-4 rounded-xl border border-gray-800/50">
-          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">Streaming Guide</h4>
-          <ul className="text-[11px] text-gray-400 space-y-1.5 list-disc list-inside">
-            <li>ভিডিও ফ্রিজ হলে নিচের <span className="text-[#00E5FF] font-semibold">Servers</span> বাটন চেপে চেঞ্জ করুন।</li>
-            <li>কালো স্ক্রিন এসে আটকে থাকলে প্লেয়ারের মাঝখানে ক্লিক করুন।</li>
-            <li>সবচেয়ে স্ট্যাবল পারফরম্যান্সের জন্য <span className="text-emerald-400">DASH</span> সার্ভার ব্যবহার করুন।</li>
-          </ul>
-        </div>
+      {/* ডান পাশ: অ্যাকশন বাটন (শেয়ার) */}
+      <div className="w-full sm:w-auto flex justify-end shrink-0 border-t border-gray-800/40 sm:border-none pt-4 sm:pt-0">
+        <button
+          onClick={handleShare}
+          className="w-full sm:w-auto px-5 py-2.5 bg-[#1C1E2D] hover:bg-[#25283C] active:scale-95 text-xs font-black rounded-xl border border-gray-700/50 text-gray-200 flex items-center justify-center gap-2 transition-all cursor-pointer outline-none shadow-md hover:text-[#00E5FF] hover:border-[#00E5FF]/40 group"
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="group-hover:rotate-12 transition-transform">
+            <circle cx="18" cy="5" r="3"></circle>
+            <circle cx="6" cy="12" r="3"></circle>
+            <circle cx="18" cy="19" r="3"></circle>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+          </svg>
+          {shareText}
+        </button>
       </div>
     </div>
   );
