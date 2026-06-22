@@ -30,56 +30,24 @@ export function useShakaEngine({
 }: UseShakaEngineProps) {
   const playerRef = useRef<any>(null);
   const uiRef = useRef<any>(null);
+  const playerInitRef = useRef<boolean>(false);
 
+  // ১. প্লেয়ার ও ইউআই ওয়ান-টাইম ইনিশিয়ালাইজেশন (ব্রাউজার লাইফসাইকেলে শুধু একবার হবে)
   useEffect(() => {
-    if (!videoRef.current || !videoContainerRef.current || allServersDown || !currentStreamUrl || !streams?.length) {
-      loggerRef.current?.addLog('Engine: Criteria not met. Waiting for stable variables.', 'warn');
-      return;
-    }
+    if (!videoRef.current || !videoContainerRef.current || playerInitRef.current) return;
+    playerInitRef.current = true;
 
     let shaka: any;
-    let player: any;
-    let ui: any;
-    let isMounted = true;
-
-    const startStreaming = async () => {
-      setIsBuffering(true);
-      loggerRef.current?.addLog(`Engine Initializing for Server index: ${activeStreamIndex}`, 'info');
-      loggerRef.current?.addLog(`Stream URL Target: ${currentStreamUrl}`, 'info');
-
+    const initInstance = async () => {
       try {
-        // ১. ধ্বংস ও পরিচ্ছন্নতা লগ
-        if (uiRef.current) {
-          loggerRef.current?.addLog('Destroying previous UI Overlay...', 'info');
-          uiRef.current.destroy();
-          uiRef.current = null;
-        }
-        if (playerRef.current) {
-          loggerRef.current?.addLog('Destroying previous Player Instance...', 'info');
-          await playerRef.current.destroy();
-          playerRef.current = null;
-        }
-
-        // ২. শাকা মডিউল লোড
-        loggerRef.current?.addLog('Importing shaka-player UI assets asynchronously...', 'info');
+        loggerRef.current?.addLog('Core: Creating pristine Shaka Instance...', 'info');
         shaka = await import('shaka-player/dist/shaka-player.ui');
-        if (!isMounted) return;
-        
-        loggerRef.current?.addLog('Installing Shaka Polyfills...', 'info');
         shaka.polyfill.installAll();
 
-        if (!shaka.Player.isBrowserSupported()) {
-          loggerRef.current?.addLog('CRITICAL: Shaka Player indicates browser is not supported!', 'error');
-          return;
-        }
-
-        // ৩. ফ্রেশ ইনস্ট্যান্স ক্রিয়েশন
-        loggerRef.current?.addLog('Constructing brand new Shaka Player instance...', 'info');
-        player = new shaka.Player(videoRef.current);
+        const player = new shaka.Player(videoRef.current);
         playerRef.current = player;
 
-        loggerRef.current?.addLog('Constructing Shaka UI Overlay Configuration...', 'info');
-        ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
+        const ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
         uiRef.current = ui;
         ui.configure({
           controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'fullscreen'],
@@ -88,42 +56,63 @@ export function useShakaEngine({
 
         player.configure({
           streaming: {
-            bufferingGoal: 10,
-            rebufferingGoal: 1,
-            bufferBehind: 15,
-            startAtSegmentBoundary: true,
-            jumpLargeGaps: true,
-            retryParameters: { maxAttempts: 5, baseDelay: 400, timeout: 8000 }
+            bufferingGoal: 15,
+            rebufferingGoal: 2,
+            bufferBehind: 20,
+            retryParameters: { maxAttempts: 5, baseDelay: 1000 }
           }
         });
 
-        // ৪. লিসেনার এটাচমেন্ট ও বাফারিং ট্র্যাকিং
         player.addEventListener('buffering', (e: any) => {
-          if (isMounted) {
-            setIsBuffering(e.buffering);
-            loggerRef.current?.addLog(`Player state changed: Buffering = ${e.buffering}`, 'warn');
-          }
+          setIsBuffering(e.buffering);
+          loggerRef.current?.addLog(`Engine Status: Buffering = ${e.buffering}`, 'warn');
         });
 
         player.addEventListener('error', (event: any) => {
-          if (isMounted) {
-            const error = event.detail;
-            loggerRef.current?.addLog(`Shaka Player Error Caught! Code: ${error.code}, Category: ${error.category}`, 'error');
-            safeSwitchServer();
-          }
+          loggerRef.current?.addLog(`Critical Player Error Code: ${event.detail?.code}`, 'error');
+          safeSwitchServer();
         });
 
-        // ৫. DRM ক্লীয়ার-কী রিয়্যাকশন লগ
+        loggerRef.current?.addLog('Core Engine Mounted and Ready successfully!', 'success');
+      } catch (err) {
+        playerInitRef.current = false;
+        loggerRef.current?.addLog('Core Mount Failed!', 'error');
+      }
+    };
+
+    initInstance();
+
+    return () => {
+      playerInitRef.current = false;
+      if (uiRef.current) { uiRef.current.destroy(); uiRef.current = null; }
+      if (playerRef.current) { playerRef.current.destroy(); playerRef.current = null; }
+    };
+  }, [safeSwitchServer]);
+
+  // ২. স্ট্রিম এবং DRM লোড রানার (সার্ভার চেঞ্জ হলে রিলোভ হবে না, শুধু সোর্স সোয়াইপ হবে)
+  useEffect(() => {
+    if (!playerRef.current || allServersDown || !currentStreamUrl || !streams?.length) return;
+
+    let isMounted = true;
+
+    const loadStreamSource = async () => {
+      setIsBuffering(true);
+      loggerRef.current?.addLog(`Loading Stream Source for Index [${activeStreamIndex}]`, 'info');
+
+      try {
+        // প্লেয়ারকে খালি করা (Unload)
+        await playerRef.current.unload();
+
+        // অরিজিনাল শক্তিশালী DRM ক্লীয়ার-কী পার্সার
         const currentStream = streams[activeStreamIndex];
-        const newDrmApi = currentStream?.api || '';
+        const drmData = currentStream?.api || '';
         const clearKeysObj: Record<string, string> = {};
-        let parsedData: any = newDrmApi;
+        let parsedData: any = drmData;
 
-        loggerRef.current?.addLog(`Inspecting DRM configuration string: ${JSON.stringify(newDrmApi)}`, 'info');
-
-        if (typeof newDrmApi === 'string' && newDrmApi.trim().startsWith('{')) {
-          try { parsedData = JSON.parse(newDrmApi.trim()); } catch (e) {
-            loggerRef.current?.addLog('DRM: Failed to parse API JSON string.', 'warn');
+        if (typeof drmData === 'string') {
+          const trimmed = drmData.trim();
+          if (trimmed.startsWith('{')) {
+            try { parsedData = JSON.parse(trimmed); } catch (e) {}
           }
         }
 
@@ -139,49 +128,40 @@ export function useShakaEngine({
         }
 
         if (Object.keys(clearKeysObj).length > 0) {
-          loggerRef.current?.addLog(`Injecting extracted ClearKeys DRM parameters: ${JSON.stringify(clearKeysObj)}`, 'success');
-          player.configure({ drm: { clearKeys: clearKeysObj } });
+          loggerRef.current?.addLog(`Injecting DRM Keys: ${JSON.stringify(clearKeysObj)}`, 'success');
+          playerRef.current.configure({ drm: { clearKeys: clearKeysObj } });
         } else {
-          loggerRef.current?.addLog('No DRM ClearKeys detected for this source. Proceeding without DRM.', 'info');
+          playerRef.current.configure({ drm: { clearKeys: {} } });
         }
 
-        // ৬. লেয়ার সোর্স লোডিং ও প্লেব্যাক টেস্ট
         const mimeType = getMimeType(currentStreamUrl);
-        loggerRef.current?.addLog(`Calculated manifest MimeType: ${mimeType || 'Auto-Detect'}`, 'info');
-        
-        loggerRef.current?.addLog('Invoking player.load(). Waiting for response async...', 'info');
-        await player.load(currentStreamUrl, null, mimeType);
-        
-        loggerRef.current?.addLog('Manifest asset loaded successfully into engine!', 'success');
-        
-        if (videoRef.current && isMounted) {
-          loggerRef.current?.addLog('Triggering native HTML5 video.play()...', 'info');
-          videoRef.current.play()
-            .then(() => loggerRef.current?.addLog('Playback started actively!', 'success'))
-            .catch((pErr) => loggerRef.current?.addLog(`Browser Playback Blocked/Delayed: ${pErr.message}`, 'warn'));
-        }
-        
-        if (isMounted) setIsBuffering(false);
+        loggerRef.current?.addLog(`Manifest Type: ${mimeType || 'Auto-Mime'}`, 'info');
 
+        // সোর্স লোড করা
+        await playerRef.current.load(currentStreamUrl, null, mimeType);
+        loggerRef.current?.addLog('Source injected successfully into HTML5 Video Pipeline!', 'success');
+
+        if (videoRef.current && isMounted) {
+          videoRef.current.play()
+            .then(() => loggerRef.current?.addLog('Video is actively rendering on-screen!', 'success'))
+            .catch((e) => loggerRef.current?.addLog(`Autoplay deferred: ${e.message}`, 'warn'));
+        }
+
+        if (isMounted) setIsBuffering(false);
       } catch (err: any) {
-        loggerRef.current?.addLog(`Critical Crash inside startStreaming: ${err.message || err}`, 'error');
+        loggerRef.current?.addLog(`Source Loading Failed: ${err.message || err.code}`, 'error');
         if (isMounted) safeSwitchServer();
       }
     };
 
-    startStreaming();
+    // ৫ মিলিসেকেন্ডের একটা ম্যাক্রো বাফার দেওয়া হলো ডম রিসেটের জন্য
+    const delayTimer = setTimeout(() => {
+      loadStreamSource();
+    }, 50);
 
     return () => {
-      loggerRef.current?.addLog('Effect cleanup triggered. Dismounting stream context.', 'warn');
       isMounted = false;
+      clearTimeout(delayTimer);
     };
   }, [currentStreamUrl, activeStreamIndex, allServersDown, streams]);
-
-  // হার্ড ক্লিনিং যখন ইউজার পেজ থেকে বের হয়ে যাবে
-  useEffect(() => {
-    return () => {
-      if (uiRef.current) { uiRef.current.destroy(); }
-      if (playerRef.current) { playerRef.current.destroy(); }
-    };
-  }, []);
-    }
+}
