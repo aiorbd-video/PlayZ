@@ -32,7 +32,7 @@ export function useShakaEngine({
   const uiRef = useRef<any>(null);
   const playerInitRef = useRef<boolean>(false);
 
-  // ১. প্লেয়ার ও ইউআই ওয়ান-টাইম ইনিশিয়ালাইজেশন (ব্রাউজার লাইফসাইকেলে শুধু একবার হবে)
+  // ১. প্লেয়ার ও ইউআই ওয়ান-টাইম ইনিশিয়ালাইজেশন
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || playerInitRef.current) return;
     playerInitRef.current = true;
@@ -65,12 +65,17 @@ export function useShakaEngine({
 
         player.addEventListener('buffering', (e: any) => {
           setIsBuffering(e.buffering);
-          loggerRef.current?.addLog(`Engine Status: Buffering = ${e.buffering}`, 'warn');
         });
 
+        // 🎯 ফিক্সড: শুধুমাত্র Critical (Severity 2) এরর হলেই সার্ভার চেঞ্জ হবে
         player.addEventListener('error', (event: any) => {
-          loggerRef.current?.addLog(`Critical Player Error Code: ${event.detail?.code}`, 'error');
-          safeSwitchServer();
+          const error = event.detail;
+          if (error && error.severity === 2) {
+            loggerRef.current?.addLog(`Critical Player Error Code: ${error.code}`, 'error');
+            safeSwitchServer();
+          } else {
+            loggerRef.current?.addLog(`Minor Recoverable Error: ${error?.code} (Ignored)`, 'warn');
+          }
         });
 
         loggerRef.current?.addLog('Core Engine Mounted and Ready successfully!', 'success');
@@ -89,7 +94,7 @@ export function useShakaEngine({
     };
   }, [safeSwitchServer]);
 
-  // ২. স্ট্রিম এবং DRM লোড রানার (সার্ভার চেঞ্জ হলে রিলোভ হবে না, শুধু সোর্স সোয়াইপ হবে)
+  // ২. স্ট্রিম এবং DRM লোড রানার
   useEffect(() => {
     if (!playerRef.current || allServersDown || !currentStreamUrl || !streams?.length) return;
 
@@ -100,10 +105,8 @@ export function useShakaEngine({
       loggerRef.current?.addLog(`Loading Stream Source for Index [${activeStreamIndex}]`, 'info');
 
       try {
-        // প্লেয়ারকে খালি করা (Unload)
         await playerRef.current.unload();
 
-        // অরিজিনাল শক্তিশালী DRM ক্লীয়ার-কী পার্সার
         const currentStream = streams[activeStreamIndex];
         const drmData = currentStream?.api || '';
         const clearKeysObj: Record<string, string> = {};
@@ -128,33 +131,34 @@ export function useShakaEngine({
         }
 
         if (Object.keys(clearKeysObj).length > 0) {
-          loggerRef.current?.addLog(`Injecting DRM Keys: ${JSON.stringify(clearKeysObj)}`, 'success');
+          loggerRef.current?.addLog(`Injecting DRM Keys...`, 'success');
           playerRef.current.configure({ drm: { clearKeys: clearKeysObj } });
         } else {
           playerRef.current.configure({ drm: { clearKeys: {} } });
         }
 
         const mimeType = getMimeType(currentStreamUrl);
-        loggerRef.current?.addLog(`Manifest Type: ${mimeType || 'Auto-Mime'}`, 'info');
-
-        // সোর্স লোড করা
         await playerRef.current.load(currentStreamUrl, null, mimeType);
-        loggerRef.current?.addLog('Source injected successfully into HTML5 Video Pipeline!', 'success');
 
         if (videoRef.current && isMounted) {
           videoRef.current.play()
             .then(() => loggerRef.current?.addLog('Video is actively rendering on-screen!', 'success'))
-            .catch((e) => loggerRef.current?.addLog(`Autoplay deferred: ${e.message}`, 'warn'));
+            .catch((e) => loggerRef.current?.addLog(`Autoplay deferred: Click play to start.`, 'warn'));
         }
 
         if (isMounted) setIsBuffering(false);
       } catch (err: any) {
+        // 🎯 ফিক্সড: Load Interrupted (7000/7002) এরর হলে সার্ভার চেঞ্জ করবে না!
+        if (err.code === 7000 || err.code === 7002) {
+          loggerRef.current?.addLog(`Load Interrupted (${err.code}). Safe to ignore.`, 'info');
+          return;
+        }
+        
         loggerRef.current?.addLog(`Source Loading Failed: ${err.message || err.code}`, 'error');
         if (isMounted) safeSwitchServer();
       }
     };
 
-    // ৫ মিলিসেকেন্ডের একটা ম্যাক্রো বাফার দেওয়া হলো ডম রিসেটের জন্য
     const delayTimer = setTimeout(() => {
       loadStreamSource();
     }, 50);
