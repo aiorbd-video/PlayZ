@@ -9,9 +9,10 @@ export interface PlayerLogsHandle {
 
 interface PlayerLogsProps {
   matchTitle?: string;
+  matchObj?: any; // 🎯 ফুল ম্যাচ ডাটা (লোগো, টিম নেম) নেওয়ার জন্য
 }
 
-export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ matchTitle }, ref) => {
+export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ matchTitle, matchObj }, ref) => {
   const [statusText, setStatusText] = useState('Engine Initializing...');
   const [statusType, setStatusType] = useState<'info' | 'success' | 'error' | 'warn'>('info');
   const [shareText, setShareText] = useState('Share Match');
@@ -19,16 +20,16 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
   useImperativeHandle(ref, () => ({
     addLog: (message: string, type = 'info') => {
       if (message.includes('live on-screen')) {
-        setStatusText('Live Broadcast Active (Ultra HD)');
+        setStatusText('Live Broadcast Active');
         setStatusType('success');
       } else if (message.includes('Switching server') || type === 'error') {
-        setStatusText('Network Glitch! Auto-switching stream...');
+        setStatusText('Network Glitch! Auto-switching...');
         setStatusType('error');
       } else if (message.includes('Loading Source')) {
-        setStatusText('Buffering & Optimizing Stream...');
+        setStatusText('Buffering Stream...');
         setStatusType('info');
       } else if (message.includes('Autoplay deferred')) {
-        setStatusText('Click the Play button to start');
+        setStatusText('Click Play to Start');
         setStatusType('warn');
       }
     },
@@ -41,8 +42,8 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
   const handleShare = async () => {
     if (typeof window !== 'undefined') {
       const shareData = {
-        title: matchTitle || 'Reborn Live Stream',
-        text: `🔥 Watch live match on Reborn Stream: ${matchTitle || ''}`,
+        title: matchTitle || 'Live Stream',
+        text: `🔥 Watch live match: ${matchTitle || ''}`,
         url: window.location.href,
       };
 
@@ -55,7 +56,7 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
       } else {
         try {
           await navigator.clipboard.writeText(window.location.href);
-          setShareText('Link Copied! 🚀');
+          setShareText('Copied! 🚀');
           setTimeout(() => setShareText('Share Match'), 2000);
         } catch (clipErr) {
           setShareText('Share Failed');
@@ -64,38 +65,27 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
     }
   };
 
-  return (
-    <div className="mt-6 w-full bg-gradient-to-br from-[#121421] to-[#0d0f19] rounded-3xl border border-gray-800 p-6 shadow-2xl transition-all duration-300">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        
-        {/* Branding & Status */}
-        <div className="flex items-center gap-5">
-          <div className="w-12 h-12 bg-gray-900 rounded-2xl flex items-center justify-center border border-gray-800 shrink-0 shadow-inner">
-            <span className="text-[10px] font-black text-[#00E5FF] tracking-widest uppercase">Reborn</span>
-          </div>
-          
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2 mb-1">
-              <span className={`relative flex h-2.5 w-2.5`}>
-                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${statusType === 'success' ? 'bg-emerald-400' : 'bg-rose-400'}`}></span>
-                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${statusType === 'success' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
-              </span>
-              <span className={`text-[10px] font-bold uppercase tracking-widest ${statusType === 'error' ? 'text-rose-400' : 'text-emerald-400'}`}>
-                {statusText}
-              </span>
-            </div>
-            <h2 className="text-lg md:text-xl font-bold text-white leading-tight">
-              {matchTitle || 'Live Streaming'}
-            </h2>
-          </div>
-        </div>
+  // 🎯 ম্যাচ ডাটা থেকে লোগো এবং নাম আলাদা করা
+  const eventInfo = matchObj?.eventInfo || matchObj?.event || {};
+  const teamA = eventInfo.teamA || matchTitle?.split(' VS ')[0] || 'Team A';
+  const teamB = eventInfo.teamB || matchTitle?.split(' VS ')[1] || 'Team B';
+  const teamAFlag = eventInfo.teamAFlag && eventInfo.teamAFlag !== 'null' ? eventInfo.teamAFlag : '/fallback-logo.png';
+  const teamBFlag = eventInfo.teamBFlag && eventInfo.teamBFlag !== 'null' ? eventInfo.teamBFlag : '/fallback-logo.png';
+  const eventName = eventInfo.eventName || eventInfo.eventCat || '';
 
-        {/* Action Button */}
+  return (
+    <div className="mt-6 w-full bg-[#1C1E2B] border border-[#2A8496]/50 hover:border-[#00E5FF]/80 rounded-[16px] p-4 sm:p-6 shadow-2xl transition-all duration-300">
+      
+      {/* Top Bar: Event Name & Share */}
+      <div className="flex justify-between items-center border-b border-gray-800/60 pb-3 mb-5">
+        <span className="text-xs md:text-sm text-[#00E5FF] font-black uppercase tracking-widest truncate max-w-[70%]">
+          {eventName || 'Live Stream Event'}
+        </span>
         <button
           onClick={handleShare}
-          className="px-6 py-3 bg-[#1C1F30] hover:bg-[#25283C] active:scale-95 text-xs font-black rounded-xl border border-gray-700/50 text-white flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-lg hover:border-[#00E5FF]/40 hover:text-[#00E5FF]"
+          className="px-3 py-1.5 bg-gray-900/50 hover:bg-[#00E5FF]/10 active:scale-95 text-[10px] sm:text-xs font-bold rounded-lg border border-gray-700/50 hover:border-[#00E5FF]/50 text-gray-300 hover:text-[#00E5FF] flex items-center gap-1.5 transition-all outline-none"
         >
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="18" cy="5" r="3"></circle>
             <circle cx="6" cy="12" r="3"></circle>
             <circle cx="18" cy="19" r="3"></circle>
@@ -105,12 +95,48 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
           {shareText}
         </button>
       </div>
-      
-      {/* Footer */}
-      <div className="mt-6 pt-4 border-t border-gray-800/50 flex justify-between items-center text-[10px] text-gray-500 font-bold uppercase tracking-wider">
-        <span>Powered by Reborn Engine</span>
-        <span>Version 1.0.0</span>
+
+      {/* Center: Match Card Layout (Team A vs Team B) */}
+      <div className="flex justify-between items-center">
+        
+        {/* Team A */}
+        <div className="flex flex-col items-center gap-2 w-[30%]">
+          <div className="relative w-14 h-14 sm:w-20 sm:h-20 rounded-full bg-white flex items-center justify-center overflow-hidden border-2 border-gray-500/50 shadow-md">
+            <img src={teamAFlag} alt={teamA} className="w-full h-full object-cover" onError={(e) => (e.currentTarget.src = '/fallback-logo.png')} />
+          </div>
+          <span className="font-bold text-[11px] sm:text-sm md:text-base text-white text-center line-clamp-2 leading-tight">
+            {teamA}
+          </span>
+        </div>
+
+        {/* VS & Status Indicator */}
+        <div className="flex flex-col items-center justify-center w-[40%] gap-1">
+          <span className="text-rose-500 text-xl sm:text-3xl animate-pulse drop-shadow-[0_0_8px_rgba(244,63,94,0.6)]">((•))</span>
+          <span className="text-gray-400 font-black text-xs sm:text-sm uppercase tracking-widest">VS</span>
+          
+          {/* Dynamic Engine Status */}
+          <div className={`mt-2 px-2.5 py-1 rounded border text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-center ${
+            statusType === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
+            statusType === 'error' ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' :
+            statusType === 'warn' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+            'bg-[#00E5FF]/10 border-[#00E5FF]/20 text-[#00E5FF]'
+          }`}>
+            {statusText}
+          </div>
+        </div>
+
+        {/* Team B */}
+        <div className="flex flex-col items-center gap-2 w-[30%]">
+          <div className="relative w-14 h-14 sm:w-20 sm:h-20 rounded-full bg-white flex items-center justify-center overflow-hidden border-2 border-gray-500/50 shadow-md">
+            <img src={teamBFlag} alt={teamB} className="w-full h-full object-cover" onError={(e) => (e.currentTarget.src = '/fallback-logo.png')} />
+          </div>
+          <span className="font-bold text-[11px] sm:text-sm md:text-base text-white text-center line-clamp-2 leading-tight">
+            {teamB}
+          </span>
+        </div>
+
       </div>
+
     </div>
   );
 });
