@@ -83,21 +83,27 @@ export function useShakaEngine({
           addSeekBar: true,
         });
 
-        // 🎯 ৩ ও ৯. Low Latency & Live IPTV Config
+        // 🎯 ৩, ৬ ও ৯: আপনার দেওয়া প্রো-লেভেল IPTV Config
         player.configure({
           streaming: {
-            bufferingGoal: 8,
-            rebufferingGoal: 1,
-            bufferBehind: 10,
-            inaccurateManifestTolerance: 0,
-            stallEnabled: true,
-            stallThreshold: 2,
-            stallSkip: 0.1,
-            retryParameters: { maxAttempts: 3, baseDelay: 1000 }
+            bufferingGoal: 12,
+            rebufferingGoal: 2,
+            bufferBehind: 20,
+            stallEnabled: false, // 🎯 ১. DASH timeline jump fix
+            retryParameters: {
+              maxAttempts: 5,
+              baseDelay: 1000,
+              backoffFactor: 2
+            }
           },
           abr: {
             enabled: true,
-            switchInterval: 3,
+            switchInterval: 8
+          },
+          manifest: {
+            dash: {
+              autoCorrectDrift: true // 🎯 ৬. DASH sync fix
+            }
           }
         });
 
@@ -110,31 +116,20 @@ export function useShakaEngine({
               if (navigator.userAgent) {
                 request.headers['User-Agent'] = navigator.userAgent;
               }
-            } catch (e) {
-              // Some browsers block modifying User-Agent header
-            }
+            } catch (e) {}
           });
         }
 
         // 🎯 ৭. Memory Leak Fix (Proper Listener Management)
         const onBuffering = (e: any) => setIsBuffering(e.buffering);
 
-        // 🎯 ১ ও ৫. Smart Error Handler & Auto Recover
+        // 🎯 ৪. retryStreaming() রিমুভ করা হয়েছে (Timeline Jump এড়াতে)
         const onError = async (event: any) => {
           const error = event.detail;
           const switchCodes = [1001, 1002, 6007, 3016];
 
           if (switchCodes.includes(error.code)) {
-            loggerRef.current?.addLog(`Fatal Error ${error.code}, attempting recovery...`, 'error');
-            try {
-              const recovered = await player.retryStreaming();
-              if (recovered) {
-                loggerRef.current?.addLog(`Stream auto-recovered after error ${error.code}!`, 'success');
-                return;
-              }
-            } catch (retryErr) {
-               loggerRef.current?.addLog(`Recovery failed. Switching server...`, 'warn');
-            }
+            loggerRef.current?.addLog(`Fatal Error ${error.code}. Switching server...`, 'error');
             safeSwitchServer();
           } else {
             loggerRef.current?.addLog(`Recoverable/Ignored Error ${error.code}`, 'warn');
@@ -144,7 +139,6 @@ export function useShakaEngine({
         player.addEventListener('buffering', onBuffering);
         player.addEventListener('error', onError);
 
-        // Store cleanup function on the player instance for easy unmounting
         playerRef.current.__cleanupListeners = () => {
           player.removeEventListener('buffering', onBuffering);
           player.removeEventListener('error', onError);
@@ -169,7 +163,7 @@ export function useShakaEngine({
     };
   }, [safeSwitchServer]);
 
-  // ২. স্ট্রিম এবং DRM লোড রানার
+  // ২. স্ট্রিম লোড রানার
   useEffect(() => {
     if (!playerRef.current || allServersDown || !currentStreamUrl || !streams?.length) return;
 
@@ -194,10 +188,10 @@ export function useShakaEngine({
 
         const mimeType = getMimeType(currentStreamUrl);
         
-        // 🎯 ৮. Fast Server Failover (10s Timeout)
+        // 🎯 ৫. Fast Server Failover (20s Timeout)
         const loadPromise = playerRef.current.load(currentStreamUrl, null, mimeType);
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('10s Load Timeout Limit Reached')), 10000)
+          setTimeout(() => reject(new Error('20s Load Timeout Limit Reached')), 20000)
         );
 
         await Promise.race([loadPromise, timeoutPromise]);
@@ -210,18 +204,31 @@ export function useShakaEngine({
 
         if (isMounted) setIsBuffering(false);
 
-        // 🎯 ২. Stall Detection (Starts only after successful load)
+        // 🎯 ২. Smart Stall Detection (DASH specific fix)
         if (stallIntervalRef.current) clearInterval(stallIntervalRef.current);
         let lastTime = 0;
+        let stallCount = 0;
+        
         stallIntervalRef.current = setInterval(() => {
           const video = videoRef.current;
           if (!video) return;
-          if (!video.paused && !video.seeking && video.currentTime === lastTime) {
-            loggerRef.current?.addLog('Playback stall detected (frozen frame)', 'error');
+          
+          const diff = Math.abs(video.currentTime - lastTime);
+          
+          if (!video.paused && !video.seeking && diff < 0.05) {
+            stallCount++;
+            loggerRef.current?.addLog(`Stall warning ${stallCount}/3...`, 'warn');
+          } else {
+            stallCount = 0;
+          }
+
+          if (stallCount >= 3) {
+            loggerRef.current?.addLog('Playback stall confirmed. Switching...', 'error');
             safeSwitchServer();
           }
+          
           lastTime = video.currentTime;
-        }, 15000);
+        }, 5000); // Check every 5 seconds, switch after 15 seconds of total stall
 
       } catch (err: any) {
         if (err.code === 7000 || err.code === 7002) {
