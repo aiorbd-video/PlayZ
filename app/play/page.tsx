@@ -132,6 +132,8 @@ function PlayerContent() {
         playerRef.current = player;
 
         ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
+        
+        // 🎯 ফিক্সড: 'overflow_menu' যোগ করা হয়েছে প্লেয়ার সেটিং (গিয়ার আইকন) এর জন্য
         ui.configure({
           controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'custom_stretch', 'overflow_menu', 'fullscreen'],
           addSeekBar: true,
@@ -408,4 +410,4 @@ export default function PlayPage() {
       <PlayerContent />
     </Suspense>
   );
-          }
+}
