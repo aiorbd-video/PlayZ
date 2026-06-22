@@ -44,8 +44,6 @@ export function useShakaEngine({
   const uiRef = useRef<any>(null);
   const p2pEngineRef = useRef<any>(null);
   const stallIntervalRef = useRef<any>(null);
-  
-  // ডাবল ইনিশিয়ালাইজেশন ট্র্যাকিং পিন
   const initInProgressRef = useRef<boolean>(false);
 
   // ১. প্লেয়ার ও ইউআই ওয়ান-টাইম ইনিশিয়ালাইজেশন
@@ -61,7 +59,6 @@ export function useShakaEngine({
         shaka = await import('shaka-player/dist/shaka-player.ui');
         shaka.polyfill.installAll();
 
-        // P2P সেফটি ব্লক
         let P2PEngine: any = null;
         try {
           const p2pModule: any = await import('p2p-media-loader-shaka');
@@ -144,8 +141,6 @@ export function useShakaEngine({
         };
 
         loggerRef.current?.addLog('Live IPTV Engine Mounted successfully!', 'success');
-        
-        // 🎯 মাউন্ট হওয়ার সাথে সাথে জোরপূর্বক ১ম সোর্স লোড রান করানো (The Fix)
         window.dispatchEvent(new CustomEvent('shakaEngineReady'));
 
       } catch (err: any) {
@@ -170,10 +165,7 @@ export function useShakaEngine({
     let isMounted = true;
 
     const loadStreamSource = async () => {
-      // যদি প্লেয়ার অবজেক্ট এখনও মেমোরিতে রেডি না হয়, তবে একটু অপেক্ষা করে আবার ট্রাই করবে
-      if (!playerRef.current) {
-        return;
-      }
+      if (!playerRef.current) return;
 
       if (stallIntervalRef.current) { clearInterval(stallIntervalRef.current); stallIntervalRef.current = null; }
 
@@ -186,6 +178,11 @@ export function useShakaEngine({
         }
 
         await playerRef.current.unload();
+
+        // 🎯 ফিক্সড: streams অ্যারেটি নাল বা আনডিফাইনড কিনা তা সেফলি টাইপ চেক করা হলো
+        if (!streams || !streams[activeStreamIndex]) {
+          throw new Error('Target stream metadata is empty');
+        }
 
         const currentStream = streams[activeStreamIndex];
         const clearKeysObj = parseClearKeys(currentStream?.api);
@@ -247,11 +244,9 @@ export function useShakaEngine({
       }
     };
 
-    // ইঞ্জিন রেডি হওয়া বা সোর্স চেঞ্জ হওয়ার ইভেন্ট ট্র্যাকার
     const handleEngineReady = () => { if (isMounted) loadStreamSource(); };
     window.addEventListener('shakaEngineReady', handleEngineReady);
 
-    // সেফটি বাফার কল
     const delayTimer = setTimeout(() => {
       if (playerRef.current) loadStreamSource();
     }, 100);
