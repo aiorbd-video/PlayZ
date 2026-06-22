@@ -16,7 +16,6 @@ interface UseShakaEngineProps {
   getMimeType: (url: string) => string | undefined;
 }
 
-// 🎯 Better DRM Parsing Helper
 const parseClearKeys = (drmData: string | object | undefined): Record<string, string> => {
   if (!drmData) return {};
   try {
@@ -61,7 +60,6 @@ export function useShakaEngine({
   const playerInitRef = useRef<boolean>(false);
   const stallIntervalRef = useRef<any>(null);
 
-  // ১. প্লেয়ার ও ইউআই ওয়ান-টাইম ইনিশিয়ালাইজেশন
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || playerInitRef.current) return;
     playerInitRef.current = true;
@@ -73,17 +71,39 @@ export function useShakaEngine({
         shaka = await import('shaka-player/dist/shaka-player.ui');
         shaka.polyfill.installAll();
 
+        // 🎯 কাস্টম Zoom/Stretch/Fill বাটন তৈরি করা হলো
+        if (shaka.ui.Controls && !(shaka.ui.Controls as any).custom_stretch_registered) {
+          class StretchButton extends shaka.ui.Element {
+            constructor(parent: HTMLElement, controls: any) {
+              super(parent, controls);
+              const button = document.createElement('button');
+              button.className = 'shaka-custom-stretch-btn shaka-tooltip';
+              button.setAttribute('aria-label', 'Toggle Fit');
+              button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
+              this.eventManager.listen(button, 'click', () => {
+                window.dispatchEvent(new CustomEvent('toggleObjectFit'));
+              });
+              parent.appendChild(button);
+            }
+          }
+          shaka.ui.Controls.registerElement('custom_stretch', {
+            create: (root: HTMLElement, ctrls: any) => new StretchButton(root, ctrls),
+          });
+          (shaka.ui.Controls as any).custom_stretch_registered = true;
+        }
+
         const player = new shaka.Player(videoRef.current);
         playerRef.current = player;
 
         const ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
         uiRef.current = ui;
+        
+        // 🎯 কন্ট্রোল প্যানেলে 'custom_stretch' বাটন অ্যাড করা হলো
         ui.configure({
-          controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'fullscreen'],
+          controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'custom_stretch', 'fullscreen'],
           addSeekBar: true,
         });
 
-           // 🎯 ৩ ও ৯: আপনার দেওয়া প্রো-লেভেল IPTV Config
         player.configure({
           streaming: {
             bufferingGoal: 12,
@@ -96,45 +116,18 @@ export function useShakaEngine({
               backoffFactor: 2
             }
           },
-          abr: {
-            enabled: true,
-            switchInterval: 8
-          },
-          manifest: {
-            dash: {
-              autoCorrectDrift: true 
-            },
-            // 🎯 HLS এর জন্য এই লাইনটা অ্যাড করা হলো (Live HLS স্ট্যাবল করবে)
-            hls: {
-              ignoreManifestProgramDateTime: true
-            }
-          }
+          abr: { enabled: true, switchInterval: 8 },
+          manifest: { dash: { autoCorrectDrift: true }, hls: { ignoreManifestProgramDateTime: true } }
         });
-
-        // 🎯 ৪. Networking Filter (SAFE MODE)
-        const netEngine = player.getNetworkingEngine();
-        if (netEngine) {
-          netEngine.registerRequestFilter((type: any, request: any) => {
-            // ❌ request.allowCrossSiteCredentials = true; (কমেন্ট করে দেওয়া হলো CORS এড়ানোর জন্য)
-            // ❌ request.headers['User-Agent'] = navigator.userAgent; (ব্রাউজারে এটা মডিফাই করলে CORS খাবে)
-            
-            // যদি ভবিষ্যতে আপনার নিজের কোনো সার্ভারের জন্য কাস্টম টোকেন (Authorization header) লাগে, 
-            // শুধু তখনই এখানে সেটা অ্যাড করবেন। নরমাল HLS/DASH এর জন্য এটা এভাবেই সেফ!
-          });
-        }
-
-        
 
         const onBuffering = (e: any) => setIsBuffering(e.buffering);
 
-        // 🎯 Error Handler with Grace Period for 1001
         const onError = async (event: any) => {
           const error = event.detail;
 
           if (error.code === 1001) {
             loggerRef.current?.addLog(`Network Error 1001. Waiting 3s grace period...`, 'warn');
             setTimeout(() => {
-              // ৩ সেকেন্ড পর যদি প্লেয়ার আনমাউন্ট না হয়ে থাকে, তবেই সুইচ করবে
               if (playerRef.current) safeSwitchServer();
             }, 3000);
           } else if ([1002, 6007, 3016].includes(error.code)) {
@@ -179,7 +172,6 @@ export function useShakaEngine({
     let isMounted = true;
 
     const loadStreamSource = async () => {
-      // 🎯 Timer Leak Fix: লোড শুরুর আগেই পুরোনো স্টল ইন্টারভাল খতম!
       if (stallIntervalRef.current) {
         clearInterval(stallIntervalRef.current);
         stallIntervalRef.current = null;
@@ -218,7 +210,6 @@ export function useShakaEngine({
 
         if (isMounted) setIsBuffering(false);
 
-        // 🎯 Advanced Stall Detection (ReadyState + Buffered Range Check)
         let lastTime = 0;
         let stallCount = 0;
         
@@ -226,19 +217,11 @@ export function useShakaEngine({
           const video = videoRef.current;
           if (!video) return;
 
-          // Buffer Ahead ক্যালকুলেশন
           const buffered = video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0;
           const bufferAhead = buffered - video.currentTime;
-
           const diff = video.currentTime - lastTime;
           
-          if (
-            video.readyState >= 3 &&
-            !video.paused &&
-            !video.seeking &&
-            diff < 0.01 &&
-            bufferAhead < 10 // 🎯 বাফার ১০ সেকেন্ডের বেশি থাকলে স্টল কাউন্ট স্কিপ!
-          ) {
+          if (video.readyState >= 3 && !video.paused && !video.seeking && diff < 0.01 && bufferAhead < 10) {
             stallCount++;
             loggerRef.current?.addLog(`Stall warning ${stallCount}/3 (Buffer: ${bufferAhead.toFixed(1)}s)...`, 'warn');
           } else {
