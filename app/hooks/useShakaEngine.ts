@@ -83,6 +83,7 @@ export function useShakaEngine({
           addSeekBar: true,
         });
 
+           // 🎯 ৩ ও ৯: আপনার দেওয়া প্রো-লেভেল IPTV Config
         player.configure({
           streaming: {
             bufferingGoal: 12,
@@ -102,21 +103,27 @@ export function useShakaEngine({
           manifest: {
             dash: {
               autoCorrectDrift: true 
+            },
+            // 🎯 HLS এর জন্য এই লাইনটা অ্যাড করা হলো (Live HLS স্ট্যাবল করবে)
+            hls: {
+              ignoreManifestProgramDateTime: true
             }
           }
         });
 
+        // 🎯 ৪. Networking Filter (SAFE MODE)
         const netEngine = player.getNetworkingEngine();
         if (netEngine) {
           netEngine.registerRequestFilter((type: any, request: any) => {
-            request.allowCrossSiteCredentials = true;
-            try {
-              if (navigator.userAgent) {
-                request.headers['User-Agent'] = navigator.userAgent;
-              }
-            } catch (e) {}
+            // ❌ request.allowCrossSiteCredentials = true; (কমেন্ট করে দেওয়া হলো CORS এড়ানোর জন্য)
+            // ❌ request.headers['User-Agent'] = navigator.userAgent; (ব্রাউজারে এটা মডিফাই করলে CORS খাবে)
+            
+            // যদি ভবিষ্যতে আপনার নিজের কোনো সার্ভারের জন্য কাস্টম টোকেন (Authorization header) লাগে, 
+            // শুধু তখনই এখানে সেটা অ্যাড করবেন। নরমাল HLS/DASH এর জন্য এটা এভাবেই সেফ!
           });
         }
+
+        
 
         const onBuffering = (e: any) => setIsBuffering(e.buffering);
 
