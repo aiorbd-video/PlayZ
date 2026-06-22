@@ -1,6 +1,6 @@
 'use client';
 
-import { forwardRef, useImperativeHandle, useState, useEffect } from 'react';
+import { forwardRef, useImperativeHandle, useState, useEffect, memo } from 'react';
 import useSWR from 'swr';
 
 export interface PlayerLogsHandle {
@@ -21,51 +21,75 @@ const generateSlug = (teamA: string, teamB: string, eventName: string, id: strin
   return `${cleanName}-${id}`;
 };
 
-// 🎯 রিয়েল-টাইম টাইম এবং কাউন্টডাউন কম্পোনেন্ট
-const MatchTimeDisplay = ({ startTimeStr }: { startTimeStr: string }) => {
-  const [now, setNow] = useState(new Date());
+// 🎯 আপনার দেওয়া অরিজিনাল MatchCountdown হুবহু বসানো হয়েছে!
+const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { startTimeStr: string, endTimeStr: string, status: string }) => {
+  const [time, setTime] = useState(new Date());
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
+    const timer = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  if (!startTimeStr) return <span className="text-gray-400 text-xs font-bold">TBA</span>;
+  const startTime = startTimeStr ? new Date(startTimeStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z')) : null;
 
-  // তারিখ পার্সিং (ক্রস-ব্রাউজার সাপোর্ট)
-  const startTime = new Date(startTimeStr.replace(/\//g, '-').replace(' ', 'T').replace(' +0000', 'Z'));
-  
-  if (isNaN(startTime.getTime())) return <span className="text-gray-400 text-xs font-bold">TBA</span>;
-
-  const diffMs = startTime.getTime() - now.getTime();
-  const timeStr = startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-  const dateStr = startTime.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-  let statusStr = '';
-  if (diffMs <= 0) {
-    statusStr = 'Match Started / Live';
-  } else {
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    
-    if (diffDays > 0) {
-      statusStr = `Starts in ${diffDays} day${diffDays > 1 ? 's' : ''}`;
-    } else if (diffHours > 0) {
-      statusStr = `Match Starting in ${diffHours} Hour${diffHours > 1 ? 's' : ''}`;
-    } else {
-      statusStr = `Starts in ${diffMins} min${diffMins > 1 ? 's' : ''}`;
-    }
+  if (status === 'recent') {
+    return <div className="text-gray-400 text-xs font-bold uppercase mt-2">Match Ended</div>;
   }
 
+  if (status === 'live' && startTime) {
+    const elapsedMs = time.getTime() - startTime.getTime();
+    const elapsedSecs = Math.max(0, Math.floor(elapsedMs / 1000));
+    const h = Math.floor(elapsedSecs / 3600);
+    const m = Math.floor((elapsedSecs % 3600) / 60);
+    const s = elapsedSecs % 60;
+    const elapsedStr = `${h > 0 ? h + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+
+    return (
+      <div className="flex flex-col items-center justify-center gap-1">
+        <span className="text-red-500 text-lg md:text-xl animate-pulse drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]">((•))</span>
+        <span className="text-red-500 text-[10px] md:text-xs font-bold tracking-wide uppercase">Live</span>
+        <span className="text-[#00E5FF] text-[10px] md:text-xs font-mono font-bold bg-[#00E5FF]/10 px-2 py-0.5 rounded shadow-inner tracking-widest">{elapsedStr}</span>
+      </div>
+    );
+  } else if (status === 'live') {
+    return (
+      <div className="flex flex-col items-center justify-center gap-1">
+        <span className="text-red-500 text-lg md:text-xl animate-pulse drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]">((•))</span>
+        <span className="text-red-500 text-[10px] md:text-xs font-bold tracking-wide uppercase">Live</span>
+      </div>
+    );
+  }
+
+  if (!startTime) return <span className="text-gray-400 font-bold text-xs">TBA</span>;
+  
+  const diffMs = startTime.getTime() - time.getTime();
+  if (diffMs <= 0) return <span className="text-green-500 font-bold text-xs animate-pulse">Starting...</span>;
+  
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  const diffSecs = Math.floor((diffMs % (1000 * 60)) / 1000);
+
+  const timeStr = startTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  const dateStr = startTime.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }); 
+
   return (
-    <div className="flex flex-col items-center justify-center gap-1.5 w-full">
-      <span className="text-gray-200 text-xs md:text-sm font-bold tracking-wide">{timeStr}</span>
-      <span className="text-emerald-400 text-[10px] md:text-xs font-semibold">{dateStr}</span>
-      <span className="text-gray-400 text-[10px] md:text-xs font-medium">{statusStr}</span>
+    <div className="flex flex-col items-center justify-center w-full">
+      <div className="text-gray-200 text-sm md:text-base font-bold tracking-wide">{timeStr}</div>
+      <div className="text-[#00E5FF] text-[10px] md:text-xs font-bold mt-0.5">{dateStr}</div>
+      
+      {diffHours < 1 ? (
+        <div className="text-amber-400 text-[11px] md:text-xs mt-2 font-bold whitespace-nowrap bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 animate-pulse font-mono tracking-wider">
+           In {diffMins.toString().padStart(2, '0')}m {diffSecs.toString().padStart(2, '0')}s
+        </div>
+      ) : (
+        <div className="text-gray-300 text-[10px] md:text-xs mt-2 font-semibold whitespace-nowrap">
+           Starting in {diffHours}h {diffMins}m
+        </div>
+      )}
     </div>
   );
-};
+});
+MatchCountdown.displayName = 'MatchCountdown';
 
 export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ matchObj }, ref) => {
   
@@ -82,6 +106,7 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
       const matchId = rawEvent.links ? rawEvent.links.replace('pro/', '').replace('.txt', '') : index.toString();
       return {
         id: matchId,
+        status: item.status || rawEvent.status || '', // 🎯 API থেকে অরিজিনাল স্ট্যাটাস
         eventInfo: {
           eventName: rawEvent.eventName || '',
           eventCat: rawEvent.category || '',
@@ -91,6 +116,7 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
           teamAFlag: rawEvent.teamAFlag && rawEvent.teamAFlag !== 'null' ? rawEvent.teamAFlag : '/fallback-logo.png',
           teamBFlag: rawEvent.teamBFlag && rawEvent.teamBFlag !== 'null' ? rawEvent.teamBFlag : '/fallback-logo.png',
           startTime: rawEvent.startTime || '',
+          endTime: rawEvent.endTime || ''
         }
       };
     })
@@ -101,7 +127,6 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
 
   return (
     <div className="mt-8 mb-4 w-full">
-      {/* 🎯 টাইটেল */}
       <div className="flex items-center gap-2 mb-4 border-b border-gray-800/60 pb-2">
         <span className="text-rose-500 animate-pulse text-lg drop-shadow-[0_0_8px_rgba(244,63,94,0.6)]">((•))</span>
         <h2 className="text-sm md:text-base font-black text-white uppercase tracking-widest">
@@ -109,7 +134,6 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
         </h2>
       </div>
       
-      {/* 🎯 ডিটেইলড ম্যাচ কার্ডস (Vertical List) */}
       <div className="flex flex-col gap-3 md:gap-4">
         {otherMatches.map((match: any) => {
           const slug = generateSlug(match.eventInfo.teamA, match.eventInfo.teamB, match.eventInfo.eventName, match.id);
@@ -119,7 +143,6 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
             <a key={match.id} href={`/watch/${slug}`} className="block outline-none group">
               <div className="bg-[#1C1E2B] border border-[#2A8496]/50 rounded-xl overflow-hidden flex flex-col transition-all duration-300 hover:border-[#00E5FF]/80 hover:shadow-[0_4px_15px_rgba(0,229,255,0.15)] hover:-translate-y-0.5">
                 
-                {/* কার্ড হেডার (Event Category & Name) */}
                 {(headerTitle || match.eventInfo.eventLogo) && (
                   <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-800/60 bg-gray-900/30">
                     {match.eventInfo.eventLogo && (
@@ -131,7 +154,6 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
                   </div>
                 )}
 
-                {/* কার্ড বডি (Teams & Time) */}
                 <div className="flex justify-between items-center p-3 md:p-4">
                   
                   {/* Team A */}
@@ -144,9 +166,9 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
                     </span>
                   </div>
 
-                  {/* Center: Time & Countdown */}
+                  {/* Center: আপনার অরিজিনাল MatchCountdown */}
                   <div className="w-[40%] flex justify-center">
-                    <MatchTimeDisplay startTimeStr={match.eventInfo.startTime} />
+                    <MatchCountdown startTimeStr={match.eventInfo.startTime} endTimeStr={match.eventInfo.endTime} status={match.status} />
                   </div>
 
                   {/* Team B */}
