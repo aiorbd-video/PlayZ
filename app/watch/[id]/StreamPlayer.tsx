@@ -5,8 +5,9 @@ import useSWR from 'swr';
 import Link from 'next/link';
 import 'shaka-player/dist/controls.css';
 
-import { PlayerLogs, PlayerLogsHandle } from './PlayerLogs';
-import { useShakaEngine } from '../hooks/useShakaEngine';
+// 🎯 ফিক্সড: ইম্পোর্ট পাথ একদম ঠিক করে দেওয়া হয়েছে
+import { PlayerLogs, type PlayerLogsHandle } from '../../components/PlayerLogs';
+import { useShakaEngine } from '../../hooks/useShakaEngine';
 
 interface Stream { title?: string; link: string; api?: string; }
 interface EventInfo { eventCat: string; eventName: string; teamA: string; teamB: string; startTime: string; endTime: string; link_names?: string[]; }
