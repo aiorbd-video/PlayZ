@@ -94,8 +94,6 @@ export function useShakaEngine({
             });
             p2pEngineRef.current.initShakaPlayer(player);
             loggerRef.current?.addLog('🚀 P2P WebRTC Network Layer Injected!', 'success');
-
-            p2pEngineRef.current.on('peer_connect', () => loggerRef.current?.addLog('P2P: New Peer Connected!', 'info'));
           } catch (e: any) {
             loggerRef.current?.addLog(`P2P setup failed: ${e.message}`, 'warn');
           }
@@ -117,6 +115,37 @@ export function useShakaEngine({
           abr: { enabled: true, switchInterval: 8 },
           manifest: { dash: { autoCorrectDrift: true }, hls: { ignoreManifestProgramDateTime: true } }
         });
+
+        // 🎯 আলটিমেট কাস্টম নেটওয়ার্ক ফিল্টার (লিংক থেকে হেডার পার্সার)
+        const netEngine = player.getNetworkingEngine();
+        if (netEngine) {
+          netEngine.registerRequestFilter((type: any, request: any) => {
+            const rawUrl: string = request.uris[0] || '';
+            
+            if (rawUrl.includes('|')) {
+              const parts = rawUrl.split('|');
+              const cleanUrl = parts[0]; // আসল ভিডিও ইউআরএল
+              const headerString = parts[1]; // হেডার পার্ট (যেমন: user-agent=Mozilla&referer=...)
+
+              request.uris[0] = cleanUrl; // প্লেয়ারের রিকোয়েস্ট লিংক ক্লিন করা হলো
+              
+              // কুয়েরি স্ট্রিং এর মতো করে হেডার পার্স করা
+              const params = new URLSearchParams(headerString.replace(/&/g, '&'));
+              params.forEach((value, key) => {
+                const lowerKey = key.toLowerCase();
+                if (lowerKey === 'user-agent' || lowerKey === 'user-agent') {
+                  request.headers['User-Agent'] = value;
+                } else if (lowerKey === 'referer') {
+                  request.headers['Referer'] = value;
+                } else if (lowerKey === 'origin') {
+                  request.headers['Origin'] = value;
+                } else {
+                  request.headers[key] = value; // অন্য কোনো কাস্টম হেডার থাকলে
+                }
+              });
+            }
+          });
+        }
 
         const onBuffering = (e: any) => setIsBuffering(e.buffering);
         const onError = async (event: any) => {
@@ -193,8 +222,9 @@ export function useShakaEngine({
           playerRef.current.configure({ drm: { clearKeys: {} } });
         }
 
-        // 🎯 ফিক্সড: currentStreamUrl নাল হওয়া এড়াতে ফলব্যাক স্ট্রিং দেওয়া হলো
-        const mimeType = getMimeType(currentStreamUrl || '');
+        // 🎯 পাইপ সাইন ক্লিন করে নিয়ে মিম টাইপ চেক করা হলো
+        const cleanUrlForMime = (currentStreamUrl || '').split('|')[0];
+        const mimeType = getMimeType(cleanUrlForMime);
         
         const loadPromise = playerRef.current.load(currentStreamUrl, null, mimeType);
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('20s Load Timeout Limit Reached')), 20000));
