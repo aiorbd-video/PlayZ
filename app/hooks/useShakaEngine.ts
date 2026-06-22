@@ -58,11 +58,10 @@ export function useShakaEngine({
         shaka = await import('shaka-player/dist/shaka-player.ui');
         shaka.polyfill.installAll();
 
-        // 🎯 P2P সেফটি ব্লক (Graceful Degradation)
+        // 🎯 P2P সেফটি ব্লক (TS Fix: p2pModule কে strictly 'any' বলা হয়েছে)
         let P2PEngine: any = null;
         try {
-          // @ts-ignore
-          const p2pModule = await import('p2p-media-loader-shaka');
+          const p2pModule: any = await import('p2p-media-loader-shaka');
           P2PEngine = p2pModule.Engine || p2pModule.default?.Engine; 
         } catch (p2pErr: any) {
           loggerRef.current?.addLog(`P2P Engine skipped: ${p2pErr.message}`, 'warn');
@@ -87,7 +86,6 @@ export function useShakaEngine({
         const player = new shaka.Player(videoRef.current);
         playerRef.current = player;
 
-        // 🎯 P2P কানেকশন ইনিশিয়ালাইজেশন
         if (P2PEngine && P2PEngine.isSupported && P2PEngine.isSupported()) {
           try {
             p2pEngineRef.current = new P2PEngine({
@@ -148,7 +146,6 @@ export function useShakaEngine({
         loggerRef.current?.addLog('Live IPTV Engine Mounted successfully!', 'success');
       } catch (err: any) {
         playerInitRef.current = false;
-        // 🎯 ফিক্সড: ক্র্যাশের আসল কারণটা লগে প্রিন্ট হবে
         loggerRef.current?.addLog(`Core Mount Failed: ${err.message || err}`, 'error');
       }
     };
