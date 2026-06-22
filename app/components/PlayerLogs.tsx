@@ -51,7 +51,6 @@ const SmartImage = memo(({ src, alt, fill, width, height, className }: any) => {
 });
 SmartImage.displayName = 'SmartImage';
 
-// 🎯 আপনার দেওয়া অরজিনাল MatchCountdown
 const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { startTimeStr: string, endTimeStr: string, status: string }) => {
   const [time, setTime] = useState(new Date());
 
@@ -121,7 +120,6 @@ const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { startTimeSt
 });
 MatchCountdown.displayName = 'MatchCountdown';
 
-// 🎯 আপনার দেওয়া অরজিনাল MatchCard
 const MatchCardComponent = memo(({ match, status }: { match: any; status: string }) => {
   const eventInfo = match.eventInfo || match.event || {};
   const slugLink = generateSlug(eventInfo.teamA, eventInfo.teamB, eventInfo.eventName, match.id);
@@ -184,18 +182,17 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
       const eventInfo = item.eventInfo || item.event || {};
       const matchId = eventInfo.links ? eventInfo.links.replace('pro/', '').replace('.txt', '') : index.toString();
       
-      // 🎯 THE FIX: API থেকে date এবং time কে যুক্ত করে startTime বানানো হচ্ছে
       let mappedStartTime = eventInfo.startTime || '';
       if (!mappedStartTime && eventInfo.date && eventInfo.time) {
         let d = eventInfo.date;
-        // DD/MM/YYYY কে YYYY/MM/DD তে কনভার্ট করছি যাতে আপনার MatchCountdown এর new Date() পারফেক্টলি কাজ করে
         if (d.includes('/')) {
            const p = d.split('/');
            if (p[0].length === 2 && p[2].length === 4) {
               d = `${p[2]}/${p[1]}/${p[0]}`; 
            }
         }
-        mappedStartTime = `${d} ${eventInfo.time}`;
+        // 🎯 THE UTC FIX: টাইমের শেষে +0000 যোগ করা হলো, ব্রাউজার নিজে থেকে ৬ ঘণ্টা (BDT) যোগ করে নিবে!
+        mappedStartTime = `${d} ${eventInfo.time} +0000`;
       }
 
       let mappedEndTime = eventInfo.endTime || '';
@@ -207,7 +204,7 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
               ed = `${p[2]}/${p[1]}/${p[0]}`; 
            }
         }
-        mappedEndTime = `${ed} ${eventInfo.end_time}`;
+        mappedEndTime = `${ed} ${eventInfo.end_time} +0000`;
       }
 
       return {
@@ -221,7 +218,7 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
           teamB: eventInfo.teamB || eventInfo.teamBName || 'Team B',
           teamAFlag: eventInfo.teamAFlag && eventInfo.teamAFlag !== 'null' ? eventInfo.teamAFlag : '/fallback-logo.png',
           teamBFlag: eventInfo.teamBFlag && eventInfo.teamBFlag !== 'null' ? eventInfo.teamBFlag : '/fallback-logo.png',
-          startTime: mappedStartTime, // 🎯 জোড়া লাগানো পারফেক্ট টাইম
+          startTime: mappedStartTime,
           endTime: mappedEndTime
         }
       };
