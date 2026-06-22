@@ -44,10 +44,8 @@ export function useShakaEngine({
   const uiRef = useRef<any>(null);
   const p2pEngineRef = useRef<any>(null);
   const stallIntervalRef = useRef<any>(null);
-  
   const initInProgressRef = useRef<boolean>(false);
-  // 🎯 রেস কন্ডিশন এবং ৭MDA২ এরর আটকানোর জন্য লক গার্ড পিন
-  const isCurrentlyLoadingRef = useRef<boolean>(false); 
+  const isCurrentlyLoadingRef = useRef<boolean>(false);
 
   // ১. প্লেয়ার ও ইউআই ওয়ান-টাইম ইনিশিয়ালাইজেশন
   useEffect(() => {
@@ -105,8 +103,9 @@ export function useShakaEngine({
         const ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
         uiRef.current = ui;
         
+        // 🎯 ফিক্সড: কন্ট্রোল প্যানেলে 'overflow_menu' যোগ করা হলো ডিফল্ট সেটিং আনার জন্য
         ui.configure({
-          controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'custom_stretch', 'fullscreen'],
+          controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'custom_stretch', 'overflow_menu', 'fullscreen'],
           addSeekBar: true,
         });
 
@@ -177,16 +176,13 @@ export function useShakaEngine({
     };
   }, [safeSwitchServer]);
 
-  // ২. স্ট্রিম লোড রানার (একদম নিট অ্যান্ড ক্লিন বাউন্স প্রটেক্টেড)
+  // ২. স্ট্রিম লোড রানার
   useEffect(() => {
     if (!playerRef.current || allServersDown || !currentStreamUrl || !streams?.length) return;
     let isMounted = true;
 
     const loadStreamSource = async () => {
-      // 🎯 যদি অলরেডি একটা লোড রানিং থাকে, নতুন রিকোয়েস্টকে ব্লক করে দেওয়া হলো (7002 Fix)
-      if (isCurrentlyLoadingRef.current) {
-        return;
-      }
+      if (isCurrentlyLoadingRef.current) return;
 
       if (stallIntervalRef.current) { clearInterval(stallIntervalRef.current); stallIntervalRef.current = null; }
 
@@ -258,19 +254,16 @@ export function useShakaEngine({
 
       } catch (err: any) {
         if (err.code === 7000 || err.code === 7002) {
-          // রিকভারেবল ইন্টারাপশন হলে লক খুলে দেওয়া হলো যাতে ইউজার অন্য সার্ভারে ক্লিক করতে পারে
           isCurrentlyLoadingRef.current = false;
           return;
         }
         loggerRef.current?.addLog(`Loading Failed: ${err.message || err.code}`, 'error');
         if (isMounted) safeSwitchServer();
       } finally {
-        // লোড সাকসেস হোক বা ফেইল—কাজ শেষ হলে লক রিলিজ করা হলো
         isCurrentlyLoadingRef.current = false;
       }
     };
 
-    // ৫০ms সেফটি ডিবাউন্স দিয়ে এক্সিকিউট করা হলো
     const delayTimer = setTimeout(() => {
       loadStreamSource();
     }, 50);
@@ -280,5 +273,5 @@ export function useShakaEngine({
       clearTimeout(delayTimer);
       if (stallIntervalRef.current) { clearInterval(stallIntervalRef.current); stallIntervalRef.current = null; }
     };
-  }, [currentStreamUrl, activeStreamIndex, allServersDown]); // ডিপেন্ডেন্সি ট্র্যাকার শর্ট করা হলো
-}
+  }, [currentStreamUrl, activeStreamIndex, allServersDown]);
+          }
