@@ -222,7 +222,8 @@ export default function StreamPlayer({ id }: { id: string }) {
           </div>
         )}
 
-        <PlayerLogs ref={loggerRef} />
+        <PlayerLogs ref={loggerRef} matchTitle={matchTitle || 'Live Event'} />
+
       </div>
 
       <style dangerouslySetInnerHTML={{
