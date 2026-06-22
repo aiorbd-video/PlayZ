@@ -179,7 +179,6 @@ export function useShakaEngine({
 
         await playerRef.current.unload();
 
-        // 🎯 ফিক্সড: streams অ্যারেটি নাল বা আনডিফাইনড কিনা তা সেফলি টাইপ চেক করা হলো
         if (!streams || !streams[activeStreamIndex]) {
           throw new Error('Target stream metadata is empty');
         }
@@ -194,7 +193,8 @@ export function useShakaEngine({
           playerRef.current.configure({ drm: { clearKeys: {} } });
         }
 
-        const mimeType = getMimeType(currentStreamUrl);
+        // 🎯 ফিক্সড: currentStreamUrl নাল হওয়া এড়াতে ফলব্যাক স্ট্রিং দেওয়া হলো
+        const mimeType = getMimeType(currentStreamUrl || '');
         
         const loadPromise = playerRef.current.load(currentStreamUrl, null, mimeType);
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('20s Load Timeout Limit Reached')), 20000));
