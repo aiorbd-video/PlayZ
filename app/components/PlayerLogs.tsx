@@ -21,8 +21,8 @@ const generateSlug = (teamA: string, teamB: string, eventName: string, id: strin
   return `${cleanName}-${id}`;
 };
 
-// 🎯 আপনার দেওয়া অরিজিনাল MatchCountdown হুবহু বসানো হয়েছে!
-const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { startTimeStr: string, endTimeStr: string, status: string }) => {
+// 🎯 আপনার দেওয়া অরিজিনাল MatchCountdown কম্পোনেন্ট (হুবহু বসানো হয়েছে)
+export const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { startTimeStr: string, endTimeStr: string, status: string }) => {
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -82,7 +82,7 @@ const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { startTimeSt
            In {diffMins.toString().padStart(2, '0')}m {diffSecs.toString().padStart(2, '0')}s
         </div>
       ) : (
-        <div className="text-gray-300 text-[10px] md:text-xs mt-2 font-semibold whitespace-nowrap">
+        <div className="text-gray-300 text-[10px] md:text-xs mt-2 font-semibold">
            Starting in {diffHours}h {diffMins}m
         </div>
       )}
@@ -100,23 +100,25 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
 
   const { data: rawMatches } = useSWR('https://ratulxadia-playz-cats-event.hf.space/api/events', fetcher, { revalidateOnFocus: false });
 
+  // 🎯 হোমপেইজের মতো নিখুঁত অবজেক্ট ম্যাপিং লেয়ার
   const otherMatches = (rawMatches || [])
     .map((item: any, index: number) => {
-      const rawEvent = item.event || {};
-      const matchId = rawEvent.links ? rawEvent.links.replace('pro/', '').replace('.txt', '') : index.toString();
+      const eventInfo = item.eventInfo || item.event || {};
+      const matchId = eventInfo.links ? eventInfo.links.replace('pro/', '').replace('.txt', '') : index.toString();
+      
       return {
         id: matchId,
-        status: item.status || rawEvent.status || '', // 🎯 API থেকে অরিজিনাল স্ট্যাটাস
+        status: item.status || eventInfo.status || '',
         eventInfo: {
-          eventName: rawEvent.eventName || '',
-          eventCat: rawEvent.category || '',
-          eventLogo: rawEvent.eventLogo && rawEvent.eventLogo !== 'null' ? rawEvent.eventLogo : null,
-          teamA: rawEvent.teamAName || 'Team A',
-          teamB: rawEvent.teamBName || 'Team B',
-          teamAFlag: rawEvent.teamAFlag && rawEvent.teamAFlag !== 'null' ? rawEvent.teamAFlag : '/fallback-logo.png',
-          teamBFlag: rawEvent.teamBFlag && rawEvent.teamBFlag !== 'null' ? rawEvent.teamBFlag : '/fallback-logo.png',
-          startTime: rawEvent.startTime || '',
-          endTime: rawEvent.endTime || ''
+          eventName: eventInfo.eventName || '',
+          eventCat: eventInfo.eventCat || eventInfo.category || '',
+          eventLogo: eventInfo.eventLogo && eventInfo.eventLogo !== 'null' ? eventInfo.eventLogo : null,
+          teamA: eventInfo.teamA || eventInfo.teamAName || 'Team A',
+          teamB: eventInfo.teamB || eventInfo.teamBName || 'Team B',
+          teamAFlag: eventInfo.teamAFlag && eventInfo.teamAFlag !== 'null' ? eventInfo.teamAFlag : '/fallback-logo.png',
+          teamBFlag: eventInfo.teamBFlag && eventInfo.teamBFlag !== 'null' ? eventInfo.teamBFlag : '/fallback-logo.png',
+          startTime: eventInfo.startTime || '',
+          endTime: eventInfo.endTime || ''
         }
       };
     })
@@ -127,6 +129,7 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
 
   return (
     <div className="mt-8 mb-4 w-full">
+      {/* মোর লাইভ ইভেন্টস হেডার */}
       <div className="flex items-center gap-2 mb-4 border-b border-gray-800/60 pb-2">
         <span className="text-rose-500 animate-pulse text-lg drop-shadow-[0_0_8px_rgba(244,63,94,0.6)]">((•))</span>
         <h2 className="text-sm md:text-base font-black text-white uppercase tracking-widest">
@@ -134,6 +137,7 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
         </h2>
       </div>
       
+      {/* ভার্টিক্যাল ম্যাচ কার্ড লিস্ট */}
       <div className="flex flex-col gap-3 md:gap-4">
         {otherMatches.map((match: any) => {
           const slug = generateSlug(match.eventInfo.teamA, match.eventInfo.teamB, match.eventInfo.eventName, match.id);
@@ -143,6 +147,7 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
             <a key={match.id} href={`/watch/${slug}`} className="block outline-none group">
               <div className="bg-[#1C1E2B] border border-[#2A8496]/50 rounded-xl overflow-hidden flex flex-col transition-all duration-300 hover:border-[#00E5FF]/80 hover:shadow-[0_4px_15px_rgba(0,229,255,0.15)] hover:-translate-y-0.5">
                 
+                {/* কার্ডের উপরের হেডার ক্যাটাগরি */}
                 {(headerTitle || match.eventInfo.eventLogo) && (
                   <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-800/60 bg-gray-900/30">
                     {match.eventInfo.eventLogo && (
@@ -154,6 +159,7 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
                   </div>
                 )}
 
+                {/* কার্ডের বডি (টিম ফ্ল্যাগ ও আপনার দেওয়া অরজিনাল কাউন্টডাউন) */}
                 <div className="flex justify-between items-center p-3 md:p-4">
                   
                   {/* Team A */}
@@ -166,7 +172,7 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
                     </span>
                   </div>
 
-                  {/* Center: আপনার অরিজিনাল MatchCountdown */}
+                  {/* Center Component (হুবহু হোমপেইজের মতো কাউন্টডাউন রান করবে) */}
                   <div className="w-[40%] flex justify-center">
                     <MatchCountdown startTimeStr={match.eventInfo.startTime} endTimeStr={match.eventInfo.endTime} status={match.status} />
                   </div>
