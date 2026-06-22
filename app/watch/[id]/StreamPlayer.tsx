@@ -97,23 +97,23 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { revalidateOnFocus: false });
 
-  // 🎯 ফিক্সড: s.name কে টাইটেল হিসেবে বাইন্ড করা হলো যাতে সর্টিং এর পর নাম ওলটপালট না হয়
-  const streams = useMemo<Stream[] | null>(() => {
-    if (!streamsFromApi) return null;
-    const rawList = Array.isArray(streamsFromApi) ? streamsFromApi : streamsFromApi.streams || [];
-    
-    const parsedStreams = rawList.filter((s: any) => s && (s.link || s.url)).map((s: any) => ({
+ // 🎯 এই ব্লকটি খুঁজে বের করে এভাবে রিপ্লেস করুন
+const streams = useMemo<Stream[] | null>(() => {
+  if (!streamsFromApi) return null;
+  
+  // ফায়ারবেস থেকে আসা র-লিস্ট বের করা
+  const rawList = Array.isArray(streamsFromApi) ? streamsFromApi : streamsFromApi.streams || [];
+  
+  // 🔥 ফিক্সড: কোনো সর্টিং হবে না! ব্যাকএন্ড থেকে আসা বেস্ট সিরিয়ালটাই হুবহু ম্যাপ হবে
+  return rawList
+    .filter((s: any) => s && (s.link || s.url))
+    .map((s: any) => ({
       link: s.link || s.url || '', 
       title: s.name || s.title || '', 
-      api: s.api,
+      api: s.api || '',
     }));
+}, [streamsFromApi]);
 
-    return parsedStreams.sort((a: Stream, b: Stream) => {
-      const aIsDash = a.link.includes('.mpd') ? 1 : 0;
-      const bIsDash = b.link.includes('.mpd') ? 1 : 0;
-      return bIsDash - aIsDash;
-    });
-  }, [streamsFromApi]);
 
   const currentStreamUrl = useMemo(() => streams?.[activeStreamIndex]?.link || null, [streams, activeStreamIndex]);
 
