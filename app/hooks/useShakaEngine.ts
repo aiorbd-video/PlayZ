@@ -103,12 +103,12 @@ export function useShakaEngine({
         const ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
         uiRef.current = ui;
         
-        // 🎯 ফিক্সড: কন্ট্রোল প্যানেলে 'overflow_menu' যোগ করা হলো ডিফল্ট সেটিং আনার জন্য
         ui.configure({
           controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'custom_stretch', 'overflow_menu', 'fullscreen'],
           addSeekBar: true,
         });
 
+        // 🎯 ৫ বার রিট্রাই ব্যাকঅফ কনফিগ (Enterprise Recovery Layout)
         player.configure({
           streaming: {
             bufferingGoal: 12, rebufferingGoal: 2, bufferBehind: 20, stallEnabled: false, 
@@ -138,14 +138,26 @@ export function useShakaEngine({
         }
 
         const onBuffering = (e: any) => setIsBuffering(e.buffering);
+        
+        // 🎯 এন্টারপ্রাইজ লেভেল এরর ফিল্টারিং (The Severity Engine)
         const onError = async (event: any) => {
           const error = event.detail;
-          if (error.code === 1001) {
-            loggerRef.current?.addLog(`Network Error 1001. Waiting 3s grace period...`, 'warn');
-            setTimeout(() => { if (playerRef.current) safeSwitchServer(); }, 3000);
-          } else if ([1002, 6007, 3016].includes(error.code)) {
-            loggerRef.current?.addLog(`Fatal Error ${error.code}. Switching immediately...`, 'error');
-            safeSwitchServer();
+
+          // ⚠️ শাকা যদি নিজে রিট্রাই করতে পারে (Severity 1), আমরা মাঝখান থেকে ডিস্টার্ব করব না!
+          if (error && error.severity === 1) {
+            loggerRef.current?.addLog(`Minor glitch ${error.code} detected. Shaka internal engine is silently retrying...`, 'warn');
+            return;
+          }
+
+          // 🚨 শাকা যখন পুরোপুরি হাল ছেড়ে দিবে (Severity 2 - Critical), শুধু তখনই ফেইলওভার হবে!
+          if (error && error.severity === 2) {
+            const fatalCodes = [1001, 1002, 6007, 3016];
+            if (fatalCodes.includes(error.code)) {
+              loggerRef.current?.addLog(`Fatal Player Crash ${error.code}. Switching server...`, 'error');
+              safeSwitchServer();
+            } else {
+              loggerRef.current?.addLog(`Critical Error ${error.code} ignored as non-fatal code.`, 'warn');
+            }
           }
         };
 
@@ -274,4 +286,4 @@ export function useShakaEngine({
       if (stallIntervalRef.current) { clearInterval(stallIntervalRef.current); stallIntervalRef.current = null; }
     };
   }, [currentStreamUrl, activeStreamIndex, allServersDown]);
-          }
+}
