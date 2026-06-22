@@ -28,7 +28,7 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
         setStatusText('Buffering & Optimizing Stream...');
         setStatusType('info');
       } else if (message.includes('Autoplay deferred')) {
-        setStatusText('Click the Play button to start the stream');
+        setStatusText('Click the Play button to start');
         setStatusType('warn');
       }
     },
@@ -42,7 +42,7 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
     if (typeof window !== 'undefined') {
       const shareData = {
         title: matchTitle || 'Reborn Live Stream',
-        text: `🔥 Watch live match on All in one Reborn  : ${matchTitle || ''}`,
+        text: `🔥 Watch live match on Reborn Stream: ${matchTitle || ''}`,
         url: window.location.href,
       };
 
@@ -68,9 +68,9 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
     <div className="mt-6 w-full bg-gradient-to-br from-[#121421] to-[#0d0f19] rounded-3xl border border-gray-800 p-6 shadow-2xl transition-all duration-300">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         
-        {/* Left Side: Branding & Status */}
+        {/* Branding & Status */}
         <div className="flex items-center gap-5">
-          <div className="w-12 h-12 bg-gray-900 rounded-2xl flex items-center justify-center border border-gray-800 shrink-0">
+          <div className="w-12 h-12 bg-gray-900 rounded-2xl flex items-center justify-center border border-gray-800 shrink-0 shadow-inner">
             <span className="text-[10px] font-black text-[#00E5FF] tracking-widest uppercase">Reborn</span>
           </div>
           
@@ -90,7 +90,7 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
           </div>
         </div>
 
-        {/* Right Side: Action Button */}
+        {/* Action Button */}
         <button
           onClick={handleShare}
           className="px-6 py-3 bg-[#1C1F30] hover:bg-[#25283C] active:scale-95 text-xs font-black rounded-xl border border-gray-700/50 text-white flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-lg hover:border-[#00E5FF]/40 hover:text-[#00E5FF]"
@@ -106,7 +106,7 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
         </button>
       </div>
       
-      {/* Footer Branding */}
+      {/* Footer */}
       <div className="mt-6 pt-4 border-t border-gray-800/50 flex justify-between items-center text-[10px] text-gray-500 font-bold uppercase tracking-wider">
         <span>Powered by Reborn Engine</span>
         <span>Version 1.0.0</span>
