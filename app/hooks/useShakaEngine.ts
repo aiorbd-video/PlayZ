@@ -16,7 +16,7 @@ interface UseShakaEngineProps {
   getMimeType: (url: string) => string | undefined;
 }
 
-// 🎯 ৬. Better DRM Parsing Helper
+// 🎯 Better DRM Parsing Helper (ক্লিন এবং সলিড অবজেক্ট পার্সার)
 const parseClearKeys = (drmData: string | object | undefined): Record<string, string> => {
   if (!drmData) return {};
   try {
@@ -61,7 +61,7 @@ export function useShakaEngine({
   const playerInitRef = useRef<boolean>(false);
   const stallIntervalRef = useRef<any>(null);
 
-  // ১. প্লেয়ার ও ইউআই ওয়ান-টাইম ইনিশিয়ালাইজেশন
+  // ১. প্লেয়ার ও ইউআই ওয়ান-টাইম ইনিশিয়ালাইজেশন (ব্রাউজার লাইফসাইকেলে শুধু একবার হবে)
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || playerInitRef.current) return;
     playerInitRef.current = true;
@@ -83,13 +83,13 @@ export function useShakaEngine({
           addSeekBar: true,
         });
 
-        // 🎯 ৩, ৬ ও ৯: আপনার দেওয়া প্রো-লেভেল IPTV Config
+        // 🎯 প্রফেশনাল IPTV & DASH লাইভ স্ট্রিমিং কনফিগারেশন
         player.configure({
           streaming: {
             bufferingGoal: 12,
             rebufferingGoal: 2,
             bufferBehind: 20,
-            stallEnabled: false, // 🎯 ১. DASH timeline jump fix
+            stallEnabled: false, // DASH timeline jump ফিক্স করতে অফ রাখা হয়েছে
             retryParameters: {
               maxAttempts: 5,
               baseDelay: 1000,
@@ -102,28 +102,14 @@ export function useShakaEngine({
           },
           manifest: {
             dash: {
-              autoCorrectDrift: true // 🎯 ৬. DASH sync fix
+              autoCorrectDrift: true // DASH লাইভ স্ট্রিম সিঙ্ক ঠিক রাখার জন্য
             }
           }
         });
 
-        // 🎯 ৪. Networking Filter
-        const netEngine = player.getNetworkingEngine();
-        if (netEngine) {
-          netEngine.registerRequestFilter((type: any, request: any) => {
-            request.allowCrossSiteCredentials = true;
-            try {
-              if (navigator.userAgent) {
-                request.headers['User-Agent'] = navigator.userAgent;
-              }
-            } catch (e) {}
-          });
-        }
-
-        // 🎯 ৭. Memory Leak Fix (Proper Listener Management)
+        // 🎯 মেমোরি লিক ফিক্স (Proper Listener Management)
         const onBuffering = (e: any) => setIsBuffering(e.buffering);
 
-        // 🎯 ৪. retryStreaming() রিমুভ করা হয়েছে (Timeline Jump এড়াতে)
         const onError = async (event: any) => {
           const error = event.detail;
           const switchCodes = [1001, 1002, 6007, 3016];
@@ -139,6 +125,7 @@ export function useShakaEngine({
         player.addEventListener('buffering', onBuffering);
         player.addEventListener('error', onError);
 
+        // আনমাউন্ট করার সময় ক্লিনআপ লিসেনার স্টোর করা হলো
         playerRef.current.__cleanupListeners = () => {
           player.removeEventListener('buffering', onBuffering);
           player.removeEventListener('error', onError);
@@ -163,7 +150,7 @@ export function useShakaEngine({
     };
   }, [safeSwitchServer]);
 
-  // ২. স্ট্রিম লোড রানার
+  // ২. স্ট্রিম লোড রানার (সার্ভার সোয়াপ ইঞ্জিন)
   useEffect(() => {
     if (!playerRef.current || allServersDown || !currentStreamUrl || !streams?.length) return;
 
@@ -188,7 +175,7 @@ export function useShakaEngine({
 
         const mimeType = getMimeType(currentStreamUrl);
         
-        // 🎯 ৫. Fast Server Failover (20s Timeout)
+        // 🎯 ২০ সেকেন্ডের সেফ লোড টাইমাউট লিমিট (Promise Race)
         const loadPromise = playerRef.current.load(currentStreamUrl, null, mimeType);
         const timeoutPromise = new Promise((_, reject) => 
           setTimeout(() => reject(new Error('20s Load Timeout Limit Reached')), 20000)
@@ -204,7 +191,7 @@ export function useShakaEngine({
 
         if (isMounted) setIsBuffering(false);
 
-        // 🎯 ২. Smart Stall Detection (DASH specific fix)
+        // 🎯 স্মার্ট কাস্টম স্টল ডিটেকশন লজিক (DASH ফ্রেম ফ্রিজ প্রটেকশন)
         if (stallIntervalRef.current) clearInterval(stallIntervalRef.current);
         let lastTime = 0;
         let stallCount = 0;
@@ -228,7 +215,7 @@ export function useShakaEngine({
           }
           
           lastTime = video.currentTime;
-        }, 5000); // Check every 5 seconds, switch after 15 seconds of total stall
+        }, 5000); // প্রতি ৫ সেকেন্ডে চেক করবে, টানা ১৫ সেকেন্ড ফ্রিজ থাকলে তবেই সুইচ করবে
 
       } catch (err: any) {
         if (err.code === 7000 || err.code === 7002) {
