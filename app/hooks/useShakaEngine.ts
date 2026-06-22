@@ -16,7 +16,7 @@ interface UseShakaEngineProps {
   getMimeType: (url: string) => string | undefined;
 }
 
-// 🎯 Better DRM Parsing Helper (ক্লিন এবং সলিড অবজেক্ট পার্সার)
+// 🎯 Better DRM Parsing Helper
 const parseClearKeys = (drmData: string | object | undefined): Record<string, string> => {
   if (!drmData) return {};
   try {
@@ -61,7 +61,7 @@ export function useShakaEngine({
   const playerInitRef = useRef<boolean>(false);
   const stallIntervalRef = useRef<any>(null);
 
-  // ১. প্লেয়ার ও ইউআই ওয়ান-টাইম ইনিশিয়ালাইজেশন (ব্রাউজার লাইফসাইকেলে শুধু একবার হবে)
+  // ১. প্লেয়ার ও ইউআই ওয়ান-টাইম ইনিশিয়ালাইজেশন
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || playerInitRef.current) return;
     playerInitRef.current = true;
@@ -83,13 +83,12 @@ export function useShakaEngine({
           addSeekBar: true,
         });
 
-        // 🎯 প্রফেশনাল IPTV & DASH লাইভ স্ট্রিমিং কনফিগারেশন
         player.configure({
           streaming: {
             bufferingGoal: 12,
             rebufferingGoal: 2,
             bufferBehind: 20,
-            stallEnabled: false, // DASH timeline jump ফিক্স করতে অফ রাখা হয়েছে
+            stallEnabled: false, 
             retryParameters: {
               maxAttempts: 5,
               baseDelay: 1000,
@@ -102,30 +101,46 @@ export function useShakaEngine({
           },
           manifest: {
             dash: {
-              autoCorrectDrift: true // DASH লাইভ স্ট্রিম সিঙ্ক ঠিক রাখার জন্য
+              autoCorrectDrift: true 
             }
           }
         });
 
-        // 🎯 মেমোরি লিক ফিক্স (Proper Listener Management)
+        const netEngine = player.getNetworkingEngine();
+        if (netEngine) {
+          netEngine.registerRequestFilter((type: any, request: any) => {
+            request.allowCrossSiteCredentials = true;
+            try {
+              if (navigator.userAgent) {
+                request.headers['User-Agent'] = navigator.userAgent;
+              }
+            } catch (e) {}
+          });
+        }
+
         const onBuffering = (e: any) => setIsBuffering(e.buffering);
 
+        // 🎯 Error Handler with Grace Period for 1001
         const onError = async (event: any) => {
           const error = event.detail;
-          const switchCodes = [1001, 1002, 6007, 3016];
 
-          if (switchCodes.includes(error.code)) {
-            loggerRef.current?.addLog(`Fatal Error ${error.code}. Switching server...`, 'error');
+          if (error.code === 1001) {
+            loggerRef.current?.addLog(`Network Error 1001. Waiting 3s grace period...`, 'warn');
+            setTimeout(() => {
+              // ৩ সেকেন্ড পর যদি প্লেয়ার আনমাউন্ট না হয়ে থাকে, তবেই সুইচ করবে
+              if (playerRef.current) safeSwitchServer();
+            }, 3000);
+          } else if ([1002, 6007, 3016].includes(error.code)) {
+            loggerRef.current?.addLog(`Fatal Error ${error.code}. Switching immediately...`, 'error');
             safeSwitchServer();
           } else {
-            loggerRef.current?.addLog(`Recoverable/Ignored Error ${error.code}`, 'warn');
+            loggerRef.current?.addLog(`Recoverable Error ${error.code} (Ignored)`, 'warn');
           }
         };
 
         player.addEventListener('buffering', onBuffering);
         player.addEventListener('error', onError);
 
-        // আনমাউন্ট করার সময় ক্লিনআপ লিসেনার স্টোর করা হলো
         playerRef.current.__cleanupListeners = () => {
           player.removeEventListener('buffering', onBuffering);
           player.removeEventListener('error', onError);
@@ -150,13 +165,19 @@ export function useShakaEngine({
     };
   }, [safeSwitchServer]);
 
-  // ২. স্ট্রিম লোড রানার (সার্ভার সোয়াপ ইঞ্জিন)
+  // ২. স্ট্রিম লোড রানার
   useEffect(() => {
     if (!playerRef.current || allServersDown || !currentStreamUrl || !streams?.length) return;
 
     let isMounted = true;
 
     const loadStreamSource = async () => {
+      // 🎯 Timer Leak Fix: লোড শুরুর আগেই পুরোনো স্টল ইন্টারভাল খতম!
+      if (stallIntervalRef.current) {
+        clearInterval(stallIntervalRef.current);
+        stallIntervalRef.current = null;
+      }
+
       setIsBuffering(true);
       loggerRef.current?.addLog(`Loading Source: Server [${activeStreamIndex + 1}]`, 'info');
 
@@ -175,7 +196,6 @@ export function useShakaEngine({
 
         const mimeType = getMimeType(currentStreamUrl);
         
-        // 🎯 ২০ সেকেন্ডের সেফ লোড টাইমাউট লিমিট (Promise Race)
         const loadPromise = playerRef.current.load(currentStreamUrl, null, mimeType);
         const timeoutPromise = new Promise((_, reject) => 
           setTimeout(() => reject(new Error('20s Load Timeout Limit Reached')), 20000)
@@ -191,20 +211,29 @@ export function useShakaEngine({
 
         if (isMounted) setIsBuffering(false);
 
-        // 🎯 স্মার্ট কাস্টম স্টল ডিটেকশন লজিক (DASH ফ্রেম ফ্রিজ প্রটেকশন)
-        if (stallIntervalRef.current) clearInterval(stallIntervalRef.current);
+        // 🎯 Advanced Stall Detection (ReadyState + Buffered Range Check)
         let lastTime = 0;
         let stallCount = 0;
         
         stallIntervalRef.current = setInterval(() => {
           const video = videoRef.current;
           if (!video) return;
+
+          // Buffer Ahead ক্যালকুলেশন
+          const buffered = video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0;
+          const bufferAhead = buffered - video.currentTime;
+
+          const diff = video.currentTime - lastTime;
           
-          const diff = Math.abs(video.currentTime - lastTime);
-          
-          if (!video.paused && !video.seeking && diff < 0.05) {
+          if (
+            video.readyState >= 3 &&
+            !video.paused &&
+            !video.seeking &&
+            diff < 0.01 &&
+            bufferAhead < 10 // 🎯 বাফার ১০ সেকেন্ডের বেশি থাকলে স্টল কাউন্ট স্কিপ!
+          ) {
             stallCount++;
-            loggerRef.current?.addLog(`Stall warning ${stallCount}/3...`, 'warn');
+            loggerRef.current?.addLog(`Stall warning ${stallCount}/3 (Buffer: ${bufferAhead.toFixed(1)}s)...`, 'warn');
           } else {
             stallCount = 0;
           }
@@ -215,7 +244,7 @@ export function useShakaEngine({
           }
           
           lastTime = video.currentTime;
-        }, 5000); // প্রতি ৫ সেকেন্ডে চেক করবে, টানা ১৫ সেকেন্ড ফ্রিজ থাকলে তবেই সুইচ করবে
+        }, 5000);
 
       } catch (err: any) {
         if (err.code === 7000 || err.code === 7002) {
@@ -234,7 +263,10 @@ export function useShakaEngine({
     return () => {
       isMounted = false;
       clearTimeout(delayTimer);
-      if (stallIntervalRef.current) clearInterval(stallIntervalRef.current);
+      if (stallIntervalRef.current) {
+        clearInterval(stallIntervalRef.current);
+        stallIntervalRef.current = null;
+      }
     };
   }, [currentStreamUrl, activeStreamIndex, allServersDown, streams]);
 }
