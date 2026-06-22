@@ -100,6 +100,7 @@ export default function StreamPlayer({ id }: { id: string }) {
   const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { revalidateOnFocus: false });
 
   // 🎯 Smart Server Sorting: DASH (.mpd) সার্ভারগুলোকে লিস্টের আগে আনা হলো
+    // 🎯 Smart Server Sorting: DASH (.mpd) সার্ভারগুলোকে লিস্টের আগে আনা হলো
   const streams = useMemo<Stream[] | null>(() => {
     if (!streamsFromApi) return null;
     const rawList = Array.isArray(streamsFromApi) ? streamsFromApi : streamsFromApi.streams || [];
@@ -108,7 +109,8 @@ export default function StreamPlayer({ id }: { id: string }) {
       link: s.link || s.url || '', title: s.title, api: s.api,
     }));
 
-    return parsedStreams.sort((a, b) => {
+    // 🎯 ফিক্সড: a এবং b এর টাইপ Stream বলে দেওয়া হলো
+    return parsedStreams.sort((a: Stream, b: Stream) => {
       const aIsDash = a.link.includes('.mpd') ? 1 : 0;
       const bIsDash = b.link.includes('.mpd') ? 1 : 0;
       return bIsDash - aIsDash; // DASH সার্ভারগুলো লিস্টের শুরুতে চলে আসবে
