@@ -56,12 +56,17 @@ export function useShakaEngine({
         loggerRef.current?.addLog('Core: Creating pristine Shaka Instance...', 'info');
         
         shaka = await import('shaka-player/dist/shaka-player.ui');
-        
-        // 🎯 TS Ignore যোগ করা হলো কারণ p2p-media-loader-shaka এর টাইপ ফাইল নেই
-        // @ts-ignore
-        const { Engine: P2PEngine } = await import('p2p-media-loader-shaka');
-
         shaka.polyfill.installAll();
+
+        // 🎯 P2P সেফটি ব্লক (Graceful Degradation)
+        let P2PEngine: any = null;
+        try {
+          // @ts-ignore
+          const p2pModule = await import('p2p-media-loader-shaka');
+          P2PEngine = p2pModule.Engine || p2pModule.default?.Engine; 
+        } catch (p2pErr: any) {
+          loggerRef.current?.addLog(`P2P Engine skipped: ${p2pErr.message}`, 'warn');
+        }
 
         if (shaka.ui.Controls && !(shaka.ui.Controls as any).custom_stretch_registered) {
           class StretchButton extends shaka.ui.Element {
@@ -82,24 +87,23 @@ export function useShakaEngine({
         const player = new shaka.Player(videoRef.current);
         playerRef.current = player;
 
-        if (P2PEngine.isSupported()) {
-          p2pEngineRef.current = new P2PEngine({
-            segments: {
-              swarmId: currentStreamUrl || 'playz-live-swarm',
-            },
-            loader: {
-              cachedSegmentExpiration: 86400000,
-              cachedSegmentsCount: 50,
-            }
-          });
-          
-          p2pEngineRef.current.initShakaPlayer(player);
-          loggerRef.current?.addLog('🚀 P2P WebRTC Network Layer Injected!', 'success');
+        // 🎯 P2P কানেকশন ইনিশিয়ালাইজেশন
+        if (P2PEngine && P2PEngine.isSupported && P2PEngine.isSupported()) {
+          try {
+            p2pEngineRef.current = new P2PEngine({
+              segments: { swarmId: currentStreamUrl || 'playz-live-swarm' },
+              loader: { cachedSegmentExpiration: 86400000, cachedSegmentsCount: 50 }
+            });
+            p2pEngineRef.current.initShakaPlayer(player);
+            loggerRef.current?.addLog('🚀 P2P WebRTC Network Layer Injected!', 'success');
 
-          p2pEngineRef.current.on('peer_connect', () => loggerRef.current?.addLog('P2P: New Peer Connected!', 'info'));
-          p2pEngineRef.current.on('piece_bytes_downloaded', (method: string, bytes: number) => {
-            if (method === 'p2p') loggerRef.current?.addLog(`P2P: Downloaded ${(bytes / 1024).toFixed(1)} KB from peers!`, 'success');
-          });
+            p2pEngineRef.current.on('peer_connect', () => loggerRef.current?.addLog('P2P: New Peer Connected!', 'info'));
+            p2pEngineRef.current.on('piece_bytes_downloaded', (method: string, bytes: number) => {
+              if (method === 'p2p') loggerRef.current?.addLog(`P2P: Downloaded ${(bytes / 1024).toFixed(1)} KB from peers!`, 'success');
+            });
+          } catch (e: any) {
+            loggerRef.current?.addLog(`P2P setup failed: ${e.message}`, 'warn');
+          }
         }
 
         const ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
@@ -142,9 +146,10 @@ export function useShakaEngine({
         };
 
         loggerRef.current?.addLog('Live IPTV Engine Mounted successfully!', 'success');
-      } catch (err) {
+      } catch (err: any) {
         playerInitRef.current = false;
-        loggerRef.current?.addLog('Core Mount Failed!', 'error');
+        // 🎯 ফিক্সড: ক্র্যাশের আসল কারণটা লগে প্রিন্ট হবে
+        loggerRef.current?.addLog(`Core Mount Failed: ${err.message || err}`, 'error');
       }
     };
 
