@@ -39,11 +39,9 @@ export default function StreamPlayer({ id }: { id: string }) {
   const [failedServers, setFailedServers] = useState<Record<string, ServerFailureRecord>>({});
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  // 🎯 ObjectFit State
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
   const [showFitToast, setShowFitToast] = useState(false);
 
-  // ObjectFit টগল লিসেনার (Zoom/Stretch/Fill)
   const handleFitToggle = useCallback(() => {
     const fitModes = ['contain', 'cover', 'fill'] as const;
     setObjectFit((prev) => {
@@ -99,21 +97,21 @@ export default function StreamPlayer({ id }: { id: string }) {
 
   const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { revalidateOnFocus: false });
 
-  // 🎯 Smart Server Sorting: DASH (.mpd) সার্ভারগুলোকে লিস্টের আগে আনা হলো
-    // 🎯 Smart Server Sorting: DASH (.mpd) সার্ভারগুলোকে লিস্টের আগে আনা হলো
+  // 🎯 ফিক্সড: s.name কে টাইটেল হিসেবে বাইন্ড করা হলো যাতে সর্টিং এর পর নাম ওলটপালট না হয়
   const streams = useMemo<Stream[] | null>(() => {
     if (!streamsFromApi) return null;
     const rawList = Array.isArray(streamsFromApi) ? streamsFromApi : streamsFromApi.streams || [];
     
     const parsedStreams = rawList.filter((s: any) => s && (s.link || s.url)).map((s: any) => ({
-      link: s.link || s.url || '', title: s.title, api: s.api,
+      link: s.link || s.url || '', 
+      title: s.name || s.title || '', 
+      api: s.api,
     }));
 
-    // 🎯 ফিক্সড: a এবং b এর টাইপ Stream বলে দেওয়া হলো
     return parsedStreams.sort((a: Stream, b: Stream) => {
       const aIsDash = a.link.includes('.mpd') ? 1 : 0;
       const bIsDash = b.link.includes('.mpd') ? 1 : 0;
-      return bIsDash - aIsDash; // DASH সার্ভারগুলো লিস্টের শুরুতে চলে আসবে
+      return bIsDash - aIsDash;
     });
   }, [streamsFromApi]);
 
@@ -192,10 +190,8 @@ export default function StreamPlayer({ id }: { id: string }) {
             </div>
           )}
 
-          {/* 🎯 Video Tag with ObjectFit Style */}
           <video ref={videoRef} autoPlay playsInline className="w-full h-full" style={{ objectFit }} />
 
-          {/* 🎯 Fit Mode Toast Popup */}
           <AnimatePresence>
             {showFitToast && (
               <motion.div
@@ -215,7 +211,8 @@ export default function StreamPlayer({ id }: { id: string }) {
           <div className="flex gap-2 overflow-x-auto py-4 items-center scrollbar-hide">
             <span className="text-gray-400 font-bold text-xs uppercase mr-2">Servers:</span>
             {streams.map((stream, index) => {
-              const serverName = stream.title || currentMatch?.eventInfo.link_names?.[index] || `Server ${index + 1}`;
+              // 🎯 ফিক্সড: সরাসরি অবজেক্ট থেকে ম্যাপড টাইটেল রিড করা হচ্ছে
+              const serverName = stream.title || `Server ${index + 1}`;
               return (
                 <button key={index} onClick={() => handleManualSwitch(index)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap border ${activeStreamIndex === index && !allServersDown ? 'bg-[#1C1E2B] border-[#00E5FF] text-white' : 'bg-[#1C1E2B] border-gray-700/50 text-gray-400'}`}>
                   {serverName}
@@ -238,4 +235,4 @@ export default function StreamPlayer({ id }: { id: string }) {
       }} />
     </main>
   );
-}
+      }
