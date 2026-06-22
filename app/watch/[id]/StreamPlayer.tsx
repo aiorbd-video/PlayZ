@@ -222,7 +222,7 @@ export default function StreamPlayer({ id }: { id: string }) {
           </div>
         )}
 
-        <PlayerLogs ref={loggerRef} matchTitle={matchTitle || 'Live Event'} />
+       <PlayerLogs ref={loggerRef} matchTitle={matchTitle || 'Live Event'} matchObj={currentMatch} />
 
       </div>
 
