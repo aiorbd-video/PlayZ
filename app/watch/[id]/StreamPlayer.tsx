@@ -3,43 +3,15 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
 
-// ============================================================================
-// TYPE DEFINITIONS
-// ============================================================================
+import { PlayerLogs, PlayerLogsHandle } from './PlayerLogs';
+import { useShakaEngine } from '../hooks/useShakaEngine';
 
-interface Stream {
-  title?: string;
-  link: string;
-  api?: string;
-}
-
-interface EventInfo {
-  eventCat: string;
-  eventName: string;
-  teamA: string;
-  teamB: string;
-  startTime: string;
-  endTime: string;
-  link_names?: string[];
-}
-
-interface Match {
-  id: number | string;
-  eventInfo: EventInfo;
-  links?: string;
-}
-
-interface ServerFailureRecord {
-  time: number;
-  attempts: number;
-}
-
-// ============================================================================
-// CONSTANTS & HELPERS
-// ============================================================================
+interface Stream { title?: string; link: string; api?: string; }
+interface EventInfo { eventCat: string; eventName: string; teamA: string; teamB: string; startTime: string; endTime: string; link_names?: string[]; }
+interface Match { id: number | string; eventInfo: EventInfo; links?: string; }
+interface ServerFailureRecord { time: number; attempts: number; }
 
 const LIVE_EVENTS_API = 'https://ratulxadia-playz-cats-event.hf.space/api/events';
 const STREAM_API_BASE = 'https://ratulxadia-playz-cats-event.hf.space/api/stream/';
@@ -51,80 +23,11 @@ const CONFIG = {
 
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 
-// ============================================================================
-// LOG OVERLAY COMPONENT
-// ============================================================================
-
-export interface PlayerLogsHandle {
-  addLog: (message: string, type?: 'info' | 'success' | 'error' | 'warn') => void;
-  clearLogs: () => void;
-}
-
-import { forwardRef, useImperativeHandle } from 'react';
-
-const PlayerLogs = forwardRef<PlayerLogsHandle>((_, ref) => {
-  const [logs, setLogs] = useState<{ id: string; msg: string; type: string; time: string }[]>([]);
-
-  useImperativeHandle(ref, () => ({
-    addLog: (message: string, type = 'info') => {
-      const timeStr = new Date().toLocaleTimeString();
-      setLogs((prev) => [
-        { id: Math.random().toString(), msg: message, type, time: timeStr },
-        ...prev.slice(0, 49),
-      ]);
-    },
-    clearLogs: () => setLogs([]),
-  }));
-
-  if (logs.length === 0) {
-    return (
-      <div className="mt-4 p-4 bg-[#1C1E2B] rounded-xl border border-gray-800 text-center text-xs text-gray-500">
-        No active logs yet. Waiting for player actions...
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-4 bg-[#1C1E2B] rounded-xl border border-gray-800 overflow-hidden shadow-inner">
-      <div className="p-3 bg-gray-950/40 border-b border-gray-800 flex justify-between items-center">
-        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-          Shaka Engine Live Logs
-        </span>
-        <button onClick={() => setLogs([])} className="text-[11px] text-gray-500 hover:text-white bg-gray-900 px-2 py-1 rounded border border-gray-800">
-          Clear Logs
-        </button>
-      </div>
-      <div className="p-3 max-h-[220px] overflow-y-auto font-mono text-[11px] space-y-1.5 scrollbar-hide">
-        {logs.map((log) => {
-          let typeColor = 'text-gray-300';
-          if (log.type === 'success') typeColor = 'text-green-400 font-semibold';
-          if (log.type === 'error') typeColor = 'text-red-400 font-bold';
-          if (log.type === 'warn') typeColor = 'text-yellow-400';
-          return (
-            <div key={log.id} className="flex gap-2 items-start border-b border-gray-800/30 pb-1">
-              <span className="text-gray-600 shrink-0">[{log.time}]</span>
-              <span className={typeColor}>{log.msg}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-});
-PlayerLogs.displayName = 'PlayerLogs';
-
-// ============================================================================
-// MAIN COMPONENT DEFINITION
-// ============================================================================
-
 export default function StreamPlayer({ id }: { id: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const loggerRef = useRef<PlayerLogsHandle>(null);
-  
-  const playerRef = useRef<any>(null);
-  const uiRef = useRef<any>(null);
+
   const streamsRef = useRef<Stream[] | null>(null);
   const lastFailoverTimeRef = useRef(0);
 
@@ -195,12 +98,12 @@ export default function StreamPlayer({ id }: { id: string }) {
       const list = streamsRef.current;
       if (!list) return prevIndex;
       
-      loggerRef.current?.addLog(`Server ${prevIndex} failure registered. Finding next stream...`, 'warn');
+      loggerRef.current?.addLog(`Server [${prevIndex}] stream dead. Swapping link...`, 'warn');
       setFailedServers((p) => ({ ...p, [prevIndex]: { time: Date.now(), attempts: (p[prevIndex]?.attempts || 0) + 1 } }));
 
       const nextIdx = (prevIndex + 1) % list.length;
       if (nextIdx === 0) {
-        loggerRef.current?.addLog('All parsed source options returned errors.', 'error');
+        loggerRef.current?.addLog('Matrix Status: All clearkey options returned runtime errors.', 'error');
         setAllServersDown(true);
         setIsBuffering(false);
       }
@@ -208,93 +111,13 @@ export default function StreamPlayer({ id }: { id: string }) {
     });
   }, []);
 
-  // UNIFIED STREAMING CORE ENGINE
-  useEffect(() => {
-    if (!videoRef.current || !videoContainerRef.current || allServersDown || !currentStreamUrl || !streams?.length) {
-      return;
-    }
-
-    let shaka: any; let player: any; let ui: any;
-    let isMounted = true;
-
-    const startStreaming = async () => {
-      setIsBuffering(true);
-      loggerRef.current?.addLog(`Engine Initializing for Server index: ${activeStreamIndex}`, 'info');
-
-      try {
-        if (uiRef.current) { uiRef.current.destroy(); uiRef.current = null; }
-        if (playerRef.current) { await playerRef.current.destroy(); playerRef.current = null; }
-
-        shaka = await import('shaka-player/dist/shaka-player.ui');
-        if (!isMounted) return;
-        shaka.polyfill.installAll();
-
-        player = new shaka.Player(videoRef.current);
-        playerRef.current = player;
-
-        ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
-        uiRef.current = ui;
-        ui.configure({
-          controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'fullscreen'],
-          addSeekBar: true,
-        });
-
-        player.configure({
-          streaming: {
-            bufferingGoal: 10, rebufferingGoal: 1, bufferBehind: 15,
-            startAtSegmentBoundary: true, jumpLargeGaps: true,
-            retryParameters: { maxAttempts: 5, baseDelay: 400, timeout: 8000 }
-          }
-        });
-
-        player.addEventListener('buffering', (e: any) => { if (isMounted) setIsBuffering(e.buffering); });
-        player.addEventListener('error', () => { if (isMounted) safeSwitchServer(); });
-
-        const currentStream = streams[activeStreamIndex];
-        const newDrmApi = currentStream?.api || '';
-        const clearKeysObj: Record<string, string> = {};
-        let parsedData: any = newDrmApi;
-
-        if (typeof newDrmApi === 'string' && newDrmApi.trim().startsWith('{')) {
-          try { parsedData = JSON.parse(newDrmApi.trim()); } catch (e) {}
-        }
-
-        if (typeof parsedData === 'object' && parsedData !== null) {
-          Object.entries(parsedData).forEach(([k, v]) => {
-            const cleanKid = k.replace(/['"\s{}:]/g, '');
-            const cleanKey = String(v).replace(/['"\s{}:]/g, '');
-            if (cleanKid && cleanKey) clearKeysObj[cleanKid] = cleanKey;
-          });
-        } else if (typeof parsedData === 'string' && parsedData.includes(':')) {
-          const parts = parsedData.replace(/['"\s{}]/g, '').split(':');
-          if (parts.length === 2) clearKeysObj[parts[0]] = parts[1];
-        }
-
-        if (Object.keys(clearKeysObj).length > 0) {
-          loggerRef.current?.addLog(`Injecting extracted ClearKeys: ${JSON.stringify(clearKeysObj)}`, 'success');
-          player.configure({ drm: { clearKeys: clearKeysObj } });
-        }
-
-        const mimeType = getMimeType(currentStreamUrl);
-        await player.load(currentStreamUrl, null, mimeType);
-        
-        if (videoRef.current && isMounted) {
-          videoRef.current.play().catch(() => {});
-        }
-        if (isMounted) setIsBuffering(false);
-
-      } catch (err: any) {
-        loggerRef.current?.addLog(`Critical Error: ${err.message || err}`, 'error');
-        if (isMounted) safeSwitchServer();
-      }
-    };
-
-    startStreaming();
-    return () => { isMounted = false; };
-  }, [currentStreamUrl, activeStreamIndex, allServersDown, streams, safeSwitchServer]);
+  useShakaEngine({
+    currentStreamUrl, activeStreamIndex, streams, allServersDown,
+    videoRef, videoContainerRef, loggerRef, setIsBuffering, safeSwitchServer, getMimeType
+  });
 
   const handleManualSwitch = (idx: number) => {
-    loggerRef.current?.addLog(`User switched to Server: ${idx + 1}`, 'info');
+    loggerRef.current?.addLog(`Manual Server Swap Triggered to Pipe index: ${idx}`, 'info');
     setAllServersDown(false);
     setActiveStreamIndex(idx);
   };
