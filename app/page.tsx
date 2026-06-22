@@ -61,7 +61,7 @@ export default function Home() {
     } catch (err) { console.log('Share error', err); }
   };
 
-  const { data: rawMatches } = useSWR(LIVE_EVENTS_API, fetcher, { refreshInterval: 30000, revalidateOnFocus: false, dedupingInterval: 15000 });
+  const { data: rawMatches } = useSWR(LIVE_EVENTS_API, fetcher, { refreshInterval: 90000, revalidateOnFocus: false, dedupingInterval: 15000 });
   const { data: channelData } = useSWR('/api/channels', fetcher, { refreshInterval: 60000, revalidateOnFocus: false, revalidateOnReconnect: true, dedupingInterval: 20000 });
   const { data: m3uData } = useSWR('/api/m3u', fetcher, { refreshInterval: 90000, revalidateOnFocus: false, dedupingInterval: 30000 });
   
