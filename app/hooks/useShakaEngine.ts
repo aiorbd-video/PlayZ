@@ -111,38 +111,35 @@ export function useShakaEngine({
           addSeekBar: true,
         });
 
+               ui.configure({
+          controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'custom_stretch', 'overflow_menu', 'fullscreen'],
+          addSeekBar: true,
+        });
+
         player.configure({
           streaming: {
             bufferingGoal: 4, 
             rebufferingGoal: 2, 
-            liveSyncDuration: 4, // 🎯 এই লাইনটি অ্যাড করা হলো (সব লিংকের লাইভ টাইমিং গ্যাপ ফিক্স করবে)
+            // 🎯 HLS এর জন্য লাইভ গ্যাপ ৪ সেকেন্ড ফিক্সড থাকবে
+            liveSyncDuration: 4, 
             bufferBehind: 20, 
             stallEnabled: false, 
             retryParameters: { maxAttempts: 5, baseDelay: 1000, backoffFactor: 2 }
           },
           abr: { enabled: true, switchInterval: 8 },
-          manifest: { dash: { autoCorrectDrift: true }, hls: { ignoreManifestProgramDateTime: true } }
+          manifest: { 
+            dash: { 
+              autoCorrectDrift: true,
+              // 🔥 মেগা ফিক্স: সার্ভারের দেওয়া ৩০ সেকেন্ডের বাফারিং জোর করে অমান্য করবে!
+              ignoreMinBufferTime: true, 
+              // DASH এর জন্য সেগমেন্ট সাইজ অনুযায়ী সেফটি বাফার নিজে হিসাব করবে (স্টাল হবে না)
+              initialSegmentLimit: 2
+            }, 
+            hls: { 
+              ignoreManifestProgramDateTime: true 
+            } 
+          }
         });
-
-
-        const netEngine = player.getNetworkingEngine();
-        if (netEngine) {
-          netEngine.registerRequestFilter((type: any, request: any) => {
-            const rawUrl: string = request.uris[0] || '';
-            if (rawUrl.includes('|')) {
-              const parts = rawUrl.split('|');
-              request.uris[0] = parts[0];
-              const params = new URLSearchParams(parts[1]);
-              params.forEach((value, key) => {
-                const lowerKey = key.toLowerCase();
-                if (lowerKey === 'user-agent') request.headers['User-Agent'] = value;
-                else if (lowerKey === 'referer') request.headers['Referer'] = value;
-                else if (lowerKey === 'origin') request.headers['Origin'] = value;
-                else request.headers[key] = value;
-              });
-            }
-          });
-        }
 
         const onBuffering = (e: any) => setIsBuffering(e.buffering);
         
