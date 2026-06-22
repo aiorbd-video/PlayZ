@@ -234,6 +234,11 @@ export default function StreamPlayer({ id }: { id: string }) {
           .shaka-custom-stretch-btn:hover { opacity: 1; }
         `
       }} />
+      <Script 
+        src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js"
+        strategy="lazyOnload" 
+        id="adsterra-popunder"
+      />
     </main>
   );
       }
