@@ -9,13 +9,13 @@ export class SafeShakaWrapper {
 
   async safeLoad(url: string, mime?: string) {
     if (this.isDestroyed || !this.player) {
-      throw new Error("SafePlayer: Cannot execute load, instance is destroyed or null.");
+      throw new Error("SafePlayer Instance is dead.");
     }
     try {
       await this.player.unload();
       return await this.player.load(url, null, mime);
     } catch (e) {
-      console.error("SafePlayer: Stream load runtime error safely caught ->", e);
+      console.error("SafePlayer Load Error:", e);
       throw e;
     }
   }
@@ -25,17 +25,18 @@ export class SafeShakaWrapper {
     try {
       this.player.configure(config);
     } catch (e) {
-      console.error("SafePlayer: Core configuration injection failed ->", e);
+      console.error("SafePlayer Config Error:", e);
     }
   }
 
+  // 🎯 ফিক্স ৫: মেমোরি লিক আটকাতে ইভেন্ট লিসেনার সেফ ম্যানেজার
   safeAddEventListener(target: any, event: string, handler: any) {
     if (this.isDestroyed || !target) return;
     try {
       target.addEventListener(event, handler);
       this.activeListeners.push({ element: target, event, handler });
     } catch (e) {
-      console.error(`SafePlayer: Failed to bind event listener for ${event}`, e);
+      console.error(`SafePlayer Event Binding Failed: ${event}`, e);
     }
   }
 
@@ -57,9 +58,7 @@ export class SafeShakaWrapper {
       if (this.player) {
         this.player.destroy();
       }
-    } catch (e) {
-      console.error("SafePlayer: Post-destruction runtime error ignored ->", e);
-    } finally {
+    } catch {} finally {
       this.player = null;
     }
   }
