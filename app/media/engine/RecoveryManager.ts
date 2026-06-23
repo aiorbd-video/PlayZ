@@ -1,4 +1,6 @@
-import { PlayerLogsHandle } from '../../../../components/PlayerLogs';
+// 🟢 এটি একদম নিশ্চিতভাবে কাজ করবে:
+import { PlayerLogsHandle } from '@/app/components/PlayerLogs';
+
 
 export class RecoveryManager {
   private static lastSwitchTimestamp = 0;
