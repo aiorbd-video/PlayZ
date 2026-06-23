@@ -1,4 +1,93 @@
-// 🛑 ১. পিওর স্টল ডিটেক্টর (কোনো ম্যাথ ফাঁদ নেই)
+'use client';
+
+// 🎯 ১. ইন্টারফেসসমূহ
+export interface Stream {
+  title?: string;
+  link: string;
+  api?: string;
+}
+
+export interface ServerStat {
+  url: string;
+  successCount: number;
+  failCount: number;
+  stallCount: number;
+  totalLoadTime: number;
+  lastUsed: number;
+  avgLoadTime?: number;
+}
+
+// 🎯 ২. সার্ভার র‍্যাংকার
+export class ServerRanker {
+  private static stats = new Map<string, ServerStat>();
+
+  static getScore(url: string): number {
+    const s = this.stats.get(url);
+    if (!s) return 50;
+    const total = s.successCount + s.failCount;
+    const successRate = total ? s.successCount / total : 1;
+    const stability = 1 - s.stallCount / (s.successCount + 1);
+    const avgTime = s.successCount > 0 ? s.totalLoadTime / s.successCount : 1.0;
+    const speed = Math.max(0, 1 - avgTime / 5);
+    return successRate * 60 + stability * 25 + speed * 15;
+  }
+
+  static recordSuccess(url: string, t: number) {
+    const s = this.stats.get(url) || {
+      url, successCount: 0, failCount: 0, stallCount: 0, totalLoadTime: 0, lastUsed: Date.now(),
+    };
+    s.successCount++;
+    s.totalLoadTime += t;
+    s.lastUsed = Date.now();
+    this.stats.set(url, s);
+  }
+
+  static recordFailure(url: string) {
+    const s = this.stats.get(url);
+    if (!s) return;
+    s.failCount++;
+    s.lastUsed = Date.now();
+  }
+
+  static recordStall(url: string) {
+    const s = this.stats.get(url);
+    if (!s) return;
+    s.stallCount++;
+  }
+
+  static pickBest(streams: Stream[]): number {
+    let best = 0;
+    let bestScore = -Infinity;
+    streams.forEach((s, i) => {
+      const score = this.getScore(s.link);
+      if (score > bestScore) {
+        bestScore = score;
+        best = i;
+      }
+    });
+    return best;
+  }
+}
+
+// 🎯 ৩. নেটওয়ার্ক এআই
+export class NetworkAI {
+  private static history: number[] = [];
+  static push(bw: number) {
+    this.history.push(bw);
+    if (this.history.length > 6) this.history.shift();
+  }
+  static trend(): 'stable' | 'down' | 'up' {
+    if (this.history.length < 3) return 'stable';
+    const a = this.history[this.history.length - 1];
+    const b = this.history[this.history.length - 2];
+    const c = this.history[this.history.length - 3];
+    if (a < b && b < c) return 'down';
+    if (a > b && b > c) return 'up';
+    return 'stable';
+  }
+}
+
+// 🛑 ৪. পিওর স্টল ডিটেক্টর (কোনো ম্যাথ ফাঁদ নেই)
 export class StallDetector {
   static check(video: HTMLVideoElement, lastTime: number): boolean {
     if (!video) return false;
@@ -20,7 +109,7 @@ export class StallDetector {
   }
 }
 
-// 🧠 ২. টার্মিনেটর স্ট্রিম ব্রেইন (ডেড হলে ১০০% সার্ভার সুইচ করবে)
+// 🧠 ৫. টার্মিনেটর স্ট্রিম ব্রেইন (ডেড হলে ১০০% সার্ভার সুইচ করবে)
 export class StreamBrain {
   private static deadCounter = 0;
   private static lastTime = -1;
