@@ -1,17 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-// 🟢 এটি একদম নিশ্চিতভাবে কাজ করবে:
+// 🟢 Absolute Path Alias configured safely
 import { PlayerLogsHandle } from '@/app/components/PlayerLogs';
 
-import { Stream } from '../types/media';
+// 🎯 ১. আপনার নতুন গুছানো PlayzEngine থেকে মডিউলসমূহ ইমপোর্ট করা হলো
+import { Stream, ServerRanker, NetworkAI, StreamBrain } from '../PlayzEngine';
 import { parseClearKeys } from '../drm/parseClearKeys';
 import { SafeShakaWrapper } from '../engine/SafePlayer';
-import { NetworkManager } from '../engine/NetworkManager';
-import { BufferManager } from '../engine/BufferManager';
-import { StallDetector } from '../engine/StallDetector';
-import { RecoveryManager } from '../engine/RecoveryManager';
-import { ServerRanker } from '../engine/ServerRanker';
 
 interface UseShakaEngineProps {
   currentStreamUrl: string | null;
@@ -38,10 +34,10 @@ export function useShakaEngine({
   const initInProgressRef = useRef<boolean>(false);
   const isCurrentlyLoadingRef = useRef<boolean>(false);
   
-  // 🎯 ফিক্স ২: আরএএফ রিমুভড, পিউর ১ সেকেন্ড রেজোলিউশন ওয়াচডগ প্রিভিয়াস রেফারেন্স
+  // 🎯 পিউর ১ সেকেন্ড রেজোলিউশন ওয়াচডগ প্রিভিয়াস রেফারেন্স
   const previousTimeRef = useRef<number>(0);
   
-  // 🎯 ফিক্স ১: ক্লোজার বাগ এবং মাউন্ট টাইমের ওল্ড ইউআরএল লক ভাঙার জন্য লেটেস্ট ইউআরএল রেফ
+  // 🎯 ক্লোজার বাগ প্রোটেকশন লেটেস্ট ইউআরএল রেফ
   const latestStreamUrlRef = useRef<string | null>(null);
   const lastLoadedIndexRef = useRef<number | null>(null);
   const lastLoadedBaseUrlRef = useRef<string | null>(null);
@@ -62,16 +58,16 @@ export function useShakaEngine({
       try {
         loggerRef.current?.addLog('Core Engine: Mounting Secure Modular Stack...', 'info');
         const shaka: any = await import('shaka-player/dist/shaka-player.ui');
-if (shaka.polyfill) {
-  shaka.polyfill.installAll();
-}
-
+        
+        if (shaka.polyfill) {
+          shaka.polyfill.installAll();
+        }
 
         const player = new shaka.Player(videoRef.current);
         playerRef.current = player;
         wrapperRef.current = new SafeShakaWrapper(player);
 
-        // রিকোয়েস্ট ফিল্টারে ক্লোজার বাগ ফিক্সড (ইউআরএল চেঞ্জ হলে ইনস্ট্যান্ট রেফ আপডেট পাবে)
+        // রিকোয়েস্ট ফিল্টারে ক্লোজার বাগ ফিক্সড
         player.getNetworkingEngine().registerRequestFilter((type: number, request: any) => {
           if (request._patched) return;
           request._patched = true;
@@ -95,15 +91,9 @@ if (shaka.polyfill) {
           manifest: { dash: { autoCorrectDrift: true, ignoreMinBufferTime: true } }
         });
 
-        // 🎯 ফিক্স ৫: মেমোরি লিক আটকাতে wrapper.safeAddEventListener ব্যবহার
+        // মেমোরি লিক আটকাতে safeAddEventListener ব্যবহার
         wrapperRef.current.safeAddEventListener(player, 'buffering', (e: any) => setIsBuffering(e.buffering));
-        wrapperRef.current.safeAddEventListener(player, 'error', (event: any) => {
-          if (event.detail && [6007, 3016, 3014].includes(event.detail.code)) {
-            if (latestStreamUrlRef.current) ServerRanker.recordFailure(latestStreamUrlRef.current);
-            RecoveryManager.handleLayeredRecovery(15, videoRef.current, playerRef.current, wrapperRef.current, loggerRef, safeSwitchServer);
-          }
-        });
-
+        
         setIsEngineReady(true);
       } catch (err: any) {
         initInProgressRef.current = false;
@@ -151,7 +141,7 @@ if (shaka.polyfill) {
         lastLoadedIndexRef.current = activeStreamIndex;
         lastLoadedBaseUrlRef.current = cleanBaseUrl;
 
-        // 🎯 ফিক্স ৭: ৩০ সেকেন্ডের প্রোডাকশন লোড টাইমআউট লিমিট রেস রেস্টোরড
+        // ৩০ সেকেন্ডের প্রোডাকশন লোড টাইমআউট লিমিট রেস রেস্টোরড
         const loadPromise = wrapperRef.current?.safeLoad(currentStreamUrl, mimeType);
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('30s Load Timeout')), 30000));
         await Promise.race([loadPromise, timeoutPromise]);
@@ -160,6 +150,7 @@ if (shaka.polyfill) {
           try {
             await videoRef.current.play();
             loggerRef.current?.addLog('Playback live on-screen!', 'success');
+            // 🎯 সাকসেস রেকর্ড সিঙ্ক
             ServerRanker.recordSuccess(currentStreamUrl, (Date.now() - startTime) / 1000);
           } catch {
             setTimeout(() => { videoRef.current?.play().catch(() => {}); }, 1500);
@@ -168,50 +159,55 @@ if (shaka.polyfill) {
 
         if (isMounted) setIsBuffering(false);
 
-        let stallCount = 0;
         if (coreWatchdogRef.current) clearInterval(coreWatchdogRef.current);
 
-        // 🎯 প্রোডাকশন ১ সেকেন্ড (1000ms) লাইটওয়েট ওয়াচডগ ব্যবধান
+        // 🎯 প্রোডাকশন ১ সেকেন্ড (1000ms) লাইটওয়েট ওয়াচডগ এবং নিউ স্ট্রিম ব্রেইন লুপ সংযোগ
         coreWatchdogRef.current = setInterval(() => {
           const video = videoRef.current;
-          if (!video || !playerRef.current) return;
+          const player = playerRef.current;
+          if (!video || !player) return;
 
-          // ১. নেটওয়ার্ক অ্যাডাপ্টেশন এস্টিমেটর
-          NetworkManager.applySmartABREngine(wrapperRef.current, playerRef.current, loggerRef);
+          let stats: any = {};
+          try {
+            if (typeof player.getStats === 'function') {
+              stats = player.getStats() || {};
+            }
+          } catch {}
 
-          // ২. এমপিডি লাইভ ম্যানিফেস্ট ফ্রিজ কন্ট্রোলার ট্র্যাকিং
-          const isManifestAdvancing = BufferManager.checkManifestAdvancement(video, playerRef.current, loggerRef);
-          if (!isManifestAdvancing) {
-            stallCount = 15; // Force failover condition for broken manifest timelines
-            ServerRanker.recordFailure(currentStreamUrl);
-            RecoveryManager.handleLayeredRecovery(stallCount, video, playerRef.current, wrapperRef.current, loggerRef, safeSwitchServer);
-            return;
-          }
+          const buffer = video.buffered.length > 0
+            ? Math.max(0, video.buffered.end(video.buffered.length - 1) - video.currentTime)
+            : 0;
 
-          // ৩. পিউর ওয়াচডগ প্রিভিয়াস রেফারেন্স ফিল্টার চেক
-          const prevTime = previousTimeRef.current;
-          const isStalled = StallDetector.checkIsStalled(video, prevTime, playerRef.current);
+          const drop = stats.totalVideoFrames > 0
+            ? stats.droppedVideoFrames / stats.totalVideoFrames
+            : 0;
 
-          if (isStalled) {
-            stallCount++;
+          const latency = stats.liveLatency || 0;
+          const bandwidth = stats.estimatedBandwidth || 4000000;
+
+          // ১. নেটওয়ার্ক এনালিটিক্স ডাটা পুশ
+          NetworkAI.push(bandwidth);
+
+          // ২. সার্ভার র্যাংকিংয়ে স্টল ইন্টেলিজেন্স ফিড
+          if (buffer < 0.35) {
             ServerRanker.recordStall(currentStreamUrl);
-            loggerRef.current?.addLog(`Watchdog Alert: Core Lagged. Level [${stallCount}/15]`, 'warn');
-            
-            // ৪. ৫-স্তরের প্রগ্রেসিভ লেয়ারড রিকভারি এক্সিকিউশন
-            RecoveryManager.handleLayeredRecovery(stallCount, video, playerRef.current, wrapperRef.current, loggerRef, safeSwitchServer);
-          } else {
-            // ফ্লিপ-ফ্লপ বাস্ট রুখতে স্মুথ ডিক্রিজ মেকানিজম
-            stallCount = Math.max(0, stallCount - 1);
           }
 
-          previousTimeRef.current = video.currentTime;
+          // ৩. নিউ সেন্ট্রাল স্ট্রিম ব্রেইন গ্লোবাল কন্ট্রোল ফিড
+          StreamBrain.update({
+            video,
+            buffer,
+            drop,
+            latency,
+            safeSwitch: safeSwitchServer,
+          });
+
         }, 1000);
 
       } catch (err: any) {
         ServerRanker.recordFailure(currentStreamUrl);
         if (isMounted) safeSwitchServer();
       } finally {
-        // 🔥 ফিক্সড: 'declare' এর ভুল কেটে এখানে আদর্শ 'finally' ব্লক বসানো হলো
         isCurrentlyLoadingRef.current = false;
       }
     };
