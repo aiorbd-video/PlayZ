@@ -1,23 +1,30 @@
 export class StallDetector {
-  private static lastCheckTime = 0;
+  private static lastCheckedTime = 0;
+  private static lastFrameCount = 0;
 
-  static checkIsStalled(video: HTMLVideoElement, lastTime: number): boolean {
+  static checkIsStalled(video: HTMLVideoElement, lastTime: number, playerInstance: any): boolean {
     if (!video) return false;
 
     const now = Date.now();
-    if (now - this.lastCheckTime < 1000) return false; // ১ সেকেন্ডের নিচে ফ্রিকোয়েন্সি ফিল্টারিং
-    this.lastCheckTime = now;
+    if (now - this.lastCheckedTime < 1000) return false; // Throttled at 1 second core intervals
+    this.lastCheckedTime = now;
 
     const buffered = video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0;
     const bufferAhead = buffered - video.currentTime;
-    
-    // স্যামসাং টিজেন ও এলজি ওয়েবওএস টিভি ফ্রেন্ডলি জেনুইন হার্ডওয়্যার বাফার ল্যাক চেক
-    const networkBad = video.readyState === 0 && video.buffered.length === 0;
-    const isBufferActuallyBad = networkBad || (video.readyState < 2 && bufferAhead < 0.45 && video.currentTime > 0);
-    
-    const isPlaybackFrozen = Math.abs(video.currentTime - lastTime) < 0.001;
-    const hasStartedAndStuck = isPlaybackFrozen && !video.paused && video.readyState < 3;
 
-    return isBufferActuallyBad || hasStartedAndStuck;
+    // Check frame dropping metrics using raw HTML5 Media Engine
+    let framesStuck = false;
+    if (typeof video.getVideoPlaybackQuality === 'function') {
+      const q = video.getVideoPlaybackQuality();
+      if (q && q.totalVideoFrames === this.lastFrameCount && !video.paused && video.currentTime > 0) {
+        framesStuck = true;
+      }
+      if (q) this.lastFrameCount = q.totalVideoFrames;
+    }
+
+    const isFrozen = Math.abs(video.currentTime - lastTime) < 0.01;
+    const isStarving = video.readyState < 2 && bufferAhead < 0.4 && !video.paused;
+
+    return (isFrozen && !video.paused && video.currentTime > 0) || isStarving || framesStuck;
   }
 }
