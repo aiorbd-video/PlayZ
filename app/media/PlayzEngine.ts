@@ -84,16 +84,17 @@ export class NetworkAI {
   }
 }
 
+// 🎯 ফিক্সড: স্টল ডিটেক্টর (এখন ০ সেকেন্ডেও কাজ করবে)
 export class StallDetector {
   static check(video: HTMLVideoElement, lastTime: number): boolean {
-    if (!video || video.paused || video.currentTime === 0) return false;
+    if (!video || video.paused) return false;
+
     const buffered = video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0;
     const bufferAhead = Math.max(0, buffered - video.currentTime);
-    const threshold = bufferAhead > 2 ? 0.15 : 0.45;
     const timeDelta = Math.abs(video.currentTime - lastTime);
-    const frozen = ((video.readyState < 3 && timeDelta < 0.015) || (video.readyState >= 3 && timeDelta < 0.005));
-    const starving = video.readyState < 2 && bufferAhead < threshold;
-    return (frozen && bufferAhead < 0.3) || starving;
+
+    // ভিডিও প্লে করা আছে কিন্তু টাইম এগোচ্ছে না এবং বাফার কম
+    return timeDelta < 0.01 && bufferAhead < 0.5;
   }
 }
 
@@ -109,19 +110,30 @@ export class QoEEngine {
   }
 }
 
+// 🎯 ফিক্সড: স্ট্রিম ব্রেইন (লাফালাফি বন্ধ এবং সঠিক সময়ে সার্ভার সুইচ)
 export class StreamBrain {
   private static stallCount = 0;
   private static lastTime = 0;
   private static lastSwitch = 0;
-  private static microSeekCooldown = 0;
+  private static startupStall = 0;
 
   static update(ctx: { video: HTMLVideoElement; buffer: number; drop: number; latency: number; safeSwitch: () => void; }) {
     const { video, buffer, drop, latency, safeSwitch } = ctx;
     const now = Date.now();
-    if (this.lastTime === 0 || Math.abs(video.currentTime - this.lastTime) > 5) {
-      this.lastTime = video.currentTime;
-      return;
+
+    // 🎯 ভিডিও শুরুতেই আটকে থাকলে ১২ সেকেন্ড পর সার্ভার চেঞ্জ করবে
+    if (video.currentTime === 0 && !video.paused) {
+       this.startupStall++;
+       if (this.startupStall > 12) { 
+           this.startupStall = 0;
+           this.lastSwitch = now;
+           safeSwitch();
+       }
+       return; 
+    } else {
+       this.startupStall = 0; 
     }
+
     const stalled = StallDetector.check(video, this.lastTime);
     this.lastTime = video.currentTime;
 
@@ -129,23 +141,20 @@ export class StreamBrain {
     else this.stallCount = Math.max(0, this.stallCount - 1);
 
     const qoe = QoEEngine.score({ stall: this.stallCount, buffer, drop, latency, rebuffer: 0 });
+
     if (qoe > 75) return;
-    if (qoe > 50) {
-      if (now - this.microSeekCooldown > 3000) {
-        this.microSeekCooldown = now;
-        video.currentTime += 0.01;
-        video.play().catch(() => {});
-      }
-      return;
+
+    if (qoe > 35) {
+      // 🎯 লাফালাফি (micro-seek) বাদ দিয়ে শুধু নরমাল প্লে কমান্ড দেওয়া হলো
+      if (video.paused) video.play().catch(() => {});
+      return; 
     }
-    if (qoe > 25) {
-      video.play().catch(() => {});
-      return;
-    }
-    if (now - this.lastSwitch > 12000) {
+
+    // 🎯 মারাত্মক ল্যাগ হলে সার্ভার চেঞ্জ করবে (ডেডলক রিমুভড)
+    if (now - this.lastSwitch > 8000) { 
       this.lastSwitch = now;
       this.stallCount = 0;
       safeSwitch();
     }
   }
-  }
+}
