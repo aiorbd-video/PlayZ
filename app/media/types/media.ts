@@ -22,9 +22,20 @@ export interface Match {
 
 export interface ServerStat {
   url: string;
-  failCount: number;
   successCount: number;
-  avgLoadTime: number;
+  failCount: number;
   stallCount: number;
-  score?: number;
+  totalLoadTime: number;
+  lastUsed: number;
+}
+
+export interface EngineHealth {
+  fps: number;
+  droppedFrames: number;
+  totalFrames: number;
+  bufferAhead: number;
+  latency: number;
+  estimatedBandwidthMbps: number;
+  networkTier: 'very_low' | 'low' | 'medium' | 'high' | 'ultra';
+  trend: 'stable' | 'collapsing' | 'improving';
 }
