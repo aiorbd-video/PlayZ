@@ -1,36 +1,60 @@
-export interface Stream {
-  title?: string;
-  link: string;
-  api?: string;
-}
+export class StallDetector {
+  static checkIsStalled(video: HTMLVideoElement, lastTime: number): boolean {
+    if (!video) return false;
 
-export interface EventInfo {
-  eventCat: string;
-  eventName: string;
-  teamA: string;
-  teamB: string;
-  startTime: string;
-  endTime: string;
-  link_names?: string[];
-}
+    const buffered =
+      video.buffered.length > 0
+        ? video.buffered.end(video.buffered.length - 1)
+        : 0;
 
-export interface Match {
-  id: number | string;
-  eventInfo: EventInfo;
-  links?: string;
-}
+    // DASH/MPD এজ কেস গ্লিচ রুখতে ১০ সেকেন্ডের সেফটি বাফার ক্ল্যাম্প
+    const bufferAhead = Math.max(0, Math.min(buffered - video.currentTime, 10));
 
-export interface ServerStat {
-  url: string;
-  successCount: number;
-  failCount: number;
-  stallCount: number;
-  totalLoadTime: number;
-  lastUsed: number;
-  
-  // 🎯 ফিক্স ১: ফিউচার ইঞ্জিন ইভোলিউশন ও স্পিড ইনডেক্স ট্র্যাক করার জন্য অপশনাল ফিল্ড
-  avgLoadTime?: number;
-}
+    const currentBufferThreshold = bufferAhead > 2 ? 0.15 : 0.45;
 
-// 🎯 ফিক্স ২: রিকভারি চলাকালীন ডাবল লুপ ক্ল্যাশ বা স্প্যামিং রুখতে 'recovering' স্টেট যুক্ত করা হলো
-export type PlaybackState = 'stable' | 'degrading' | 'unstable' | 'critical' | 'recovering';
+    const timeDelta = Math.abs(video.currentTime - lastTime);
+
+    // টাইম-বেসড অ্যাডাপ্টিভ ফ্রিজ ডিটেকশন (টিভি ও পিসির জিটার হ্যান্ডেলার)
+    const isFrozen =
+      video.currentTime > 0 &&
+      (
+        (video.readyState < 3 && timeDelta < 0.015) ||
+        (video.readyState >= 3 && timeDelta < 0.005)
+      );
+
+    const isStarving =
+      video.readyState < 2 &&
+      bufferAhead < currentBufferThreshold &&
+      !video.paused;
+
+    let framesFrozen = false;
+
+    try {
+      if (typeof video.getVideoPlaybackQuality === 'function') {
+        const q = video.getVideoPlaybackQuality();
+
+        const dropRatio =
+          q.totalVideoFrames > 0
+            ? q.droppedVideoFrames / q.totalVideoFrames
+            : 0;
+
+        // সিঙ্গল স্ন্যাপশট ফলস অ্যালার্ম রুখতে জেনুইন ব্যাড ডিকোড ট্র্যাকিং
+        framesFrozen =
+          dropRatio > 0.35 &&
+          bufferAhead < currentBufferThreshold &&
+          video.readyState < 3;
+      }
+    } catch {}
+
+    return (
+      (
+        isFrozen &&
+        !video.paused &&
+        video.currentTime > 0 &&
+        bufferAhead < 0.30
+      ) ||
+      isStarving ||
+      framesFrozen
+    );
+  }
+}
