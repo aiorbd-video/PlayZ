@@ -14,8 +14,8 @@ interface EventInfo { eventCat: string; eventName: string; teamA: string; teamB:
 interface Match { id: number | string; eventInfo: EventInfo; links?: string; }
 interface ServerFailureRecord { time: number; attempts: number; }
 
-const LIVE_EVENTS_API = 'https://www.ratulxlive.duckdns.org/';
-const STREAM_API_BASE = 'https://www.ratulxlive.duckdns.org/';
+const LIVE_EVENTS_API = 'https://ratulxadia-playz-cats-event.hf.space/api/events';
+const STREAM_API_BASE = 'https://ratulxadia-playz-cats-event.hf.space/api/stream/';
 
 const CONFIG = {
   failoverCooldown: 1000,
