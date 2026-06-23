@@ -1,304 +1,192 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import useSWR from 'swr';
-import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
-import 'shaka-player/dist/controls.css';
-import Script from 'next/script';
-import { PlayerLogs, type PlayerLogsHandle } from '../../components/PlayerLogs';
-import { useShakaEngine } from '../../media/hooks/useShakaEngine';
+import { useEffect, useRef, useState } from 'react';
+import { PlayerLogsHandle } from '@/app/components/PlayerLogs';
+import { Stream, ServerRanker, NetworkAI, StreamBrain } from '../PlayzEngine';
+import { parseClearKeys } from '../drm/parseClearKeys';
+import { SafeShakaWrapper } from '../engine/SafePlayer';
 
-interface Stream { title?: string; link: string; api?: string; }
-interface EventInfo { eventCat: string; eventName: string; teamA: string; teamB: string; startTime: string; endTime: string; link_names?: string[]; }
-interface Match { id: number | string; eventInfo: EventInfo; links?: string; }
-interface ServerFailureRecord { time: number; attempts: number; }
+interface UseShakaEngineProps {
+  currentStreamUrl: string | null;
+  activeStreamIndex: number;
+  streams: Stream[] | null;
+  allServersDown: boolean;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  videoContainerRef: React.RefObject<HTMLDivElement | null>;
+  loggerRef: React.RefObject<PlayerLogsHandle | null>;
+  setIsBuffering: (b: boolean) => void;
+  safeSwitchServer: () => void;
+  getMimeType: (url: string) => string | undefined;
+}
 
-const LIVE_EVENTS_API = 'https://ratulxadia-playz-cats-event.hf.space/api/events';
-const STREAM_API_BASE = 'https://ratulxadia-playz-cats-event.hf.space/api/stream/';
-
-const CONFIG = {
-  failoverCooldown: 1000,
-  serverBlacklistDuration: 20000,
-} as const;
-
-const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
-
-export default function StreamPlayer({ id }: { id: string }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const videoContainerRef = useRef<HTMLDivElement>(null);
-  const loggerRef = useRef<PlayerLogsHandle>(null);
-
-  const streamsRef = useRef<Stream[] | null>(null);
-  const lastFailoverTimeRef = useRef(0);
-  const timersRef = useRef<Set<any>>(new Set());
-
-  const [activeStreamIndex, setActiveStreamIndex] = useState(0);
-  const [isBuffering, setIsBuffering] = useState(true);
-  const [allServersDown, setAllServersDown] = useState(false);
-  const [failedServers, setFailedServers] = useState<Record<string, ServerFailureRecord>>({});
-  const [currentTime, setCurrentTime] = useState(new Date());
-
-  const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
-  const [showFitToast, setShowFitToast] = useState(false);
-
-  // 🎯 জুম / স্ট্রেচ টগল ফাংশন
-  const handleFitToggle = useCallback(() => {
-    const fitModes = ['contain', 'cover', 'fill'] as const;
-    setObjectFit((prev) => {
-      const next = fitModes[(fitModes.indexOf(prev) + 1) % fitModes.length];
-      setShowFitToast(true);
-      return next;
-    });
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener('toggleObjectFit', handleFitToggle);
-    return () => window.removeEventListener('toggleObjectFit', handleFitToggle);
-  }, [handleFitToggle]);
-
-  useEffect(() => {
-    if (showFitToast) {
-      const timer = setTimeout(() => setShowFitToast(false), 2000);
-      timersRef.current.add(timer);
-      return () => { clearTimeout(timer); timersRef.current.delete(timer); };
-    }
-  }, [showFitToast]);
-
-  // 🎯 আসল ম্যাজিক: শাকা প্লেয়ারের কন্ট্রোল প্যানেলের ভেতরে বাটন ইনজেক্ট করা
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // শাকার কন্ট্রোল বার খুঁজছি
-      const controlsPanel = videoContainerRef.current?.querySelector('.shaka-controls-button-panel');
-      
-      if (controlsPanel && !document.getElementById('playz-native-fit-btn')) {
-        const btn = document.createElement('button');
-        btn.id = 'playz-native-fit-btn';
-        // শাকার অরিজিনাল ক্লাস দিলাম যাতে দেখতে একদম ওদের বাটনের মতোই হয়
-        btn.className = 'shaka-control-button shaka-tooltip'; 
-        btn.setAttribute('aria-label', 'Toggle Zoom/Stretch');
-        
-        // আপনার ছবির ওই আইকনটা
-        btn.innerHTML = `<svg style="width: 22px; height: 22px; margin: auto;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>`;
-        
-        // ক্লিক করলে ফাংশন কল হবে
-        btn.onclick = () => handleFitToggle();
-
-        // ফুলস্ক্রিন বাটনের ঠিক আগে (আপনার ছবির জায়গামতো) বসিয়ে দিলাম
-        const fullscreenBtn = controlsPanel.querySelector('.shaka-fullscreen-button');
-        if (fullscreenBtn) {
-          controlsPanel.insertBefore(btn, fullscreenBtn);
-        } else {
-          controlsPanel.appendChild(btn);
-        }
-        
-        clearInterval(interval); // বাটন বসানো শেষ, তাই চেক করা বন্ধ
-      }
-    }, 500);
-
-    return () => clearInterval(interval);
-  }, [handleFitToggle]);
-
-  const { data: rawMatches } = useSWR(LIVE_EVENTS_API, fetcher, { revalidateOnFocus: false });
+export function useShakaEngine({
+  currentStreamUrl, activeStreamIndex, streams, allServersDown,
+  videoRef, videoContainerRef, loggerRef, setIsBuffering, safeSwitchServer, getMimeType,
+}: UseShakaEngineProps) {
+  const wrapperRef = useRef<SafeShakaWrapper | null>(null);
+  const playerRef = useRef<any>(null);
+  const uiRef = useRef<any>(null);
+  const coreWatchdogRef = useRef<any>(null);
   
-  const matches = useMemo(() => {
-    if (!rawMatches || !Array.isArray(rawMatches)) return null;
-    return rawMatches.map((item: any, index: number) => {
-      const rawEvent = item.event || {};
-      const matchId = rawEvent.links ? rawEvent.links.replace('pro/', '').replace('.txt', '') : index.toString();
-      return {
-        id: matchId, links: rawEvent.links || '',
-        eventInfo: {
-          eventCat: rawEvent.category || 'Live Event', eventName: rawEvent.eventName || 'Live Match',
-          teamA: rawEvent.teamAName || 'Team A', teamB: rawEvent.teamBName || 'Team B',
-          startTime: '', endTime: '', link_names: rawEvent.link_names || [],
-        },
-      };
-    });
-  }, [rawMatches]);
+  const initInProgressRef = useRef<boolean>(false);
+  const isCurrentlyLoadingRef = useRef<boolean>(false);
+  
+  const latestStreamUrlRef = useRef<string | null>(null);
+  const lastLoadedIndexRef = useRef<number | null>(null);
+  const lastLoadedBaseUrlRef = useRef<string | null>(null);
 
-  const currentMatch = useMemo(() => {
-    if (!matches) return null;
-    return matches.find((m: any) => String(m.id) === String(id)) || null;
-  }, [matches, id]);
+  const [isEngineReady, setIsEngineReady] = useState(false);
 
-  const streamFetchUrl = useMemo(() => {
-    if (currentMatch?.links) {
-      const streamSlug = currentMatch.links.replace('pro/', '').replace('.txt', '');
-      return `${STREAM_API_BASE}${streamSlug}`;
-    }
-    return null;
-  }, [currentMatch]);
+  useEffect(() => { 
+    latestStreamUrlRef.current = currentStreamUrl; 
+  }, [currentStreamUrl]);
 
-  const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { 
-    revalidateOnFocus: false,
-    refreshInterval: 15000, 
-    dedupingInterval: 5000
-  });
+  useEffect(() => {
+    if (!videoRef.current || !videoContainerRef.current || initInProgressRef.current) return;
+    initInProgressRef.current = true;
 
-  const streams = useMemo<Stream[] | null>(() => {
-    if (!streamsFromApi) return null;
-    const rawList = Array.isArray(streamsFromApi) ? streamsFromApi : streamsFromApi.streams || [];
-    return rawList
-      .filter((s: any) => s && (s.link || s.url))
-      .map((s: any) => ({
-        link: s.link || s.url || '', 
-        title: s.name || s.title || '', 
-        api: s.api || '',
-      }));
-  }, [streamsFromApi]);
+    const initInstance = async () => {
+      try {
+        loggerRef.current?.addLog('Core Engine: Mounting Secure Modular Stack...', 'info');
+        const shaka: any = await import('shaka-player/dist/shaka-player.ui');
+        
+        if (shaka.polyfill) {
+          shaka.polyfill.installAll();
+        }
 
-  const currentStreamUrl = useMemo(() => streams?.[activeStreamIndex]?.link || null, [streams, activeStreamIndex]);
+        const player = new shaka.Player(videoRef.current);
+        playerRef.current = player;
+        wrapperRef.current = new SafeShakaWrapper(player);
 
-  useEffect(() => { streamsRef.current = streams; }, [streams]);
-  useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 5000); return () => clearInterval(timer); }, []);
+        player.getNetworkingEngine().registerRequestFilter((type: number, request: any) => {
+          if (request._patched) return;
+          request._patched = true;
 
-  const getMimeType = (url: string): string | undefined => {
-    if (url.includes('.mpd')) return 'application/dash+xml';
-    if (url.includes('.m3u8')) return 'application/x-mpegURL';
-    return undefined;
-  };
+          const freshUrl = latestStreamUrlRef.current;
+          if (!freshUrl) return;
 
-  const safeSwitchServer = useCallback(() => {
-    const now = Date.now();
-    if (now - lastFailoverTimeRef.current < CONFIG.failoverCooldown) return;
-    lastFailoverTimeRef.current = now;
+          const parts = freshUrl.split('|');
+          if (parts[0].includes('?')) {
+            const query = parts[0].split('?')[1];
+            request.uris = request.uris.map((uri: string) => `${uri.split('?')[0]}?${query}`);
+          }
+        });
 
-    setActiveStreamIndex((prevIndex) => {
-      const list = streamsRef.current;
-      if (!list) return prevIndex;
-      
-      loggerRef.current?.addLog(`Server [${prevIndex + 1}] stream dead. Swapping link...`, 'warn');
-      setFailedServers((p) => ({ ...p, [prevIndex]: { time: Date.now(), attempts: (p[prevIndex]?.attempts || 0) + 1 } }));
+        const ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
+        uiRef.current = ui;
 
-      const nextIdx = (prevIndex + 1) % list.length;
-      if (nextIdx === 0) {
-        loggerRef.current?.addLog('Matrix Status: All options returned runtime errors.', 'error');
-        setAllServersDown(true);
-        setIsBuffering(false);
+        wrapperRef.current.safeConfigure({
+          streaming: { bufferingGoal: 20, rebufferingGoal: 7, liveSyncDuration: 6, bufferBehind: 25, stallEnabled: false },
+          abr: { enabled: false },
+          manifest: { dash: { autoCorrectDrift: true, ignoreMinBufferTime: true } }
+        });
+
+        wrapperRef.current.safeAddEventListener(player, 'buffering', (e: any) => setIsBuffering(e.buffering));
+        
+        setIsEngineReady(true);
+      } catch (err: any) {
+        initInProgressRef.current = false;
+        loggerRef.current?.addLog(`Core Mount Failed: ${err.message}`, 'error');
       }
-      return nextIdx;
-    });
-  }, []);
+    };
 
-  useShakaEngine({
-    currentStreamUrl, activeStreamIndex, streams, allServersDown,
-    videoRef, videoContainerRef, loggerRef, setIsBuffering, safeSwitchServer, getMimeType
-  });
+    initInstance();
 
-  const handleManualSwitch = (idx: number) => {
-    loggerRef.current?.addLog(`Manual Server Swap Triggered to Pipe index: ${idx + 1}`, 'info');
-    setAllServersDown(false);
-    setActiveStreamIndex(idx);
-  };
+    return () => {
+      initInProgressRef.current = false;
+      setIsEngineReady(false);
+      if (coreWatchdogRef.current) clearInterval(coreWatchdogRef.current);
+      if (uiRef.current) uiRef.current.destroy();
+      if (wrapperRef.current) wrapperRef.current.safeDestroy();
+    };
+  }, [safeSwitchServer, setIsBuffering, videoContainerRef, videoRef, loggerRef]);
 
-  const matchTitle = currentMatch?.eventInfo && `${currentMatch.eventInfo.teamA} VS ${currentMatch.eventInfo.teamB}`;
+  useEffect(() => {
+    if (!isEngineReady || !wrapperRef.current || allServersDown || !currentStreamUrl || !streams?.length) return;
+    let isMounted = true;
 
-  return (
-    <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
-      <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link href="/">
-            <button className="px-3 py-1.5 rounded-lg bg-gray-800/50 hover:bg-[#00E5FF]/10 text-gray-300 hover:text-[#00E5FF] transition-all border border-gray-700/40 text-xs font-bold outline-none flex items-center gap-2">
-              ← Back to Home
-            </button>
-          </Link>
-          <span className="text-sm font-bold tracking-wide truncate max-w-xs md:max-w-lg">{matchTitle || 'Live Event'}</span>
-          <div className="w-20"></div>
-        </div>
-      </nav>
+    const loadStreamSource = async () => {
+      if (isCurrentlyLoadingRef.current) return;
+      const cleanUrlForMime = currentStreamUrl.split('|')[0];
+      const cleanBaseUrl = cleanUrlForMime.split('?')[0];
 
-      <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-          
-          <div className="md:col-span-2 space-y-4">
-            
-            <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-xl overflow-hidden shadow-2xl border border-gray-800/60 group">
-              
-              {isBuffering && !allServersDown && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-40">
-                  <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin" />
-                </div>
-              )}
+      if (lastLoadedIndexRef.current === activeStreamIndex && lastLoadedBaseUrlRef.current === cleanBaseUrl && playerRef.current?.getAssetUri()) return;
+      if (coreWatchdogRef.current) clearInterval(coreWatchdogRef.current);
 
-              {allServersDown && (
-                <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/95 z-50 flex-col gap-2 text-center p-4">
-                  <div className="text-red-400 font-bold">Stream Currently Unavailable</div>
-                  <button onClick={() => { setAllServersDown(false); setActiveStreamIndex(0); setFailedServers({}); }} className="mt-2 bg-gray-900 border border-gray-700 text-white px-4 py-1.5 rounded-full text-xs">Reset Playback</button>
-                </div>
-              )}
+      isCurrentlyLoadingRef.current = true;
+      setIsBuffering(true);
+      const startTime = Date.now();
 
-              <video ref={videoRef} autoPlay playsInline className="w-full h-full" style={{ objectFit }} />
+      try {
+        const currentStream = streams[activeStreamIndex];
+        const clearKeysObj = parseClearKeys(currentStream?.api);
 
-              <AnimatePresence>
-                {showFitToast && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
-                    className="absolute top-16 right-4 bg-black/80 backdrop-blur-md px-3 py-1.5 rounded-md border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-[#00E5FF]" />
-                    <span className="text-xs font-bold text-white uppercase tracking-wider">
-                      {objectFit === 'contain' ? 'Normal' : objectFit === 'cover' ? 'Zoom' : 'Stretch'}
-                    </span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+        wrapperRef.current?.safeConfigure({ drm: { clearKeys: Object.keys(clearKeysObj).length > 0 ? clearKeysObj : {} } });
 
-            {streams && (
-              <div className="flex gap-2 overflow-x-auto py-3 px-4 items-center scrollbar-hide bg-[#161824]/60 border border-gray-800/50 rounded-xl">
-                <span className="text-gray-400 font-bold text-xs uppercase mr-2 tracking-wide whitespace-nowrap">Servers:</span>
-                {streams.map((stream, index) => {
-                  const serverName = stream.title || `Server ${index + 1}`;
-                  return (
-                    <button 
-                      key={index} 
-                      onClick={() => handleManualSwitch(index)} 
-                      className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap border transition-all duration-200 ${
-                        activeStreamIndex === index && !allServersDown 
-                          ? 'bg-[#00E5FF]/10 border-[#00E5FF] text-[#00E5FF] shadow-[0_0_15px_rgba(0,229,255,0.15)]' 
-                          : 'bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white hover:border-gray-600'
-                      }`}
-                    >
-                      {serverName}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+        let mimeType = getMimeType(cleanUrlForMime);
+        if (cleanUrlForMime.split('?')[0].endsWith('.mpd')) mimeType = 'application/dash+xml';
 
-          <div className="w-full md:sticky md:top-24 self-start">
-            <div className="bg-[#161824]/40 border border-gray-800/60 rounded-xl overflow-hidden p-1 shadow-lg">
-              <PlayerLogs ref={loggerRef} matchTitle={matchTitle || 'Live Event'} matchObj={currentMatch} />
-            </div>
-          </div>
+        lastLoadedIndexRef.current = activeStreamIndex;
+        lastLoadedBaseUrlRef.current = cleanBaseUrl;
 
-        </div>
-      </div>
+        const loadPromise = wrapperRef.current?.safeLoad(currentStreamUrl, mimeType);
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('30s Load Timeout')), 30000));
+        await Promise.race([loadPromise, timeoutPromise]);
 
-      <style dangerouslySetInnerHTML={{
-        __html: `
-          /* 🎯 শাকার ডিফল্ট নীল স্পিনার চিরতরে বন্ধ করার সিএসএস */
-          .shaka-spinner-container,
-          .shaka-spinner-svg {
-            display: none !important;
+        if (videoRef.current && isMounted) {
+          try {
+            await videoRef.current.play();
+            loggerRef.current?.addLog('Playback live on-screen!', 'success');
+            ServerRanker.recordSuccess(currentStreamUrl, (Date.now() - startTime) / 1000);
+          } catch {
+            setTimeout(() => { videoRef.current?.play().catch(() => {}); }, 1500);
           }
-          /* হোভার করলে বাটনটার অপাসিটি বাড়ে শাকার মতো */
-          #playz-native-fit-btn {
-            opacity: 0.8;
-            transition: opacity 0.2s;
+        }
+
+        if (isMounted) setIsBuffering(false);
+
+        if (coreWatchdogRef.current) clearInterval(coreWatchdogRef.current);
+
+        coreWatchdogRef.current = setInterval(() => {
+          const video = videoRef.current;
+          const player = playerRef.current;
+          if (!video || !player) return;
+
+          let stats: any = {};
+          try {
+            if (typeof player.getStats === 'function') {
+              stats = player.getStats() || {};
+            }
+          } catch {}
+
+          const buffer = video.buffered.length > 0
+            ? Math.max(0, video.buffered.end(video.buffered.length - 1) - video.currentTime)
+            : 0;
+
+          const bandwidth = stats.estimatedBandwidth || 4000000;
+
+          NetworkAI.push(bandwidth);
+
+          if (buffer < 0.35) {
+            ServerRanker.recordStall(currentStreamUrl);
           }
-          #playz-native-fit-btn:hover {
-            opacity: 1;
-          }
-        `
-      }} />
-      <Script 
-        src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js"
-        strategy="lazyOnload" 
-        id="adsterra-popunder"
-      />
-    </main>
-  );
+
+          StreamBrain.update({
+            video,
+            safeSwitch: safeSwitchServer,
+          });
+
+        }, 1000);
+
+      } catch (err: any) {
+        ServerRanker.recordFailure(currentStreamUrl);
+        if (isMounted) safeSwitchServer();
+      } finally {
+        isCurrentlyLoadingRef.current = false;
+      }
+    };
+
+    loadStreamSource();
+    return () => { isMounted = false; if (coreWatchdogRef.current) clearInterval(coreWatchdogRef.current); };
+  }, [currentStreamUrl, activeStreamIndex, allServersDown, isEngineReady, streams, safeSwitchServer, getMimeType, setIsBuffering, videoRef, loggerRef]);
 }
