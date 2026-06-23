@@ -9,6 +9,7 @@ import { NetworkManager } from '../engine/NetworkManager';
 import { BufferManager } from '../engine/BufferManager';
 import { StallDetector } from '../engine/StallDetector';
 import { RecoveryManager } from '../engine/RecoveryManager';
+import { ServerRanker } from '../engine/ServerRanker';
 
 interface UseShakaEngineProps {
   currentStreamUrl: string | null;
@@ -43,14 +44,13 @@ export function useShakaEngine({
 
   useEffect(() => { latestStreamUrlRef.current = currentStreamUrl; }, [currentStreamUrl]);
 
-  // ১. ওয়ান-টাইম প্লেয়ার কোর ইনিশিয়ালাইজেশন
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || initInProgressRef.current) return;
     initInProgressRef.current = true;
 
     const initInstance = async () => {
       try {
-        loggerRef.current?.addLog('Core: Creating pristine Modular Engine...', 'info');
+        loggerRef.current?.addLog('Core: Initializing production modular shield...', 'info');
         const shaka = await import('shaka-player/dist/shaka-player.ui');
         shaka.polyfill.installAll();
 
@@ -74,7 +74,6 @@ export function useShakaEngine({
         playerRef.current = player;
         wrapperRef.current = new SafeShakaWrapper(player);
 
-        // সাইলেন্ট ব্যাকগ্রাউন্ড টোকেন ইনজেক্টর ফিল্টার
         player.getNetworkingEngine().registerRequestFilter((type: number, request: any) => {
           if (request._patched) return;
           request._patched = true;
@@ -107,7 +106,6 @@ export function useShakaEngine({
           addSeekBar: true,
         });
 
-        // ব্রডকাস্ট-গ্রেড সুইট স্পট কনফিগারেশন ইনজেকশন
         wrapperRef.current.safeConfigure({
           streaming: { bufferingGoal: 20, rebufferingGoal: 7, liveSyncDuration: 6, bufferBehind: 25, stallEnabled: false },
           abr: { enabled: false },
@@ -117,7 +115,8 @@ export function useShakaEngine({
         player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
         player.addEventListener('error', (event: any) => {
           if (event.detail && [6007, 3016, 3014].includes(event.detail.code)) {
-            RecoveryManager.handleFatalError(loggerRef, safeSwitchServer);
+            if (currentStreamUrl) ServerRanker.recordFailure(currentStreamUrl);
+            RecoveryManager.handleFatalError(loggerRef, safeSwitchServer, wrapperRef.current);
           }
         });
 
@@ -137,9 +136,8 @@ export function useShakaEngine({
       if (uiRef.current) uiRef.current.destroy();
       if (wrapperRef.current) wrapperRef.current.safeDestroy();
     };
-  }, [safeSwitchServer]);
+  }, [safeSwitchServer, currentStreamUrl]);
 
-  // ২. লাইভ স্ট্রিম সোর্স লোডার ও ২.৫ সেকেন্ড সাইকেল টাইমার
   useEffect(() => {
     if (!isEngineReady || !wrapperRef.current || allServersDown || !currentStreamUrl || !streams?.length) return;
     let isMounted = true;
@@ -154,7 +152,8 @@ export function useShakaEngine({
 
       isCurrentlyLoadingRef.current = true;
       setIsBuffering(true);
-      loggerRef.current?.addLog(`Loading Pipe: Server [${activeStreamIndex + 1}]`, 'info');
+      const startTime = Date.now();
+      loggerRef.current?.addLog(`Loading Stream: Server [${activeStreamIndex + 1}]`, 'info');
 
       try {
         const currentStream = streams[activeStreamIndex];
@@ -176,6 +175,8 @@ export function useShakaEngine({
           try {
             await videoRef.current.play();
             loggerRef.current?.addLog('Playback live on-screen!', 'success');
+            ServerRanker.recordSuccess(currentStreamUrl, (Date.now() - startTime) / 1000);
+            RecoveryManager.resetFailureTracker();
           } catch {
             setTimeout(() => { videoRef.current?.play().catch(() => {}); }, 1500);
           }
@@ -192,29 +193,24 @@ export function useShakaEngine({
           const video = videoRef.current;
           if (!video) return;
 
-          // ১. লাইভ ব্যান্ডউইথ রিড ও ফেক এবিআর কন্ট্রোল
-          NetworkManager.applyFakeABR(wrapperRef.current, playerRef.current);
-
-          // ২. প্রো-অ্যাক্টিভ বাফার অ্যাডাপ্টেশন
-          BufferManager.runAdaptiveInflation(video, lastTime, wrapperRef.current);
-
-          // ৩. আল্ট্রা-স্ট্যাবল স্টল ওয়াচডগ কল
+          NetworkManager.applyFakeABR(wrapperRef.current, playerRef.current, loggerRef);
+          BufferManager.runAdaptiveInflation(video, lastTime, wrapperRef.current, loggerRef);
           const isStalled = StallDetector.checkIsStalled(video, lastTime);
 
           if (isStalled) {
             stallCount++;
-            loggerRef.current?.addLog(`Shield Watchdog Status: ${stallCount}/6`, 'warn');
+            ServerRanker.recordStall(currentStreamUrl);
+            loggerRef.current?.addLog(`Shield Watchdog: Pipeline Lag detected ${stallCount}/6`, 'warn');
           } else {
             stallCount = Math.max(0, stallCount - 1); 
           }
 
           const hasStarted = video.currentTime > 0 || video.readyState >= 3;
-          
-          // ৪. এন্টি-লুপ গার্ড সিকিউরিটি চেক (৮ সেকেন্ড লক)
           if (stallCount >= 6 && hasStarted && (Date.now() - lastSwitchRef.current > 8000)) {
             lastSwitchRef.current = Date.now();
             stallCount = 0;
-            RecoveryManager.handleFatalError(loggerRef, safeSwitchServer);
+            ServerRanker.recordFailure(currentStreamUrl);
+            RecoveryManager.handleFatalError(loggerRef, safeSwitchServer, wrapperRef.current);
           }
 
           lastTime = video.currentTime;
@@ -223,6 +219,7 @@ export function useShakaEngine({
       } catch (err: any) {
         lastLoadedIndexRef.current = null;
         lastLoadedBaseUrlRef.current = null;
+        ServerRanker.recordFailure(currentStreamUrl);
         if (isMounted) safeSwitchServer();
       } finally {
         isCurrentlyLoadingRef.current = false;
@@ -232,4 +229,4 @@ export function useShakaEngine({
     setTimeout(loadStreamSource, 50);
     return () => { isMounted = false; if (stallIntervalRef.current) clearInterval(stallIntervalRef.current); };
   }, [currentStreamUrl, activeStreamIndex, allServersDown, isEngineReady, streams, safeSwitchServer, getMimeType, setIsBuffering]);
-  }
+}
