@@ -1,1 +1,1 @@
-export function useShakaEngine() { return null; }
+export function useShakaEngine(...args: any[]): any { return null; }
