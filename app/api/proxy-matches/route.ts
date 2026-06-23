@@ -3,15 +3,20 @@ import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
-    const FULL_DATA_URL = "https://ratul-liv-default-rtdb.asia-southeast1.firebasedatabase.app/playz-streams.json";
+        const FULL_DATA_URL = process.env.FIREBASE_DATABASE_URL;
 
-    // 🎯 ফিক্স: ১৫ সেকেন্ডের ফিক্সড টাইম লক হাওয়া! ডাটা ক্যাশ হবে ট্যাগের অধীনে
+    // 🎯 ফিক্স: যদি এনভায়রনমেন্ট ভেরিয়েবল না পাওয়া যায়, তবেই এরর দেখাবে
+    if (!FULL_DATA_URL) {
+      return NextResponse.json({ error: "Missing Firebase URL" }, { status: 500 });
+    }
+
     const response = await fetch(FULL_DATA_URL, {
-      next: { tags: ['firebase-streams'] }, // 🏷️ এই ট্যাগ দিয়ে আমরা দূর থেকে ক্যাশ ডিলিট করব
+      next: { tags: ['firebase-streams'] },
       headers: {
         'Accept': 'application/json',
       }
     });
+
 
     if (!response.ok) {
       return NextResponse.json(
