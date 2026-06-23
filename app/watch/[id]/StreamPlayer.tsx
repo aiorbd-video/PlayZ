@@ -95,7 +95,11 @@ export default function StreamPlayer({ id }: { id: string }) {
     return null;
   }, [currentMatch]);
 
-  const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { revalidateOnFocus: false });
+  const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { 
+  revalidateOnFocus: false,
+  refreshInterval: 15000, // 🎯 ম্যাজিক লাইন: প্রতি ১৫ সেকেন্ড পর পর রিফ্রেশ ছাড়াই ব্যাকগ্রাউন্ডে নতুন টোকেন চলে আসবে
+  dedupingInterval: 5000
+});
 
  // 🎯 এই ব্লকটি খুঁজে বের করে এভাবে রিপ্লেস করুন
 const streams = useMemo<Stream[] | null>(() => {
