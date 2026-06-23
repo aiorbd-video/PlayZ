@@ -1,41 +1,54 @@
-import { PlayerLogsHandle } from '../../components/PlayerLogs';
+import { PlayerLogsHandle } from '../../../components/PlayerLogs';
 
 export class RecoveryManager {
-  private static lastRecoveryTimestamp = 0;
-  private static totalConsecutiveFailures = 0;
+  private static recoveryStageMap = new Map<string, number>();
+  private static lockTimestamp = 0;
 
-  static handleFatalError(
-    loggerRef: React.RefObject<PlayerLogsHandle | null>, 
-    safeSwitchServer: () => void,
-    wrapper: any
+  static handleLayeredRecovery(
+    url: string,
+    video: HTMLVideoElement | null,
+    playerInstance: any,
+    wrapper: any,
+    loggerRef: React.RefObject<PlayerLogsHandle | null>,
+    safeSwitchServer: () => void
   ) {
+    if (!url || !playerInstance || !video) return;
     const now = Date.now();
-    this.totalConsecutiveFailures++;
-
-    // একই সেকেন্ডে ডাবল বা ট্রিপল রিকার্সিভ লুপ বাস্ট প্রটেকশন
-    if (now - this.lastRecoveryTimestamp < 4000) {
-      loggerRef.current?.addLog("🛡️ Recovery: Cascade lock active. Suppressing rapid recursive swaps.", "warn");
-      return;
-    }
     
-    this.lastRecoveryTimestamp = now;
-    loggerRef.current?.addLog(`🛡️ Shield Engine: Fatal crash caught [#${this.totalConsecutiveFailures}]. Auto-recovering player instance...`, "error");
-    
-    safeSwitchServer();
+    if (now - this.lockTimestamp < 3000) return; // Prevent loop stampede
+    this.lockTimestamp = now;
 
-    // শাকা প্লেয়ার ড্রপ করার পর সাইলেন্টলি ডিআরএম ফ্ল্যাশ রিবুট
-    setTimeout(() => {
+    const cleanUrl = url.split('|')[0].trim();
+    const currentStage = this.recoveryStageMap.get(cleanUrl) || 0;
+
+    if (currentStage === 0) {
+      loggerRef.current?.addLog(`⚡ Recovery L1: Micro-seek (+0.01s) triggered to push pipeline decoder.`, 'warn');
+      video.currentTime += 0.01;
+      video.play().catch(() => {});
+      this.recoveryStageMap.set(cleanUrl, 1);
+    } 
+    else if (currentStage === 1) {
+      loggerRef.current?.addLog(`⚡ Recovery L2: Playback pipeline execution sequence forced.`, 'warn');
+      video.play().catch(() => {});
+      this.recoveryStageMap.set(cleanUrl, 2);
+    } 
+    else if (currentStage === 2) {
+      loggerRef.current?.addLog(`⚡ Recovery L3: Resetting internal streaming mechanics via Shaka runtime.`, 'warn');
       try {
-        if (wrapper && !wrapper.isDestroyed) {
-          wrapper.safeConfigure({ drm: { clearKeys: {} } });
-        }
-      } catch (e) {
-        console.error("Recovery Manager: DRM purge failed silsently ->", e);
+        playerInstance.retryStreaming();
+      } catch {
+        video.load();
       }
-    }, 1200);
+      this.recoveryStageMap.set(cleanUrl, 3);
+    } 
+    else {
+      loggerRef.current?.addLog(`⚡ Recovery L4: Soft measures exhausted. Initiating server sequence mutation.`, 'error');
+      this.recoveryStageMap.set(cleanUrl, 0);
+      safeSwitchServer();
+    }
   }
 
-  static resetFailureTracker() {
-    this.totalConsecutiveFailures = 0;
+  static clearTracker(url: string) {
+    this.recoveryStageMap.delete(url.split('|')[0].trim());
   }
 }
