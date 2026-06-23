@@ -1,3 +1,5 @@
+import { Stream, ServerStat, PlaybackState, NetworkTier, EngineHealth } from '../types/media';
+
 export class StallDetector {
   static checkIsStalled(video: HTMLVideoElement, lastTime: number): boolean {
     if (!video) return false;
