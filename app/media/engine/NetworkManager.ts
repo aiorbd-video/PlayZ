@@ -1,60 +1,85 @@
 export class NetworkManager {
-  private static lastKnownTier: 'low' | 'medium' | 'high' = 'medium';
+  private static bwHistory: number[] = [4.5, 4.5, 4.5, 4.5, 4.5]; // Baseline sample stream trace
+  private static lastKnownTier: 'very_low' | 'low' | 'medium' | 'high' | 'ultra' = 'medium';
 
-  static getNetworkTier(playerInstance: any): 'low' | 'medium' | 'high' {
-    if (!playerInstance || typeof playerInstance.getStats !== 'function') {
-      return this.lastKnownTier;
-    }
-    
-    try {
-      const stats = playerInstance.getStats();
-      const bandwidthBps = stats.estimatedBandwidth; 
-      
-      if (!bandwidthBps || isNaN(bandwidthBps)) {
-        // Smart TV স্পেশাল ফলব্যাক ওএস চেক
-        if (typeof navigator !== 'undefined' && (navigator as any).connection) {
-          const down = (navigator as any).connection.downlink;
-          if (down) {
-            if (down < 1.2) return 'low';
-            if (down < 3.5) return 'medium';
-            return 'high';
-          }
-        }
-        return this.lastKnownTier;
-      }
-
-      const downlinkMbps = bandwidthBps / 1000000;
-      
-      if (downlinkMbps < 1.5) this.lastKnownTier = 'low';
-      else if (downlinkMbps < 4.5) this.lastKnownTier = 'medium';
-      else this.lastKnownTier = 'high';
-      
-      return this.lastKnownTier;
-    } catch {
-      return this.lastKnownTier;
+  static pushBandwidthSample(bps: number) {
+    if (!bps || isNaN(bps)) return;
+    const mbps = bps / 1000000;
+    this.bwHistory.push(mbps);
+    if (this.bwHistory.length > 6) {
+      this.bwHistory.shift(); // Keep latest 30s sliding metric window (6 samples * 5s)
     }
   }
 
-  static applyFakeABR(wrapper: any, playerInstance: any, loggerRef: any) {
-    if (!wrapper || !playerInstance) return;
+  static detectTrend(): 'stable' | 'collapsing' | 'improving' {
+    if (this.bwHistory.length < 3) return 'stable';
+    const len = this.bwHistory.length;
     
-    const tier = this.getNetworkTier(playerInstance);
-    const currentConfig = playerInstance.getConfiguration();
-    const currentGoal = currentConfig?.streaming?.bufferingGoal;
+    // Check if the bandwidth sequence is dropping dramatically
+    const recent = this.bwHistory[len - 1];
+    const middle = this.bwHistory[len - 2];
+    const older = this.bwHistory[len - 3];
 
-    // বারংবার কনফিগ রিলোড পুশ এড়াতে শুধুমাত্র স্টেট চেঞ্জ হলেই কনফিগ ওভাররাইড হবে
-    if (tier === 'low' && currentGoal !== 30) {
-      loggerRef.current?.addLog(`📡 Network AI: Poor signal. Shifting profile to Safe-Buffer Mode.`, 'warn');
+    if (recent < middle && middle < older && recent < (older * 0.6)) {
+      return 'collapsing'; // Network collapsing detected!
+    }
+    if (recent > middle && middle > older) return 'improving';
+    return 'stable';
+  }
+
+  static getNetworkTier(): 'very_low' | 'low' | 'medium' | 'high' | 'ultra' {
+    if (this.bwHistory.length === 0) return this.lastKnownTier;
+    const currentMbps = this.bwHistory[this.bwHistory.length - 1];
+
+    if (currentMbps <= 1.0) this.lastKnownTier = 'very_low';
+    else if (currentMbps <= 3.0) this.lastKnownTier = 'low';
+    else if (currentMbps <= 6.0) this.lastKnownTier = 'medium';
+    else if (currentMbps <= 15.0) this.lastKnownTier = 'high';
+    else this.lastKnownTier = 'ultra';
+
+    return this.lastKnownTier;
+  }
+
+  static applySmartABREngine(wrapper: any, playerInstance: any, loggerRef: any) {
+    if (!wrapper || !playerInstance) return;
+
+    try {
+      const stats = playerInstance.getStats();
+      if (stats && stats.estimatedBandwidth) {
+        this.pushBandwidthSample(stats.estimatedBandwidth);
+      }
+    } catch {}
+
+    const tier = this.getNetworkTier();
+    const trend = this.detectTrend();
+    const config = playerInstance.getConfiguration();
+    const currentGoal = config?.streaming?.bufferingGoal;
+
+    let targetGoal = 20;
+    let targetRebuff = 7;
+
+    // AI Check: Cascade inflation rules based on network trends
+    if (trend === 'collapsing') {
+      loggerRef.current?.addLog(`⚠️ Network AI: Impending crash trace observed. Proactively expanding buffer to 35s!`, 'warn');
+      targetGoal = 35;
+      targetRebuff = 15;
+    } else {
+      switch (tier) {
+        case 'very_low': targetGoal = 30; targetRebuff = 12; break;
+        case 'low': targetGoal = 25; targetRebuff = 10; break;
+        case 'medium': targetGoal = 20; targetRebuff = 7; break;
+        case 'high': targetGoal = 14; targetRebuff = 5; break;
+        case 'ultra': targetGoal = 8; targetRebuff = 3; break;
+      }
+    }
+
+    if (currentGoal !== targetGoal) {
       wrapper.safeConfigure({
-        streaming: { bufferingGoal: 30, rebufferingGoal: 15, liveSyncDuration: 8 }
-      });
-    } else if (tier === 'medium' && currentGoal !== 20) {
-      wrapper.safeConfigure({
-        streaming: { bufferingGoal: 20, rebufferingGoal: 7, liveSyncDuration: 6 }
-      });
-    } else if (tier === 'high' && currentGoal !== 12) {
-      wrapper.safeConfigure({
-        streaming: { bufferingGoal: 12, rebufferingGoal: 5, liveSyncDuration: 4 }
+        streaming: {
+          bufferingGoal: targetGoal,
+          rebufferingGoal: targetRebuff,
+          liveSyncDuration: trend === 'collapsing' ? 10 : (tier === 'very_low' ? 8 : 5)
+        }
       });
     }
   }
