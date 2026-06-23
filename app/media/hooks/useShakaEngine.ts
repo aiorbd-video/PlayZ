@@ -1,10 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-// 🟢 Absolute Path Alias configured safely
 import { PlayerLogsHandle } from '@/app/components/PlayerLogs';
 
-// 🎯 ১. আপনার নতুন গুছানো PlayzEngine থেকে মডিউলসমূহ ইমপোর্ট করা হলো
 import { Stream, ServerRanker, NetworkAI, StreamBrain } from '../PlayzEngine';
 import { parseClearKeys } from '../drm/parseClearKeys';
 import { SafeShakaWrapper } from '../engine/SafePlayer';
@@ -34,22 +32,16 @@ export function useShakaEngine({
   const initInProgressRef = useRef<boolean>(false);
   const isCurrentlyLoadingRef = useRef<boolean>(false);
   
-  // 🎯 পিউর ১ সেকেন্ড রেজোলিউশন ওয়াচডগ প্রিভিয়াস রেফারেন্স
-  const previousTimeRef = useRef<number>(0);
-  
-  // 🎯 ক্লোজার বাগ প্রোটেকশন লেটেস্ট ইউআরএল রেফ
   const latestStreamUrlRef = useRef<string | null>(null);
   const lastLoadedIndexRef = useRef<number | null>(null);
   const lastLoadedBaseUrlRef = useRef<string | null>(null);
 
   const [isEngineReady, setIsEngineReady] = useState(false);
 
-  // প্রতি চেঞ্জে সাইলেন্টলি লেটেস্ট ইউআরএল সিঙ্ক রাখা হচ্ছে
   useEffect(() => { 
     latestStreamUrlRef.current = currentStreamUrl; 
   }, [currentStreamUrl]);
 
-  // শাকা মাউন্টিং অ্যাডাপ্টার লেয়ার
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || initInProgressRef.current) return;
     initInProgressRef.current = true;
@@ -67,7 +59,6 @@ export function useShakaEngine({
         playerRef.current = player;
         wrapperRef.current = new SafeShakaWrapper(player);
 
-        // রিকোয়েস্ট ফিল্টারে ক্লোজার বাগ ফিক্সড
         player.getNetworkingEngine().registerRequestFilter((type: number, request: any) => {
           if (request._patched) return;
           request._patched = true;
@@ -91,7 +82,6 @@ export function useShakaEngine({
           manifest: { dash: { autoCorrectDrift: true, ignoreMinBufferTime: true } }
         });
 
-        // মেমোরি লিক আটকাতে safeAddEventListener ব্যবহার
         wrapperRef.current.safeAddEventListener(player, 'buffering', (e: any) => setIsBuffering(e.buffering));
         
         setIsEngineReady(true);
@@ -112,7 +102,6 @@ export function useShakaEngine({
     };
   }, [safeSwitchServer, setIsBuffering, videoContainerRef, videoRef, loggerRef]);
 
-  // সোর্স লোডার এবং ১ সেকেন্ড হাই-রেজোলিউশন ওয়াচডগ ট্র্যাকার লুপ
   useEffect(() => {
     if (!isEngineReady || !wrapperRef.current || allServersDown || !currentStreamUrl || !streams?.length) return;
     let isMounted = true;
@@ -141,7 +130,6 @@ export function useShakaEngine({
         lastLoadedIndexRef.current = activeStreamIndex;
         lastLoadedBaseUrlRef.current = cleanBaseUrl;
 
-        // ৩০ সেকেন্ডের প্রোডাকশন লোড টাইমআউট লিমিট রেস রেস্টোরড
         const loadPromise = wrapperRef.current?.safeLoad(currentStreamUrl, mimeType);
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('30s Load Timeout')), 30000));
         await Promise.race([loadPromise, timeoutPromise]);
@@ -150,7 +138,6 @@ export function useShakaEngine({
           try {
             await videoRef.current.play();
             loggerRef.current?.addLog('Playback live on-screen!', 'success');
-            // 🎯 সাকসেস রেকর্ড সিঙ্ক
             ServerRanker.recordSuccess(currentStreamUrl, (Date.now() - startTime) / 1000);
           } catch {
             setTimeout(() => { videoRef.current?.play().catch(() => {}); }, 1500);
@@ -161,7 +148,6 @@ export function useShakaEngine({
 
         if (coreWatchdogRef.current) clearInterval(coreWatchdogRef.current);
 
-        // 🎯 প্রোডাকশন ১ সেকেন্ড (1000ms) লাইটওয়েট ওয়াচডগ এবং নিউ স্ট্রিম ব্রেইন লুপ সংযোগ
         coreWatchdogRef.current = setInterval(() => {
           const video = videoRef.current;
           const player = playerRef.current;
@@ -178,27 +164,17 @@ export function useShakaEngine({
             ? Math.max(0, video.buffered.end(video.buffered.length - 1) - video.currentTime)
             : 0;
 
-          const drop = stats.totalVideoFrames > 0
-            ? stats.droppedVideoFrames / stats.totalVideoFrames
-            : 0;
-
-          const latency = stats.liveLatency || 0;
           const bandwidth = stats.estimatedBandwidth || 4000000;
 
-          // ১. নেটওয়ার্ক এনালিটিক্স ডাটা পুশ
           NetworkAI.push(bandwidth);
 
-          // ২. সার্ভার র্যাংকিংয়ে স্টল ইন্টেলিজেন্স ফিড
           if (buffer < 0.35) {
             ServerRanker.recordStall(currentStreamUrl);
           }
 
-          // ৩. নিউ সেন্ট্রাল স্ট্রিম ব্রেইন গ্লোবাল কন্ট্রোল ফিড
+          // 🎯 ফিক্সড: এখন আর অতিরিক্ত ডাটা পাস করা হচ্ছে না, শুধু ভিডিও আর সুইচ ফাংশন!
           StreamBrain.update({
             video,
-            buffer,
-            drop,
-            latency,
             safeSwitch: safeSwitchServer,
           });
 
