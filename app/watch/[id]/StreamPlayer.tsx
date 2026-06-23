@@ -7,7 +7,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
 import Script from 'next/script';
 import { PlayerLogs, type PlayerLogsHandle } from '../../components/PlayerLogs';
-import { useShakaEngine } from '../../hooks/useShakaEngine';
+import { useShakaEngine } from '../../media/hooks/useShakaEngine';
+
 
 interface Stream { title?: string; link: string; api?: string; }
 interface EventInfo { eventCat: string; eventName: string; teamA: string; teamB: string; startTime: string; endTime: string; link_names?: string[]; }
