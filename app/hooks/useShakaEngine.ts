@@ -1,364 +1,264 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { PlayerLogsHandle } from '../components/PlayerLogs';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import useSWR from 'swr';
+import Link from 'next/link';
+import { motion, AnimatePresence } from 'framer-motion';
+import 'shaka-player/dist/controls.css';
+import Script from 'next/script';
+import { PlayerLogs, type PlayerLogsHandle } from '../../components/PlayerLogs';
+// 🎯 ফিক্স ১: আপনার নতুন বানানো মডিউলার ইঞ্জিন হুকটি এখানে ইমপোর্ট করা হলো
+import { useShakaEngine } from '../../media/hooks/useShakaEngine';
 
-interface UseShakaEngineProps {
-  currentStreamUrl: string | null;
-  activeStreamIndex: number;
-  streams: any[] | null;
-  allServersDown: boolean;
-  videoRef: React.RefObject<HTMLVideoElement | null>;
-  videoContainerRef: React.RefObject<HTMLDivElement | null>;
-  loggerRef: React.RefObject<PlayerLogsHandle | null>;
-  setIsBuffering: (b: boolean) => void;
-  safeSwitchServer: () => void;
-  getMimeType: (url: string) => string | undefined;
-}
+interface Stream { title?: string; link: string; api?: string; }
+interface EventInfo { eventCat: string; eventName: string; teamA: string; teamB: string; startTime: string; endTime: string; link_names?: string[]; }
+interface Match { id: number | string; eventInfo: EventInfo; links?: string; }
+interface ServerFailureRecord { time: number; attempts: number; }
 
-const parseClearKeys = (drmData: string | object | undefined): Record<string, string> => {
-  if (!drmData) return {};
-  try {
-    let data = typeof drmData === 'string' ? drmData.trim() : drmData;
-    if (typeof data === 'string' && data.startsWith('{')) { data = JSON.parse(data); }
-    if (typeof data === 'object' && data !== null) {
-      return Object.fromEntries(
-        Object.entries(data).map(([kid, key]) => [
-          kid.replace(/['"\s{}:]/g, ''), String(key).replace(/['"\s{}:]/g, '')
-        ]).filter(([kid, key]) => kid && key)
-      );
+const LIVE_EVENTS_API = 'https://ratulxadia-playz-cats-event.hf.space/api/events';
+const STREAM_API_BASE = 'https://ratulxadia-playz-cats-event.hf.space/api/stream/';
+
+const CONFIG = {
+  failoverCooldown: 1000,
+  serverBlacklistDuration: 20000,
+} as const;
+
+const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
+
+export default function StreamPlayer({ id }: { id: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoContainerRef = useRef<HTMLDivElement>(null);
+  const loggerRef = useRef<PlayerLogsHandle>(null);
+
+  const streamsRef = useRef<Stream[] | null>(null);
+  const lastFailoverTimeRef = useRef(0);
+  const timersRef = useRef<Set<any>>(new Set());
+
+  const [activeStreamIndex, setActiveStreamIndex] = useState(0);
+  const [isBuffering, setIsBuffering] = useState(true);
+  const [allServersDown, setAllServersDown] = useState(false);
+  const [failedServers, setFailedServers] = useState<Record<string, ServerFailureRecord>>({});
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
+  const [showFitToast, setShowFitToast] = useState(false);
+
+  const handleFitToggle = useCallback(() => {
+    const fitModes = ['contain', 'cover', 'fill'] as const;
+    setObjectFit((prev) => {
+      const next = fitModes[(fitModes.indexOf(prev) + 1) % fitModes.length];
+      setShowFitToast(true);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('toggleObjectFit', handleFitToggle);
+    return () => window.removeEventListener('toggleObjectFit', handleFitToggle);
+  }, [handleFitToggle]);
+
+  useEffect(() => {
+    if (showFitToast) {
+      const timer = setTimeout(() => setShowFitToast(false), 2000);
+      timersRef.current.add(timer);
+      return () => { clearTimeout(timer); timersRef.current.delete(timer); };
     }
-    if (typeof data === 'string' && data.includes(':')) {
-      const parts = data.replace(/['"\s{}]/g, '').split(':');
-      if (parts.length === 2) return { [parts[0]]: parts[1] };
+  }, [showFitToast]);
+
+  const { data: rawMatches } = useSWR(LIVE_EVENTS_API, fetcher, { revalidateOnFocus: false });
+  
+  const matches = useMemo(() => {
+    if (!rawMatches || !Array.isArray(rawMatches)) return null;
+    return rawMatches.map((item: any, index: number) => {
+      const rawEvent = item.event || {};
+      const matchId = rawEvent.links ? rawEvent.links.replace('pro/', '').replace('.txt', '') : index.toString();
+      return {
+        id: matchId, links: rawEvent.links || '',
+        eventInfo: {
+          eventCat: rawEvent.category || 'Live Event', eventName: rawEvent.eventName || 'Live Match',
+          teamA: rawEvent.teamAName || 'Team A', teamB: rawEvent.teamBName || 'Team B',
+          startTime: '', endTime: '', link_names: rawEvent.link_names || [],
+        },
+      };
+    });
+  }, [rawMatches]);
+
+  const currentMatch = useMemo(() => {
+    if (!matches) return null;
+    return matches.find((m: any) => String(m.id) === String(id)) || null;
+  }, [matches, id]);
+
+  const streamFetchUrl = useMemo(() => {
+    if (currentMatch?.links) {
+      const streamSlug = currentMatch.links.replace('pro/', '').replace('.txt', '');
+      return `${STREAM_API_BASE}${streamSlug}`;
     }
-    return {};
-  } catch { return {}; }
-};
+    return null;
+  }, [currentMatch]);
 
-export function useShakaEngine({
-  currentStreamUrl, activeStreamIndex, streams, allServersDown,
-  videoRef, videoContainerRef, loggerRef, setIsBuffering, safeSwitchServer, getMimeType,
-}: UseShakaEngineProps) {
-  const playerRef = useRef<any>(null);
-  const uiRef = useRef<any>(null);
-  const p2pEngineRef = useRef<any>(null);
-  const stallIntervalRef = useRef<any>(null);
-  const initInProgressRef = useRef<boolean>(false);
-  const isCurrentlyLoadingRef = useRef<boolean>(false);
+  // 🎯 ফিক্স ২: প্রতি ১৫ সেকেন্ড পর পর রিলোড ছাড়াই ব্যাকগ্রাউন্ডে ফ্রেশ টোকেন সিঙ্ক হবে
+  const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { 
+    revalidateOnFocus: false,
+    refreshInterval: 15000, 
+    dedupingInterval: 5000
+  });
 
-  const latestStreamUrlRef = useRef<string | null>(null);
-  const lastLoadedIndexRef = useRef<number | null>(null);
-  const lastLoadedBaseUrlRef = useRef<string | null>(null);
-  const lastSwitchRef = useRef<number>(0);
+  const streams = useMemo<Stream[] | null>(() => {
+    if (!streamsFromApi) return null;
+    const rawList = Array.isArray(streamsFromApi) ? streamsFromApi : streamsFromApi.streams || [];
+    return rawList
+      .filter((s: any) => s && (s.link || s.url))
+      .map((s: any) => ({
+        link: s.link || s.url || '', 
+        title: s.name || s.title || '', 
+        api: s.api || '',
+      }));
+  }, [streamsFromApi]);
 
-  const [isEngineReady, setIsEngineReady] = useState(false);
+  const currentStreamUrl = useMemo(() => streams?.[activeStreamIndex]?.link || null, [streams, activeStreamIndex]);
 
-  useEffect(() => {
-    latestStreamUrlRef.current = currentStreamUrl;
-  }, [currentStreamUrl]);
+  useEffect(() => { streamsRef.current = streams; }, [streams]);
+  useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 5000); return () => clearInterval(timer); }, []);
 
-  // ১. প্লেয়ার ও ইউআই ওয়ান-টাইম ইনিশিয়ালাইজেশন
-  useEffect(() => {
-    if (!videoRef.current || !videoContainerRef.current || initInProgressRef.current) return;
-    initInProgressRef.current = true;
+  const getMimeType = (url: string): string | undefined => {
+    if (url.includes('.mpd')) return 'application/dash+xml';
+    if (url.includes('.m3u8')) return 'application/x-mpegURL';
+    return undefined;
+  };
 
-    let shaka: any;
-    const initInstance = async () => {
-      try {
-        loggerRef.current?.addLog('Core: Creating pristine Shaka Instance...', 'info');
-        
-        shaka = await import('shaka-player/dist/shaka-player.ui');
-        shaka.polyfill.installAll();
+  const safeSwitchServer = useCallback(() => {
+    const now = Date.now();
+    if (now - lastFailoverTimeRef.current < CONFIG.failoverCooldown) return;
+    lastFailoverTimeRef.current = now;
 
-        let P2PEngine: any = null;
-        try {
-          const p2pModule: any = await import('p2p-media-loader-shaka');
-          P2PEngine = p2pModule.Engine || p2pModule.default?.Engine; 
-        } catch (p2pErr: any) {
-          loggerRef.current?.addLog(`P2P Engine skipped: ${p2pErr.message}`, 'warn');
-        }
+    setActiveStreamIndex((prevIndex) => {
+      const list = streamsRef.current;
+      if (!list) return prevIndex;
+      
+      loggerRef.current?.addLog(`Server [${prevIndex + 1}] stream dead. Swapping link...`, 'warn');
+      setFailedServers((p) => ({ ...p, [prevIndex]: { time: Date.now(), attempts: (p[prevIndex]?.attempts || 0) + 1 } }));
 
-        if (shaka.ui.Controls && !(shaka.ui.Controls as any).custom_stretch_registered) {
-          class StretchButton extends shaka.ui.Element {
-            constructor(parent: HTMLElement, controls: any) {
-              super(parent, controls);
-              const button = document.createElement('button');
-              button.className = 'shaka-custom-stretch-btn shaka-tooltip';
-              button.setAttribute('aria-label', 'Toggle Fit');
-              button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
-              this.eventManager.listen(button, 'click', () => { window.dispatchEvent(new CustomEvent('toggleObjectFit')); });
-              parent.appendChild(button);
-            }
-          }
-          shaka.ui.Controls.registerElement('custom_stretch', { create: (root: HTMLElement, ctrls: any) => new StretchButton(root, ctrls) });
-          (shaka.ui.Controls as any).custom_stretch_registered = true;
-        }
-
-        const player = new shaka.Player(videoRef.current);
-        playerRef.current = player;
-
-        // সাইলেন্ট ব্যাকগ্রাউন্ড টোকেন ইনজেক্টর ফিল্টার
-        player.getNetworkingEngine().registerRequestFilter((type: number, request: any) => {
-          // 🎯 ফিক্স ৫: PC/TV এর CPU স্পাইক রুখতে রিকোয়েস্ট ওভারহেড প্রটেকশন ফ্ল্যাগ
-          if (request._patched) return;
-          request._patched = true;
-
-          const freshUrlWithToken = latestStreamUrlRef.current;
-          if (!freshUrlWithToken) return;
-
-          const parts = freshUrlWithToken.split('|');
-          const tokenUrl = parts[0].trim();
-
-          if (tokenUrl.includes('?')) {
-            const freshQueryString = tokenUrl.split('?')[1];
-            request.uris = request.uris.map((uri: string) => {
-              const baseUri = uri.split('?')[0];
-              return `${baseUri}?${freshQueryString}`;
-            });
-          }
-
-          if (parts.length > 1) {
-            const headerPart = parts[1];
-            const pairs = headerPart.split('&');
-            pairs.forEach((pair) => {
-              if (pair.includes('=')) {
-                const [k, v] = pair.split('=', 2);
-                request.headers[k.trim().toLowerCase()] = v.trim();
-              }
-            });
-          }
-        });
-
-        if (P2PEngine && P2PEngine.isSupported && P2PEngine.isSupported()) {
-          try {
-            p2pEngineRef.current = new P2PEngine({
-              segments: { swarmId: currentStreamUrl || 'playz-live-swarm' },
-              loader: { cachedSegmentExpiration: 86400000, cachedSegmentsCount: 50 }
-            });
-            loggerRef.current?.addLog('🚀 P2P Engine Warm-ready (Bypassed for MPD stability)', 'info');
-          } catch (e: any) {
-            loggerRef.current?.addLog(`P2P setup failed: ${e.message}`, 'warn');
-          }
-        }
-
-        const ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
-        uiRef.current = ui;
-        
-        ui.configure({
-          controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'custom_stretch', 'overflow_menu', 'fullscreen'],
-          addSeekBar: true,
-        });
-
-        // 🎯 ফিক্স: ব্রডকাস্ট-গ্রেড টিভি ও পিসি স্ট্যাবিলিটি টিউনিং (Sweet Spot)
-        player.configure({
-          streaming: {
-            bufferingGoal: 20, 
-            rebufferingGoal: 7, 
-            liveSyncDuration: 6, 
-            bufferBehind: 25, 
-            stallEnabled: false, 
-            retryParameters: { maxAttempts: 5, baseDelay: 1000, backoffFactor: 2 }
-          },
-          abr: { enabled: false }, 
-          manifest: { 
-            dash: { 
-              autoCorrectDrift: true,
-              ignoreMinBufferTime: true, 
-              initialSegmentLimit: 2
-            }, 
-            hls: { 
-              ignoreManifestProgramDateTime: true 
-            }
-          }
-        });
-
-        const onBuffering = (e: any) => setIsBuffering(e.buffering);
-        
-        const onError = async (event: any) => {
-          const error = event.detail;
-          if (error && error.severity === 1) return;
-          if (error && error.severity === 2) {
-            const fatalCodes = [6007, 3016, 3014];
-            if (fatalCodes.includes(error.code)) {
-              loggerRef.current?.addLog(`Fatal Network/DRM Error ${error.code}. Triggering fallback...`, 'error');
-              safeSwitchServer();
-            }
-          }
-        };
-
-        player.addEventListener('buffering', onBuffering);
-        player.addEventListener('error', onError);
-
-        playerRef.current.__cleanupListeners = () => {
-          player.removeEventListener('buffering', onBuffering);
-          player.removeEventListener('error', onError);
-        };
-
-        loggerRef.current?.addLog('Live IPTV Engine Mounted successfully!', 'success');
-        setIsEngineReady(true);
-
-      } catch (err: any) {
-        initInProgressRef.current = false;
-        loggerRef.current?.addLog(`Core Mount Failed: ${err.message || err}`, 'error');
+      const nextIdx = (prevIndex + 1) % list.length;
+      if (nextIdx === 0) {
+        loggerRef.current?.addLog('Matrix Status: All options returned runtime errors.', 'error');
+        setAllServersDown(true);
+        setIsBuffering(false);
       }
-    };
+      return nextIdx;
+    });
+  }, []);
 
-    initInstance();
+  useShakaEngine({
+    currentStreamUrl, activeStreamIndex, streams, allServersDown,
+    videoRef, videoContainerRef, loggerRef, setIsBuffering, safeSwitchServer, getMimeType
+  });
 
-    return () => {
-      initInProgressRef.current = false;
-      setIsEngineReady(false);
-      lastLoadedIndexRef.current = null;
-      lastLoadedBaseUrlRef.current = null;
-      if (stallIntervalRef.current) { clearInterval(stallIntervalRef.current); stallIntervalRef.current = null; }
-      if (playerRef.current && playerRef.current.__cleanupListeners) playerRef.current.__cleanupListeners();
-      if (p2pEngineRef.current) { p2pEngineRef.current.destroy(); p2pEngineRef.current = null; }
-      if (uiRef.current) { uiRef.current.destroy(); uiRef.current = null; }
-      if (playerRef.current) { playerRef.current.destroy(); playerRef.current = null; }
-    };
-  }, [safeSwitchServer]);
+  const handleManualSwitch = (idx: number) => {
+    loggerRef.current?.addLog(`Manual Server Swap Triggered to Pipe index: ${idx + 1}`, 'info');
+    setAllServersDown(false);
+    setActiveStreamIndex(idx);
+  };
 
-  // ২. স্ট্রিম লোড রানার
-  useEffect(() => {
-    if (!isEngineReady || !playerRef.current || allServersDown || !currentStreamUrl || !streams?.length) return;
-    
-    let isMounted = true;
+  const matchTitle = currentMatch?.eventInfo && `${currentMatch.eventInfo.teamA} VS ${currentMatch.eventInfo.teamB}`;
 
-    const loadStreamSource = async () => {
-      if (isCurrentlyLoadingRef.current) return;
+  return (
+    <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
+      <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <Link href="/">
+            <button className="px-3 py-1.5 rounded-lg bg-gray-800/50 hover:bg-[#00E5FF]/10 text-gray-300 hover:text-[#00E5FF] transition-all border border-gray-700/40 text-xs font-bold outline-none flex items-center gap-2">
+              ← Back to Home
+            </button>
+          </Link>
+          <span className="text-sm font-bold tracking-wide truncate max-w-xs md:max-w-lg">{matchTitle || 'Live Event'}</span>
+          <div className="w-20"></div>
+        </div>
+      </nav>
 
-      const cleanUrlForMime = (currentStreamUrl || '').split('|')[0];
-      const cleanBaseUrl = cleanUrlForMime.split('?')[0];
-
-      if (
-        lastLoadedIndexRef.current === activeStreamIndex &&
-        lastLoadedBaseUrlRef.current === cleanBaseUrl &&
-        playerRef.current.getAssetUri()
-      ) {
-        return;
-      }
-
-      if (stallIntervalRef.current) { clearInterval(stallIntervalRef.current); stallIntervalRef.current = null; }
-
-      isCurrentlyLoadingRef.current = true;
-      setIsBuffering(true);
-      loggerRef.current?.addLog(`Loading Source: Server [${activeStreamIndex + 1}]`, 'info');
-
-      try {
-        await playerRef.current.unload();
-
-        if (!streams || !streams[activeStreamIndex]) {
-          throw new Error('Target stream metadata is empty');
-        }
-
-        const currentStream = streams[activeStreamIndex];
-        const clearKeysObj = parseClearKeys(currentStream?.api);
-
-        if (Object.keys(clearKeysObj).length > 0) {
-          loggerRef.current?.addLog(`DRM Keys Parsed & Injected`, 'success');
-          playerRef.current.configure({ drm: { clearKeys: clearKeysObj } });
-        } else {
-          playerRef.current.configure({ drm: { clearKeys: {} } });
-        }
-
-        let mimeType = getMimeType(cleanUrlForMime);
-        if (cleanUrlForMime.split('?')[0].endsWith('.mpd')) {
-          mimeType = 'application/dash+xml';
-        }
-
-        lastLoadedIndexRef.current = activeStreamIndex;
-        lastLoadedBaseUrlRef.current = cleanBaseUrl;
-
-        const loadPromise = playerRef.current.load(currentStreamUrl, null, mimeType);
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('30s Load Timeout Limit Reached')), 30000));
-
-        await Promise.race([loadPromise, timeoutPromise]);
-
-        // 🎯 ফিক্স ৩: টিভি ব্রাউজারের অটোপ্লে ডিলে সেফটি বাড়িয়ে ১৫০০ms (1.5s) করা হলো
-        if (videoRef.current && isMounted) {
-          const tryPlay = async () => {
-            if (!videoRef.current) return;
-            try {
-              await videoRef.current.play();
-              loggerRef.current?.addLog('Playback live on-screen!', 'success');
-            } catch {
-              setTimeout(() => {
-                videoRef.current?.play().catch(() => {});
-              }, 1500);
-            }
-          };
-          await tryPlay();
-        }
-
-        if (isMounted) setIsBuffering(false);
-
-        let lastTime = 0;
-        let stallCount = 0;
-        
-        // 🎯 ফিক্স ৪: ফাস্ট রিম্যাউন্ট মেমোরি লিক এবং ডাবল ইন্টারভাল রিস্ক রুখতে ডিফেনসিভ গার্ড
-        if (stallIntervalRef.current) {
-          clearInterval(stallIntervalRef.current);
-          stallIntervalRef.current = null;
-        }
-
-        // 🎯 ফিক্স ১: রেসপন্স রেজোলিউশন টাইম ৫ সেকেন্ড থেকে কমিয়ে ২৫০০ms করা হলো
-        stallIntervalRef.current = setInterval(() => {
-          const video = videoRef.current;
-          if (!video) return;
-
-          const buffered = video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0;
-          const bufferAhead = buffered - video.currentTime;
+      {/* 🎯 ফিক্স ৩: পিসির স্ক্রিনে থিয়েটার মোড গ্রিড লেআউট (Left: Player, Right: Sidebar Logs) */}
+      <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
           
-          // 🎯 ফিক্স ২: স্যামসাং/এলজি স্মার্ট টিভির ভুল রিডিং রুখতে রিয়ালিস্টিক নেটওয়ার্ক ব্যাড লজিক
-          const networkBad = video.readyState === 0 && video.buffered.length === 0;
-          
-          const isBufferActuallyBad = networkBad || (video.readyState < 2 && bufferAhead < 0.5 && video.currentTime > 0);
-          const isPlaybackFrozen = Math.abs(video.currentTime - lastTime) < 0.001;
+          {/* 🖥️ বাম পাশ: ভিডিও প্লেয়ার ও সার্ভার লিস্ট (পিসিতে ৩ ভাগের ২ ভাগ জায়গা নিবে) */}
+          <div className="md:col-span-2 space-y-4">
+            <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-xl overflow-hidden shadow-2xl border border-gray-800/60 group">
+              {isBuffering && !allServersDown && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-40">
+                  <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
 
-          if (isBufferActuallyBad || (isPlaybackFrozen && !video.paused && video.readyState < 3)) {
-            stallCount++;
-            loggerRef.current?.addLog(`Stall Watchdog: ${stallCount}/6 (Buffer: ${bufferAhead.toFixed(2)}s)`, 'warn');
-          } else {
-            // 🎯 ফিক্স ৬: ফ্লিপ-ফ্লপ বা হুট করে জিরো হওয়া রুখতে স্মুথ ডিক্রিজ মেকানিজম
-            stallCount = Math.max(0, stallCount - 1);
+              {allServersDown && (
+                <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/95 z-50 flex-col gap-2 text-center p-4">
+                  <div className="text-red-400 font-bold">Stream Currently Unavailable</div>
+                  <button onClick={() => { setAllServersDown(false); setActiveStreamIndex(0); setFailedServers({}); }} className="mt-2 bg-gray-900 border border-gray-700 text-white px-4 py-1.5 rounded-full text-xs">Reset Playback</button>
+                </div>
+              )}
+
+              <video ref={videoRef} autoPlay playsInline className="w-full h-full" style={{ objectFit }} />
+
+              <AnimatePresence>
+                {showFitToast && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+                    className="absolute top-6 left-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-[#00E5FF] animate-pulse" />
+                    <span className="text-xs md:text-sm font-bold text-white capitalize">
+                      {objectFit === 'contain' ? 'Fit to Screen' : objectFit === 'cover' ? 'Zoom (Cropped)' : 'Stretch (Fill)'}
+                    </span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* সার্ভার বাটন প্যানেল */}
+            {streams && (
+              <div className="flex gap-2 overflow-x-auto py-3 px-4 items-center scrollbar-hide bg-[#161824]/60 border border-gray-800/50 rounded-xl">
+                <span className="text-gray-400 font-bold text-xs uppercase mr-2 tracking-wide">Servers:</span>
+                {streams.map((stream, index) => {
+                  const serverName = stream.title || `Server ${index + 1}`;
+                  return (
+                    <button 
+                      key={index} 
+                      onClick={() => handleManualSwitch(index)} 
+                      className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap border transition-all duration-200 ${
+                        activeStreamIndex === index && !allServersDown 
+                          ? 'bg-[#00E5FF]/10 border-[#00E5FF] text-[#00E5FF] shadow-[0_0_15px_rgba(0,229,255,0.15)]' 
+                          : 'bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white hover:border-gray-600'
+                      }`}
+                    >
+                      {serverName}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* 🖥️ ডান পাশ: PlayerLogs / More Events (পিসিতে প্লেয়ারের ডান পাশে ফিক্সড থাকবে) */}
+          <div className="w-full md:sticky md:top-24 self-start">
+            <div className="bg-[#161824]/40 border border-gray-800/60 rounded-xl overflow-hidden p-1 shadow-lg">
+              <PlayerLogs ref={loggerRef} matchTitle={matchTitle || 'Live Event'} matchObj={currentMatch} />
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          .shaka-custom-stretch-btn {
+            background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; display: flex; align-items: center; justify-content: center;
           }
-
-          const hasStarted = video.currentTime > 0 || video.readyState >= 3;
-
-          // 🎯 ফিক্স ৪: এন্টি-লুপ গার্ড সিকিউরিটি চেক (৮ সেকেন্ডের ব্যবধান বাধ্যতামুলক)
-          if (stallCount >= 6 && hasStarted && (Date.now() - lastSwitchRef.current > 8000)) {
-            loggerRef.current?.addLog('Playback stall confirmed natively with anti-loop guard. Switching...', 'error');
-            lastSwitchRef.current = Date.now();
-            stallCount = 0;
-            safeSwitchServer();
-          }
-          
-          lastTime = video.currentTime;
-        }, 2500);
-
-      } catch (err: any) {
-        if (err.code === 7000 || err.code === 7002) {
-          isCurrentlyLoadingRef.current = false;
-          return;
-        }
-        lastLoadedIndexRef.current = null;
-        lastLoadedBaseUrlRef.current = null;
-        loggerRef.current?.addLog(`Loading Failed: ${err.message || err.code}`, 'error');
-        if (isMounted) safeSwitchServer();
-      } finally {
-        isCurrentlyLoadingRef.current = false;
-      }
-    };
-
-    const delayTimer = setTimeout(() => {
-      loadStreamSource();
-    }, 50);
-
-    return () => {
-      isMounted = false;
-      clearTimeout(delayTimer);
-      if (stallIntervalRef.current) { clearInterval(stallIntervalRef.current); stallIntervalRef.current = null; }
-    };
-  }, [currentStreamUrl, activeStreamIndex, allServersDown, isEngineReady, streams, safeSwitchServer, getMimeType, setIsBuffering]);
+          .shaka-custom-stretch-btn:hover { opacity: 1; }
+        `
+      }} />
+      <Script 
+        src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js"
+        strategy="lazyOnload" 
+        id="adsterra-popunder"
+      />
+    </main>
+  );
 }
