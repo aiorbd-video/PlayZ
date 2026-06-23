@@ -50,6 +50,7 @@ export function useShakaEngine({
   const latestStreamUrlRef = useRef<string | null>(null);
   const lastLoadedIndexRef = useRef<number | null>(null);
   const lastLoadedBaseUrlRef = useRef<string | null>(null);
+  const lastSwitchRef = useRef<number>(0);
 
   const [isEngineReady, setIsEngineReady] = useState(false);
 
@@ -99,6 +100,10 @@ export function useShakaEngine({
 
         // সাইলেন্ট ব্যাকগ্রাউন্ড টোকেন ইনজেক্টর ফিল্টার
         player.getNetworkingEngine().registerRequestFilter((type: number, request: any) => {
+          // 🎯 ফিক্স ৫: PC/TV এর CPU স্পাইক রুখতে রিকোয়েস্ট ওভারহেড প্রটেকশন ফ্ল্যাগ
+          if (request._patched) return;
+          request._patched = true;
+
           const freshUrlWithToken = latestStreamUrlRef.current;
           if (!freshUrlWithToken) return;
 
@@ -131,9 +136,6 @@ export function useShakaEngine({
               segments: { swarmId: currentStreamUrl || 'playz-live-swarm' },
               loader: { cachedSegmentExpiration: 86400000, cachedSegmentsCount: 50 }
             });
-            
-            // 🎯 ফিক্স ৩: DASH/MPD সেগমেন্টে বাফার লুপ নষ্ট করা এড়াতে লাইভ রানিংয়ে P2P ইনজেকশন সাময়িকভাবে স্কিপ করা হলো
-            // p2pEngineRef.current.initShakaPlayer(player);
             loggerRef.current?.addLog('🚀 P2P Engine Warm-ready (Bypassed for MPD stability)', 'info');
           } catch (e: any) {
             loggerRef.current?.addLog(`P2P setup failed: ${e.message}`, 'warn');
@@ -148,13 +150,13 @@ export function useShakaEngine({
           addSeekBar: true,
         });
 
-        // 🎯 ফিক্স ২ এবং ৭: বড় স্ক্রিন/টিভি ব্রাউজার এবং ব্রোকেন প্রোফাইল এড়াতে বাফার গোল বাড়ানো ও ABR ডিজেবল করা হলো
+        // 🎯 ফিক্স: ব্রডকাস্ট-গ্রেড টিভি ও পিসি স্ট্যাবিলিটি টিউনিং (Sweet Spot)
         player.configure({
           streaming: {
-            bufferingGoal: 15, 
-            rebufferingGoal: 5, 
-            liveSyncDuration: 10, 
-            bufferBehind: 30, 
+            bufferingGoal: 20, 
+            rebufferingGoal: 7, 
+            liveSyncDuration: 6, 
+            bufferBehind: 25, 
             stallEnabled: false, 
             retryParameters: { maxAttempts: 5, baseDelay: 1000, backoffFactor: 2 }
           },
@@ -177,7 +179,6 @@ export function useShakaEngine({
           const error = event.detail;
           if (error && error.severity === 1) return;
           if (error && error.severity === 2) {
-            // 🎯 ফিক্স ৪: ১০০১ এবং ১০০২ কোডকে ফ্যাটাল লিস্ট থেকে বাদ দেওয়া হলো
             const fatalCodes = [6007, 3016, 3014];
             if (fatalCodes.includes(error.code)) {
               loggerRef.current?.addLog(`Fatal Network/DRM Error ${error.code}. Triggering fallback...`, 'error');
@@ -210,6 +211,7 @@ export function useShakaEngine({
       setIsEngineReady(false);
       lastLoadedIndexRef.current = null;
       lastLoadedBaseUrlRef.current = null;
+      if (stallIntervalRef.current) { clearInterval(stallIntervalRef.current); stallIntervalRef.current = null; }
       if (playerRef.current && playerRef.current.__cleanupListeners) playerRef.current.__cleanupListeners();
       if (p2pEngineRef.current) { p2pEngineRef.current.destroy(); p2pEngineRef.current = null; }
       if (uiRef.current) { uiRef.current.destroy(); uiRef.current = null; }
@@ -260,9 +262,8 @@ export function useShakaEngine({
           playerRef.current.configure({ drm: { clearKeys: {} } });
         }
 
-        // 🎯 ফিক্স ৫: ডাইরেক্ট এক্সটেনশন রিড করে MPD/DASH টাইপ ফোর্সলি ইনজেক্ট করা হলো
         let mimeType = getMimeType(cleanUrlForMime);
-        if (cleanUrlForMime.includes('.mpd')) {
+        if (cleanUrlForMime.split('?')[0].endsWith('.mpd')) {
           mimeType = 'application/dash+xml';
         }
 
@@ -270,16 +271,24 @@ export function useShakaEngine({
         lastLoadedBaseUrlRef.current = cleanBaseUrl;
 
         const loadPromise = playerRef.current.load(currentStreamUrl, null, mimeType);
-        
-        // 🎯 ফিক্স ৬: লোড টাইমআউট লিমিট ২০ সেকেন্ড থেকে বাড়িয়ে ৩০ সেকেন্ড (30000ms) করা হলো
         const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('30s Load Timeout Limit Reached')), 30000));
 
         await Promise.race([loadPromise, timeoutPromise]);
 
+        // 🎯 ফিক্স ৩: টিভি ব্রাউজারের অটোপ্লে ডিলে সেফটি বাড়িয়ে ১৫০০ms (1.5s) করা হলো
         if (videoRef.current && isMounted) {
-          videoRef.current.play()
-            .then(() => loggerRef.current?.addLog('Playback live on-screen!', 'success'))
-            .catch(() => loggerRef.current?.addLog('Autoplay deferred. Waiting for interaction.', 'warn'));
+          const tryPlay = async () => {
+            if (!videoRef.current) return;
+            try {
+              await videoRef.current.play();
+              loggerRef.current?.addLog('Playback live on-screen!', 'success');
+            } catch {
+              setTimeout(() => {
+                videoRef.current?.play().catch(() => {});
+              }, 1500);
+            }
+          };
+          await tryPlay();
         }
 
         if (isMounted) setIsBuffering(false);
@@ -287,29 +296,46 @@ export function useShakaEngine({
         let lastTime = 0;
         let stallCount = 0;
         
+        // 🎯 ফিক্স ৪: ফাস্ট রিম্যাউন্ট মেমোরি লিক এবং ডাবল ইন্টারভাল রিস্ক রুখতে ডিফেনসিভ গার্ড
+        if (stallIntervalRef.current) {
+          clearInterval(stallIntervalRef.current);
+          stallIntervalRef.current = null;
+        }
+
+        // 🎯 ফিক্স ১: রেসপন্স রেজোলিউশন টাইম ৫ সেকেন্ড থেকে কমিয়ে ২৫০০ms করা হলো
         stallIntervalRef.current = setInterval(() => {
           const video = videoRef.current;
           if (!video) return;
 
           const buffered = video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0;
           const bufferAhead = buffered - video.currentTime;
-          const diff = video.currentTime - lastTime;
           
-          // 🎯 ফিক্স ১ এবং প্রধান ফিক্স: স্টল ডিটেকশন লজিক আল্ট্রা-রিল্যাক্সড করা হলো (TV ও PC ফ্রেন্ডলি)
-          if (video.readyState < 2 || (diff < 0.01 && bufferAhead < 2)) {
+          // 🎯 ফিক্স ২: স্যামসাং/এলজি স্মার্ট টিভির ভুল রিডিং রুখতে রিয়ালিস্টিক নেটওয়ার্ক ব্যাড লজিক
+          const networkBad = video.readyState === 0 && video.buffered.length === 0;
+          
+          const isBufferActuallyBad = networkBad || (video.readyState < 2 && bufferAhead < 0.5 && video.currentTime > 0);
+          const isPlaybackFrozen = Math.abs(video.currentTime - lastTime) < 0.001;
+
+          if (isBufferActuallyBad || (isPlaybackFrozen && !video.paused && video.readyState < 3)) {
             stallCount++;
-            loggerRef.current?.addLog(`Stall tracking ${stallCount}/6 (Buffer: ${bufferAhead.toFixed(1)}s)...`, 'warn');
+            loggerRef.current?.addLog(`Stall Watchdog: ${stallCount}/6 (Buffer: ${bufferAhead.toFixed(2)}s)`, 'warn');
           } else {
-            stallCount = 0;
+            // 🎯 ফিক্স ৬: ফ্লিপ-ফ্লপ বা হুট করে জিরো হওয়া রুখতে স্মুথ ডিক্রিজ মেকানিজম
+            stallCount = Math.max(0, stallCount - 1);
           }
 
-          // ৩ বারের বদলে ৬ বার ট্রিগার এবং জেনুইন readyState ল্যাক চেক করে রিলোড হবে
-          if (stallCount >= 6 && video.readyState < 2) {
-            loggerRef.current?.addLog('Playback stall confirmed natively. Switching...', 'error');
+          const hasStarted = video.currentTime > 0 || video.readyState >= 3;
+
+          // 🎯 ফিক্স ৪: এন্টি-লুপ গার্ড সিকিউরিটি চেক (৮ সেকেন্ডের ব্যবধান বাধ্যতামুলক)
+          if (stallCount >= 6 && hasStarted && (Date.now() - lastSwitchRef.current > 8000)) {
+            loggerRef.current?.addLog('Playback stall confirmed natively with anti-loop guard. Switching...', 'error');
+            lastSwitchRef.current = Date.now();
+            stallCount = 0;
             safeSwitchServer();
           }
+          
           lastTime = video.currentTime;
-        }, 5000);
+        }, 2500);
 
       } catch (err: any) {
         if (err.code === 7000 || err.code === 7002) {
