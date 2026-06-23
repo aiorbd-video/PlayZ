@@ -1,54 +1,46 @@
 import { PlayerLogsHandle } from '../../../components/PlayerLogs';
 
 export class RecoveryManager {
-  private static recoveryStageMap = new Map<string, number>();
-  private static lockTimestamp = 0;
+  private static lastSwitchTimestamp = 0;
 
   static handleLayeredRecovery(
-    url: string,
+    stallCount: number,
     video: HTMLVideoElement | null,
     playerInstance: any,
     wrapper: any,
     loggerRef: React.RefObject<PlayerLogsHandle | null>,
     safeSwitchServer: () => void
   ) {
-    if (!url || !playerInstance || !video) return;
-    const now = Date.now();
-    
-    if (now - this.lockTimestamp < 3000) return; // Prevent loop stampede
-    this.lockTimestamp = now;
+    if (!video || !playerInstance) return;
 
-    const cleanUrl = url.split('|')[0].trim();
-    const currentStage = this.recoveryStageMap.get(cleanUrl) || 0;
-
-    if (currentStage === 0) {
-      loggerRef.current?.addLog(`⚡ Recovery L1: Micro-seek (+0.01s) triggered to push pipeline decoder.`, 'warn');
+    // 🎯 ফিক্স ৩: লাইভ আইপিটিভির জন্য প্রগ্রেসিভ থ্রেশহোল্ড ভিত্তিক রিল্যাক্সড রিকভারি
+    if (stallCount >= 3 && stallCount < 6) {
+      loggerRef.current?.addLog(`⚡ Recovery L1 (Stall: ${stallCount}): Micro-seek (+0.01s) execute.`, 'warn');
       video.currentTime += 0.01;
       video.play().catch(() => {});
-      this.recoveryStageMap.set(cleanUrl, 1);
     } 
-    else if (currentStage === 1) {
-      loggerRef.current?.addLog(`⚡ Recovery L2: Playback pipeline execution sequence forced.`, 'warn');
+    else if (stallCount >= 6 && stallCount < 10) {
+      loggerRef.current?.addLog(`⚡ Recovery L2 (Stall: ${stallCount}): Force play pipeline signal.`, 'warn');
       video.play().catch(() => {});
-      this.recoveryStageMap.set(cleanUrl, 2);
     } 
-    else if (currentStage === 2) {
-      loggerRef.current?.addLog(`⚡ Recovery L3: Resetting internal streaming mechanics via Shaka runtime.`, 'warn');
+    else if (stallCount >= 10 && stallCount < 15) {
+      loggerRef.current?.addLog(`⚡ Recovery L3 (Stall: ${stallCount}): Manifest level reloading via Shaka.`, 'warn');
       try {
         playerInstance.retryStreaming();
       } catch {
         video.load();
       }
-      this.recoveryStageMap.set(cleanUrl, 3);
     } 
-    else {
-      loggerRef.current?.addLog(`⚡ Recovery L4: Soft measures exhausted. Initiating server sequence mutation.`, 'error');
-      this.recoveryStageMap.set(cleanUrl, 0);
+    else if (stallCount >= 15) {
+      // 🎯 ফিক্স ৮: এন্টি-লুপ সুইচ গার্ড (৮ সেকেন্ড সিকিউরিটি লক)
+      const now = Date.now();
+      if (now - this.lastSwitchTimestamp < 8000) {
+        loggerRef.current?.addLog("🛡️ Shield Guard: Blocked rapid loop server bouncing.", "warn");
+        return;
+      }
+      this.lastSwitchTimestamp = now;
+      loggerRef.current?.addLog(`⚡ Recovery L4 (Stall: ${stallCount}): Failover triggered. Mutating stream channel...`, 'error');
       safeSwitchServer();
     }
-  }
-
-  static clearTracker(url: string) {
-    this.recoveryStageMap.delete(url.split('|')[0].trim());
   }
 }
