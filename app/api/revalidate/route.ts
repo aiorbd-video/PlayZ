@@ -11,7 +11,9 @@ export async function POST(request: Request) {
     }
 
     // 🔥 পাইথন বটের সিগন্যাল পাওয়া মাত্রই Vercel-এর পুরনো ডাটা ক্যাশ ডিলিট!
-    revalidateTag('firebase-streams');
+    // 🎯 ১ম আর্গুমেন্ট ট্যাগ নেম, ২য় আর্গুমেন্টে আমরা গ্লোবাল টাইপ লক 'layout' বা 'page' পাস করব
+revalidateTag('firebase-streams', 'layout');
+
     
     return NextResponse.json({ revalidated: true, message: 'Vercel Edge Cache Purged Successfully!' });
   } catch (err) {
