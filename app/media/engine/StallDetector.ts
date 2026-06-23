@@ -1,30 +1,36 @@
-export class StallDetector {
-  private static lastCheckedTime = 0;
-  private static lastFrameCount = 0;
-
-  static checkIsStalled(video: HTMLVideoElement, lastTime: number, playerInstance: any): boolean {
-    if (!video) return false;
-
-    const now = Date.now();
-    if (now - this.lastCheckedTime < 1000) return false; // Throttled at 1 second core intervals
-    this.lastCheckedTime = now;
-
-    const buffered = video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0;
-    const bufferAhead = buffered - video.currentTime;
-
-    // Check frame dropping metrics using raw HTML5 Media Engine
-    let framesStuck = false;
-    if (typeof video.getVideoPlaybackQuality === 'function') {
-      const q = video.getVideoPlaybackQuality();
-      if (q && q.totalVideoFrames === this.lastFrameCount && !video.paused && video.currentTime > 0) {
-        framesStuck = true;
-      }
-      if (q) this.lastFrameCount = q.totalVideoFrames;
-    }
-
-    const isFrozen = Math.abs(video.currentTime - lastTime) < 0.01;
-    const isStarving = video.readyState < 2 && bufferAhead < 0.4 && !video.paused;
-
-    return (isFrozen && !video.paused && video.currentTime > 0) || isStarving || framesStuck;
-  }
+export interface Stream {
+  title?: string;
+  link: string;
+  api?: string;
 }
+
+export interface EventInfo {
+  eventCat: string;
+  eventName: string;
+  teamA: string;
+  teamB: string;
+  startTime: string;
+  endTime: string;
+  link_names?: string[];
+}
+
+export interface Match {
+  id: number | string;
+  eventInfo: EventInfo;
+  links?: string;
+}
+
+export interface ServerStat {
+  url: string;
+  successCount: number;
+  failCount: number;
+  stallCount: number;
+  totalLoadTime: number;
+  lastUsed: number;
+  
+  // 🎯 ফিক্স ১: ফিউচার ইঞ্জিন ইভোলিউশন ও স্পিড ইনডেক্স ট্র্যাক করার জন্য অপশনাল ফিল্ড
+  avgLoadTime?: number;
+}
+
+// 🎯 ফিক্স ২: রিকভারি চলাকালীন ডাবল লুপ ক্ল্যাশ বা স্প্যামিং রুখতে 'recovering' স্টেট যুক্ত করা হলো
+export type PlaybackState = 'stable' | 'degrading' | 'unstable' | 'critical' | 'recovering';
