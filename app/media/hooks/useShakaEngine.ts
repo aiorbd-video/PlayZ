@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { PlayerLogsHandle } from '../../../components/PlayerLogs';
+// 🟢 এটি একদম নিশ্চিতভাবে কাজ করবে:
+import { PlayerLogsHandle } from '@/app/components/PlayerLogs';
+
 import { Stream } from '../types/media';
 import { parseClearKeys } from '../drm/parseClearKeys';
 import { SafeShakaWrapper } from '../engine/SafePlayer';
