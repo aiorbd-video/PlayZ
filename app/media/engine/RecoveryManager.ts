@@ -1,4 +1,4 @@
-import { PlayerLogsHandle } from '../../../components/PlayerLogs';
+import { PlayerLogsHandle } from '../../../../components/PlayerLogs';
 
 export class RecoveryManager {
   private static lastSwitchTimestamp = 0;
