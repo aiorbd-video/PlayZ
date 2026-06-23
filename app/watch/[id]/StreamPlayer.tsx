@@ -43,6 +43,7 @@ export default function StreamPlayer({ id }: { id: string }) {
   const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
   const [showFitToast, setShowFitToast] = useState(false);
 
+  // 🎯 এই ফাংশনটাই আপনার ভিডিও জুম/স্ট্রেচ করবে
   const handleFitToggle = useCallback(() => {
     const fitModes = ['contain', 'cover', 'fill'] as const;
     setObjectFit((prev) => {
@@ -174,13 +175,10 @@ export default function StreamPlayer({ id }: { id: string }) {
         </div>
       </nav>
 
-      {/* 🎯 ম্যাক্স-উইডথ ১২৮০ পিক্সেল (max-w-7xl) করা হলো যাতে পিসিতে লেআউট সুন্দর ছড়ায় */}
       <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-6">
         
-        {/* 🔥 পিসিতে ৩ কলামের গ্রীড (md:grid-cols-3) এবং মোবাইলে নিচে নিচে (grid-cols-1) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
           
-          {/* 🖥️ বাম পাশের এরিয়া (ভিডিও প্লেয়ার + সার্ভার লিস্ট) -> পিসিতে ২ কলাম জায়গা নিবে */}
           <div className="md:col-span-2 space-y-4">
             <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-xl overflow-hidden shadow-2xl border border-gray-800/60 group">
               {isBuffering && !allServersDown && (
@@ -213,31 +211,44 @@ export default function StreamPlayer({ id }: { id: string }) {
               </AnimatePresence>
             </div>
 
-            {/* সার্ভার বাটন প্যানেল - ডিজাইন একটু উন্নত করা হলো */}
             {streams && (
-              <div className="flex gap-2 overflow-x-auto py-3 px-4 items-center scrollbar-hide bg-[#161824]/60 border border-gray-800/50 rounded-xl">
-                <span className="text-gray-400 font-bold text-xs uppercase mr-2 tracking-wide">Servers:</span>
-                {streams.map((stream, index) => {
-                  const serverName = stream.title || `Server ${index + 1}`;
-                  return (
-                    <button 
-                      key={index} 
-                      onClick={() => handleManualSwitch(index)} 
-                      className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap border transition-all duration-200 ${
-                        activeStreamIndex === index && !allServersDown 
-                          ? 'bg-[#00E5FF]/10 border-[#00E5FF] text-[#00E5FF] shadow-[0_0_15px_rgba(0,229,255,0.15)]' 
-                          : 'bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white hover:border-gray-600'
-                      }`}
-                    >
-                      {serverName}
-                    </button>
-                  );
-                })}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 overflow-hidden py-3 px-4 bg-[#161824]/60 border border-gray-800/50 rounded-xl">
+                
+                {/* বাম পাশে সার্ভার লিস্ট */}
+                <div className="flex gap-2 overflow-x-auto items-center scrollbar-hide w-full sm:w-auto">
+                  <span className="text-gray-400 font-bold text-xs uppercase mr-2 tracking-wide whitespace-nowrap">Servers:</span>
+                  {streams.map((stream, index) => {
+                    const serverName = stream.title || `Server ${index + 1}`;
+                    return (
+                      <button 
+                        key={index} 
+                        onClick={() => handleManualSwitch(index)} 
+                        className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap border transition-all duration-200 ${
+                          activeStreamIndex === index && !allServersDown 
+                            ? 'bg-[#00E5FF]/10 border-[#00E5FF] text-[#00E5FF] shadow-[0_0_15px_rgba(0,229,255,0.15)]' 
+                            : 'bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white hover:border-gray-600'
+                        }`}
+                      >
+                        {serverName}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* ডান পাশে জুম / স্ট্রেচ বাটন */}
+                <button 
+                  onClick={handleFitToggle}
+                  className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-gray-800/60 border border-gray-600/40 text-gray-300 hover:text-white hover:bg-gray-700 hover:border-gray-500 font-bold text-xs transition-all flex items-center justify-center gap-2"
+                  title="Change Video Size"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>
+                  {objectFit === 'contain' ? 'Zoom' : objectFit === 'cover' ? 'Stretch' : 'Normal'}
+                </button>
+                
               </div>
             )}
           </div>
 
-          {/* 🖥️ ডান পাশের এরিয়া (PlayerLogs / More Events) -> পিসিতে ১ কলাম জায়গা নিবে ও স্ক্রিনের সাথে ফিক্সড থাকবে */}
           <div className="w-full md:sticky md:top-24 self-start">
             <div className="bg-[#161824]/40 border border-gray-800/60 rounded-xl overflow-hidden p-1 shadow-lg">
               <PlayerLogs ref={loggerRef} matchTitle={matchTitle || 'Live Event'} matchObj={currentMatch} />
@@ -249,6 +260,12 @@ export default function StreamPlayer({ id }: { id: string }) {
 
       <style dangerouslySetInnerHTML={{
         __html: `
+          /* 🎯 শাকার ডিফল্ট নীল স্পিনার চিরতরে বন্ধ করার সিএসএস */
+          .shaka-spinner-container,
+          .shaka-spinner-svg {
+            display: none !important;
+          }
+          
           .shaka-custom-stretch-btn {
             background: transparent; border: none; color: white; cursor: pointer; padding: 5px; opacity: 0.8; display: flex; align-items: center; justify-content: center;
           }
