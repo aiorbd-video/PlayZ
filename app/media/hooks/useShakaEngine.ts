@@ -206,6 +206,7 @@ export function useShakaEngine({
         ServerRanker.recordFailure(currentStreamUrl);
         if (isMounted) safeSwitchServer();
       } finally {
+        // 🔥 ফিক্সড: 'declare' এর ভুল কেটে এখানে আদর্শ 'finally' ব্লক বসানো হলো
         isCurrentlyLoadingRef.current = false;
       }
     };
