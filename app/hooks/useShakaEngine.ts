@@ -320,7 +320,7 @@ export function useShakaEngine({
         lastLoadedBaseUrlRef.current = null;
         loggerRef.current?.addLog(`Loading Failed: ${err.message || err.code}`, 'error');
         if (isMounted) safeSwitchServer();
-      } declare {
+      } finally {
         isCurrentlyLoadingRef.current = false;
       }
     };
