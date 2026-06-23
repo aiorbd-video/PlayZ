@@ -47,14 +47,12 @@ export function useShakaEngine({
   const initInProgressRef = useRef<boolean>(false);
   const isCurrentlyLoadingRef = useRef<boolean>(false);
 
-  // 🎯 ফায়ারবেসের ডাইনামিক টোকেন ট্র্যাক করার জন্য রেফ
   const latestStreamUrlRef = useRef<string | null>(null);
   const lastLoadedIndexRef = useRef<number | null>(null);
   const lastLoadedBaseUrlRef = useRef<string | null>(null);
 
   const [isEngineReady, setIsEngineReady] = useState(false);
 
-  // প্রতি রেন্ডারে লেটেস্ট ইউআরএল রেফ-এ সেভ করে রাখা হচ্ছে
   useEffect(() => {
     latestStreamUrlRef.current = currentStreamUrl;
   }, [currentStreamUrl]);
@@ -99,7 +97,7 @@ export function useShakaEngine({
         const player = new shaka.Player(videoRef.current);
         playerRef.current = player;
 
-        // 🔥🔥🔥 মেগা সিক্রেট ফিক্স: সাইলেন্ট ব্যাকগ্রাউন্ড টোকেন ইনজেক্টর ফিল্টার
+        // সাইলেন্ট ব্যাকগ্রাউন্ড টোকেন ইনজেক্টর ফিল্টার
         player.getNetworkingEngine().registerRequestFilter((type: number, request: any) => {
           const freshUrlWithToken = latestStreamUrlRef.current;
           if (!freshUrlWithToken) return;
@@ -107,7 +105,6 @@ export function useShakaEngine({
           const parts = freshUrlWithToken.split('|');
           const tokenUrl = parts[0].trim();
 
-          // যদি ব্যাকগ্রাউন্ডে আসা নতুন লিংকে টোকেন (?) থাকে, তবে রানিং চাঙ্কের সাথে ওটা সোয়াপ করো
           if (tokenUrl.includes('?')) {
             const freshQueryString = tokenUrl.split('?')[1];
             request.uris = request.uris.map((uri: string) => {
@@ -116,7 +113,6 @@ export function useShakaEngine({
             });
           }
 
-          // পাইপলাইনের হেডারগুলোকেও রিয়েল-টাইম সিঙ্ক করো
           if (parts.length > 1) {
             const headerPart = parts[1];
             const pairs = headerPart.split('&');
@@ -135,8 +131,10 @@ export function useShakaEngine({
               segments: { swarmId: currentStreamUrl || 'playz-live-swarm' },
               loader: { cachedSegmentExpiration: 86400000, cachedSegmentsCount: 50 }
             });
-            p2pEngineRef.current.initShakaPlayer(player);
-            loggerRef.current?.addLog('🚀 P2P WebRTC Network Layer Injected!', 'success');
+            
+            // 🎯 ফিক্স ৩: DASH/MPD সেগমেন্টে বাফার লুপ নষ্ট করা এড়াতে লাইভ রানিংয়ে P2P ইনজেকশন সাময়িকভাবে স্কিপ করা হলো
+            // p2pEngineRef.current.initShakaPlayer(player);
+            loggerRef.current?.addLog('🚀 P2P Engine Warm-ready (Bypassed for MPD stability)', 'info');
           } catch (e: any) {
             loggerRef.current?.addLog(`P2P setup failed: ${e.message}`, 'warn');
           }
@@ -150,16 +148,17 @@ export function useShakaEngine({
           addSeekBar: true,
         });
 
+        // 🎯 ফিক্স ২ এবং ৭: বড় স্ক্রিন/টিভি ব্রাউজার এবং ব্রোকেন প্রোফাইল এড়াতে বাফার গোল বাড়ানো ও ABR ডিজেবল করা হলো
         player.configure({
           streaming: {
-            bufferingGoal: 4, 
-            rebufferingGoal: 2, 
-            liveSyncDuration: 4, 
-            bufferBehind: 20, 
+            bufferingGoal: 15, 
+            rebufferingGoal: 5, 
+            liveSyncDuration: 10, 
+            bufferBehind: 30, 
             stallEnabled: false, 
             retryParameters: { maxAttempts: 5, baseDelay: 1000, backoffFactor: 2 }
           },
-          abr: { enabled: true, switchInterval: 8 },
+          abr: { enabled: false }, 
           manifest: { 
             dash: { 
               autoCorrectDrift: true,
@@ -168,7 +167,7 @@ export function useShakaEngine({
             }, 
             hls: { 
               ignoreManifestProgramDateTime: true 
-            } 
+            }
           }
         });
 
@@ -178,7 +177,8 @@ export function useShakaEngine({
           const error = event.detail;
           if (error && error.severity === 1) return;
           if (error && error.severity === 2) {
-            const fatalCodes = [1001, 1002, 6007, 3016, 3014];
+            // 🎯 ফিক্স ৪: ১০০১ এবং ১০০২ কোডকে ফ্যাটাল লিস্ট থেকে বাদ দেওয়া হলো
+            const fatalCodes = [6007, 3016, 3014];
             if (fatalCodes.includes(error.code)) {
               loggerRef.current?.addLog(`Fatal Network/DRM Error ${error.code}. Triggering fallback...`, 'error');
               safeSwitchServer();
@@ -229,13 +229,11 @@ export function useShakaEngine({
       const cleanUrlForMime = (currentStreamUrl || '').split('|')[0];
       const cleanBaseUrl = cleanUrlForMime.split('?')[0];
 
-      // 🔥🔥🔥 মেগা স্মার্ট গার্ড: যদি একই সার্ভার পজিশন থাকে এবং শুধু ব্যাকগ্রাউন্ডে টোকেন চেঞ্জ হয়, তবে লোড স্কিপ করো!
       if (
         lastLoadedIndexRef.current === activeStreamIndex &&
         lastLoadedBaseUrlRef.current === cleanBaseUrl &&
         playerRef.current.getAssetUri()
       ) {
-        // ভিডিও কোনো বাধা ছাড়াই ব্যাকগ্রাউন্ডে নতুন টোকেন নিয়ে চলতে থাকবে!
         return;
       }
 
@@ -246,10 +244,6 @@ export function useShakaEngine({
       loggerRef.current?.addLog(`Loading Source: Server [${activeStreamIndex + 1}]`, 'info');
 
       try {
-        if (p2pEngineRef.current) {
-          p2pEngineRef.current.setStreamId(currentStreamUrl);
-        }
-
         await playerRef.current.unload();
 
         if (!streams || !streams[activeStreamIndex]) {
@@ -266,14 +260,19 @@ export function useShakaEngine({
           playerRef.current.configure({ drm: { clearKeys: {} } });
         }
 
-        const mimeType = getMimeType(cleanUrlForMime);
-        
-        // বর্তমান স্টেট ট্র্যাকার লক করা হলো
+        // 🎯 ফিক্স ৫: ডাইরেক্ট এক্সটেনশন রিড করে MPD/DASH টাইপ ফোর্সলি ইনজেক্ট করা হলো
+        let mimeType = getMimeType(cleanUrlForMime);
+        if (cleanUrlForMime.includes('.mpd')) {
+          mimeType = 'application/dash+xml';
+        }
+
         lastLoadedIndexRef.current = activeStreamIndex;
         lastLoadedBaseUrlRef.current = cleanBaseUrl;
 
         const loadPromise = playerRef.current.load(currentStreamUrl, null, mimeType);
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('20s Load Timeout Limit Reached')), 20000));
+        
+        // 🎯 ফিক্স ৬: লোড টাইমআউট লিমিট ২০ সেকেন্ড থেকে বাড়িয়ে ৩০ সেকেন্ড (30000ms) করা হলো
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('30s Load Timeout Limit Reached')), 30000));
 
         await Promise.race([loadPromise, timeoutPromise]);
 
@@ -296,15 +295,17 @@ export function useShakaEngine({
           const bufferAhead = buffered - video.currentTime;
           const diff = video.currentTime - lastTime;
           
-          if (video.readyState >= 3 && !video.paused && !video.seeking && diff < 0.01 && bufferAhead < 10) {
+          // 🎯 ফিক্স ১ এবং প্রধান ফিক্স: স্টল ডিটেকশন লজিক আল্ট্রা-রিল্যাক্সড করা হলো (TV ও PC ফ্রেন্ডলি)
+          if (video.readyState < 2 || (diff < 0.01 && bufferAhead < 2)) {
             stallCount++;
-            loggerRef.current?.addLog(`Stall warning ${stallCount}/3 (Buffer: ${bufferAhead.toFixed(1)}s)...`, 'warn');
+            loggerRef.current?.addLog(`Stall tracking ${stallCount}/6 (Buffer: ${bufferAhead.toFixed(1)}s)...`, 'warn');
           } else {
             stallCount = 0;
           }
 
-          if (stallCount >= 3) {
-            loggerRef.current?.addLog('Playback stall confirmed. Switching...', 'error');
+          // ৩ বারের বদলে ৬ বার ট্রিগার এবং জেনুইন readyState ল্যাক চেক করে রিলোড হবে
+          if (stallCount >= 6 && video.readyState < 2) {
+            loggerRef.current?.addLog('Playback stall confirmed natively. Switching...', 'error');
             safeSwitchServer();
           }
           lastTime = video.currentTime;
@@ -315,12 +316,11 @@ export function useShakaEngine({
           isCurrentlyLoadingRef.current = false;
           return;
         }
-        // ফেইল মারলে ট্র্যাকিং স্টেট ক্লিয়ার করা হলো যাতে রিট্রাই করা যায়
         lastLoadedIndexRef.current = null;
         lastLoadedBaseUrlRef.current = null;
         loggerRef.current?.addLog(`Loading Failed: ${err.message || err.code}`, 'error');
         if (isMounted) safeSwitchServer();
-      } finally {
+      } declare {
         isCurrentlyLoadingRef.current = false;
       }
     };
