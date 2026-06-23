@@ -1,303 +1,291 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+} from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
 import Script from 'next/script';
-import { PlayerLogs, type PlayerLogsHandle } from '../../components/PlayerLogs';
+
+import {
+  PlayerLogs,
+  type PlayerLogsHandle,
+} from '../../components/PlayerLogs';
+
 import { useShakaEngine } from '../../media/hooks/useShakaEngine';
 
-interface Stream { title?: string; link: string; api?: string; }
-interface EventInfo { eventCat: string; eventName: string; teamA: string; teamB: string; startTime: string; endTime: string; link_names?: string[]; }
-interface Match { id: number | string; eventInfo: EventInfo; links?: string; }
-interface ServerFailureRecord { time: number; attempts: number; }
+interface Stream {
+  title?: string;
+  link: string;
+  api?: string;
+}
 
-const LIVE_EVENTS_API = 'https://ratulxadia-playz-cats-event.hf.space/api/events';
-const STREAM_API_BASE = 'https://ratulxadia-playz-cats-event.hf.space/api/stream/';
+interface EventInfo {
+  eventCat: string;
+  eventName: string;
+  teamA: string;
+  teamB: string;
+  startTime: string;
+  endTime: string;
+  link_names?: string[];
+}
 
-const CONFIG = {
-  failoverCooldown: 1000,
-  serverBlacklistDuration: 20000,
-} as const;
+interface Match {
+  id: number | string;
+  eventInfo: EventInfo;
+  links?: string;
+}
 
-const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
+interface ServerFailureRecord {
+  time: number;
+  attempts: number;
+}
+
+const LIVE_EVENTS_API =
+  'https://ratulxadia-playz-cats-event.hf.space/api/events';
+
+const STREAM_API_BASE =
+  'https://ratulxadia-playz-cats-event.hf.space/api/stream/';
+
+const fetcher = (url: string) =>
+  fetch(url, { cache: 'no-store' }).then((r) => r.json());
 
 export default function StreamPlayer({ id }: { id: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const videoContainerRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const loggerRef = useRef<PlayerLogsHandle>(null);
 
   const streamsRef = useRef<Stream[] | null>(null);
-  const lastFailoverTimeRef = useRef(0);
-  const timersRef = useRef<Set<any>>(new Set());
 
   const [activeStreamIndex, setActiveStreamIndex] = useState(0);
   const [isBuffering, setIsBuffering] = useState(true);
   const [allServersDown, setAllServersDown] = useState(false);
-  const [failedServers, setFailedServers] = useState<Record<string, ServerFailureRecord>>({});
-  const [currentTime, setCurrentTime] = useState(new Date());
 
-  const [objectFit, setObjectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
-  const [showFitToast, setShowFitToast] = useState(false);
+  const [objectFit] = useState<'contain' | 'cover' | 'fill'>('contain');
 
-  // 🎯 জুম / স্ট্রেচ টগল ফাংশন
-  const handleFitToggle = useCallback(() => {
-    const fitModes = ['contain', 'cover', 'fill'] as const;
-    setObjectFit((prev) => {
-      const next = fitModes[(fitModes.indexOf(prev) + 1) % fitModes.length];
-      setShowFitToast(true);
+  const lastSwitchRef = useRef(0);
+
+  /* -------------------------
+     MATCH DATA
+  --------------------------*/
+  const { data: matchesRaw } = useSWR(LIVE_EVENTS_API, fetcher, {
+    revalidateOnFocus: false,
+  });
+
+  const matches = useMemo(() => {
+    if (!Array.isArray(matchesRaw)) return null;
+
+    return matchesRaw.map((item: any, i: number) => {
+      const e = item.event || {};
+
+      const id =
+        e.links?.replace('pro/', '').replace('.txt', '') || i;
+
+      return {
+        id,
+        links: e.links || '',
+        eventInfo: {
+          eventCat: e.category || 'Live',
+          eventName: e.eventName || 'Match',
+          teamA: e.teamAName || 'Team A',
+          teamB: e.teamBName || 'Team B',
+          startTime: '',
+          endTime: '',
+        },
+      };
+    });
+  }, [matchesRaw]);
+
+  const currentMatch = useMemo(() => {
+    if (!matches) return null;
+    return matches.find((m: any) => String(m.id) === String(id));
+  }, [matches, id]);
+
+  /* -------------------------
+     STREAM API
+  --------------------------*/
+  const streamUrl = useMemo(() => {
+    if (!currentMatch?.links) return null;
+
+    const slug = currentMatch.links
+      .replace('pro/', '')
+      .replace('.txt', '');
+
+    return `${STREAM_API_BASE}${slug}`;
+  }, [currentMatch]);
+
+  const { data: streamData } = useSWR(streamUrl, fetcher, {
+    refreshInterval: 15000,
+    dedupingInterval: 5000,
+    revalidateOnFocus: false,
+  });
+
+  const streams = useMemo<Stream[] | null>(() => {
+    if (!streamData) return null;
+
+    const list = Array.isArray(streamData)
+      ? streamData
+      : streamData.streams || [];
+
+    return list
+      .filter((s: any) => s?.link || s?.url)
+      .map((s: any) => ({
+        link: s.link || s.url,
+        title: s.title || s.name || '',
+        api: s.api || '',
+      }));
+  }, [streamData]);
+
+  const currentStreamUrl = useMemo(
+    () => streams?.[activeStreamIndex]?.link || null,
+    [streams, activeStreamIndex]
+  );
+
+  useEffect(() => {
+    streamsRef.current = streams;
+  }, [streams]);
+
+  /* -------------------------
+     SAFE SWITCH SERVER
+  --------------------------*/
+  const safeSwitchServer = useCallback(() => {
+    const now = Date.now();
+
+    if (now - lastSwitchRef.current < 1000) return;
+    lastSwitchRef.current = now;
+
+    setActiveStreamIndex((prev) => {
+      const list = streamsRef.current;
+      if (!list) return prev;
+
+      const next = (prev + 1) % list.length;
+
+      if (next === 0) {
+        setAllServersDown(true);
+      }
+
+      loggerRef.current?.addLog(
+        `Switching to server ${next + 1}`,
+        'warn'
+      );
+
       return next;
     });
   }, []);
 
-  useEffect(() => {
-    window.addEventListener('toggleObjectFit', handleFitToggle);
-    return () => window.removeEventListener('toggleObjectFit', handleFitToggle);
-  }, [handleFitToggle]);
-
-  useEffect(() => {
-    if (showFitToast) {
-      const timer = setTimeout(() => setShowFitToast(false), 2000);
-      timersRef.current.add(timer);
-      return () => { clearTimeout(timer); timersRef.current.delete(timer); };
-    }
-  }, [showFitToast]);
-
-  // 🎯 আসল ম্যাজিক: শাকা প্লেয়ারের কন্ট্রোল প্যানেলের ভেতরে বাটন ইনজেক্ট করা
-  useEffect(() => {
-    const interval = setInterval(() => {
-      // শাকার কন্ট্রোল বার খুঁজছি
-      const controlsPanel = videoContainerRef.current?.querySelector('.shaka-controls-button-panel');
-      
-      if (controlsPanel && !document.getElementById('playz-native-fit-btn')) {
-        const btn = document.createElement('button');
-        btn.id = 'playz-native-fit-btn';
-        // শাকার অরিজিনাল ক্লাস দিলাম যাতে দেখতে একদম ওদের বাটনের মতোই হয়
-        btn.className = 'shaka-control-button shaka-tooltip'; 
-        btn.setAttribute('aria-label', 'Toggle Zoom/Stretch');
-        
-        // আপনার ছবির ওই আইকনটা
-        btn.innerHTML = `<svg style="width: 22px; height: 22px; margin: auto;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>`;
-        
-        // ক্লিক করলে ফাংশন কল হবে
-        btn.onclick = () => handleFitToggle();
-
-        // ফুলস্ক্রিন বাটনের ঠিক আগে (আপনার ছবির জায়গামতো) বসিয়ে দিলাম
-        const fullscreenBtn = controlsPanel.querySelector('.shaka-fullscreen-button');
-        if (fullscreenBtn) {
-          controlsPanel.insertBefore(btn, fullscreenBtn);
-        } else {
-          controlsPanel.appendChild(btn);
-        }
-        
-        clearInterval(interval); // বাটন বসানো শেষ, তাই চেক করা বন্ধ
-      }
-    }, 500);
-
-    return () => clearInterval(interval);
-  }, [handleFitToggle]);
-
-  const { data: rawMatches } = useSWR(LIVE_EVENTS_API, fetcher, { revalidateOnFocus: false });
-  
-  const matches = useMemo(() => {
-    if (!rawMatches || !Array.isArray(rawMatches)) return null;
-    return rawMatches.map((item: any, index: number) => {
-      const rawEvent = item.event || {};
-      const matchId = rawEvent.links ? rawEvent.links.replace('pro/', '').replace('.txt', '') : index.toString();
-      return {
-        id: matchId, links: rawEvent.links || '',
-        eventInfo: {
-          eventCat: rawEvent.category || 'Live Event', eventName: rawEvent.eventName || 'Live Match',
-          teamA: rawEvent.teamAName || 'Team A', teamB: rawEvent.teamBName || 'Team B',
-          startTime: '', endTime: '', link_names: rawEvent.link_names || [],
-        },
-      };
-    });
-  }, [rawMatches]);
-
-  const currentMatch = useMemo(() => {
-    if (!matches) return null;
-    return matches.find((m: any) => String(m.id) === String(id)) || null;
-  }, [matches, id]);
-
-  const streamFetchUrl = useMemo(() => {
-    if (currentMatch?.links) {
-      const streamSlug = currentMatch.links.replace('pro/', '').replace('.txt', '');
-      return `${STREAM_API_BASE}${streamSlug}`;
-    }
-    return null;
-  }, [currentMatch]);
-
-  const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { 
-    revalidateOnFocus: false,
-    refreshInterval: 15000, 
-    dedupingInterval: 5000
-  });
-
-  const streams = useMemo<Stream[] | null>(() => {
-    if (!streamsFromApi) return null;
-    const rawList = Array.isArray(streamsFromApi) ? streamsFromApi : streamsFromApi.streams || [];
-    return rawList
-      .filter((s: any) => s && (s.link || s.url))
-      .map((s: any) => ({
-        link: s.link || s.url || '', 
-        title: s.name || s.title || '', 
-        api: s.api || '',
-      }));
-  }, [streamsFromApi]);
-
-  const currentStreamUrl = useMemo(() => streams?.[activeStreamIndex]?.link || null, [streams, activeStreamIndex]);
-
-  useEffect(() => { streamsRef.current = streams; }, [streams]);
-  useEffect(() => { const timer = setInterval(() => setCurrentTime(new Date()), 5000); return () => clearInterval(timer); }, []);
-
-  const getMimeType = (url: string): string | undefined => {
-    if (url.includes('.mpd')) return 'application/dash+xml';
-    if (url.includes('.m3u8')) return 'application/x-mpegURL';
-    return undefined;
-  };
-
-  const safeSwitchServer = useCallback(() => {
-    const now = Date.now();
-    if (now - lastFailoverTimeRef.current < CONFIG.failoverCooldown) return;
-    lastFailoverTimeRef.current = now;
-
-    setActiveStreamIndex((prevIndex) => {
-      const list = streamsRef.current;
-      if (!list) return prevIndex;
-      
-      loggerRef.current?.addLog(`Server [${prevIndex + 1}] stream dead. Swapping link...`, 'warn');
-      setFailedServers((p) => ({ ...p, [prevIndex]: { time: Date.now(), attempts: (p[prevIndex]?.attempts || 0) + 1 } }));
-
-      const nextIdx = (prevIndex + 1) % list.length;
-      if (nextIdx === 0) {
-        loggerRef.current?.addLog('Matrix Status: All options returned runtime errors.', 'error');
-        setAllServersDown(true);
-        setIsBuffering(false);
-      }
-      return nextIdx;
-    });
-  }, []);
-
+  /* -------------------------
+     SHAKA ENGINE (CLEAN)
+  --------------------------*/
   useShakaEngine({
-    currentStreamUrl, activeStreamIndex, streams, allServersDown,
-    videoRef, videoContainerRef, loggerRef, setIsBuffering, safeSwitchServer, getMimeType
+    currentStreamUrl,
+    activeStreamIndex,
+    streams,
+    allServersDown,
+    videoRef,
+    videoContainerRef: containerRef,
+    loggerRef,
+    setIsBuffering,
+    safeSwitchServer,
+    getMimeType: (url: string) => {
+      if (url.includes('.mpd')) return 'application/dash+xml';
+      if (url.includes('.m3u8'))
+        return 'application/x-mpegURL';
+      return undefined;
+    },
   });
 
+  /* -------------------------
+     UI EVENTS
+  --------------------------*/
   const handleManualSwitch = (idx: number) => {
-    loggerRef.current?.addLog(`Manual Server Swap Triggered to Pipe index: ${idx + 1}`, 'info');
     setAllServersDown(false);
     setActiveStreamIndex(idx);
   };
 
-  const matchTitle = currentMatch?.eventInfo && `${currentMatch.eventInfo.teamA} VS ${currentMatch.eventInfo.teamB}`;
+  const matchTitle = currentMatch?.eventInfo
+    ? `${currentMatch.eventInfo.teamA} VS ${currentMatch.eventInfo.teamB}`
+    : 'Live Match';
 
+  /* -------------------------
+     RENDER
+  --------------------------*/
   return (
-    <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
-      <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+    <main className="min-h-screen bg-black text-white">
+      {/* HEADER */}
+      <nav className="p-4 border-b border-gray-800">
+        <div className="flex justify-between">
           <Link href="/">
-            <button className="px-3 py-1.5 rounded-lg bg-gray-800/50 hover:bg-[#00E5FF]/10 text-gray-300 hover:text-[#00E5FF] transition-all border border-gray-700/40 text-xs font-bold outline-none flex items-center gap-2">
-              ← Back to Home
-            </button>
+            <button className="text-sm">← Back</button>
           </Link>
-          <span className="text-sm font-bold tracking-wide truncate max-w-xs md:max-w-lg">{matchTitle || 'Live Event'}</span>
-          <div className="w-20"></div>
+          <div className="text-sm font-bold">{matchTitle}</div>
+          <div />
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-          
-          <div className="md:col-span-2 space-y-4">
-            
-            <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-xl overflow-hidden shadow-2xl border border-gray-800/60 group">
-              
-              {isBuffering && !allServersDown && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-40">
-                  <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin" />
-                </div>
-              )}
-
-              {allServersDown && (
-                <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/95 z-50 flex-col gap-2 text-center p-4">
-                  <div className="text-red-400 font-bold">Stream Currently Unavailable</div>
-                  <button onClick={() => { setAllServersDown(false); setActiveStreamIndex(0); setFailedServers({}); }} className="mt-2 bg-gray-900 border border-gray-700 text-white px-4 py-1.5 rounded-full text-xs">Reset Playback</button>
-                </div>
-              )}
-
-              <video ref={videoRef} autoPlay playsInline className="w-full h-full" style={{ objectFit }} />
-
-              <AnimatePresence>
-                {showFitToast && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
-                    className="absolute top-16 right-4 bg-black/80 backdrop-blur-md px-3 py-1.5 rounded-md border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-[#00E5FF]" />
-                    <span className="text-xs font-bold text-white uppercase tracking-wider">
-                      {objectFit === 'contain' ? 'Normal' : objectFit === 'cover' ? 'Zoom' : 'Stretch'}
-                    </span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+      {/* PLAYER */}
+      <div className="max-w-6xl mx-auto p-3">
+        <div
+          ref={containerRef}
+          className="relative aspect-video bg-black rounded-xl overflow-hidden"
+        >
+          {isBuffering && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+              <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
             </div>
+          )}
 
-            {streams && (
-              <div className="flex gap-2 overflow-x-auto py-3 px-4 items-center scrollbar-hide bg-[#161824]/60 border border-gray-800/50 rounded-xl">
-                <span className="text-gray-400 font-bold text-xs uppercase mr-2 tracking-wide whitespace-nowrap">Servers:</span>
-                {streams.map((stream, index) => {
-                  const serverName = stream.title || `Server ${index + 1}`;
-                  return (
-                    <button 
-                      key={index} 
-                      onClick={() => handleManualSwitch(index)} 
-                      className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap border transition-all duration-200 ${
-                        activeStreamIndex === index && !allServersDown 
-                          ? 'bg-[#00E5FF]/10 border-[#00E5FF] text-[#00E5FF] shadow-[0_0_15px_rgba(0,229,255,0.15)]' 
-                          : 'bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white hover:border-gray-600'
-                      }`}
-                    >
-                      {serverName}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="w-full md:sticky md:top-24 self-start">
-            <div className="bg-[#161824]/40 border border-gray-800/60 rounded-xl overflow-hidden p-1 shadow-lg">
-              <PlayerLogs ref={loggerRef} matchTitle={matchTitle || 'Live Event'} matchObj={currentMatch} />
+          {allServersDown && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black">
+              <p className="text-red-500">All Servers Failed</p>
             </div>
-          </div>
+          )}
 
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            className="w-full h-full"
+            style={{ objectFit }}
+          />
+        </div>
+
+        {/* SERVER LIST */}
+        <div className="flex gap-2 mt-3 overflow-x-auto">
+          {streams?.map((s, i) => (
+            <button
+              key={i}
+              onClick={() => handleManualSwitch(i)}
+              className={`px-3 py-1 text-xs rounded border ${
+                i === activeStreamIndex
+                  ? 'border-white'
+                  : 'border-gray-700 text-gray-400'
+              }`}
+            >
+              {s.title || `Server ${i + 1}`}
+            </button>
+          ))}
         </div>
       </div>
 
-      <style dangerouslySetInnerHTML={{
-        __html: `
-          /* 🎯 শাকার ডিফল্ট নীল স্পিনার চিরতরে বন্ধ করার সিএসএস */
-          .shaka-spinner-container,
-          .shaka-spinner-svg {
-            display: none !important;
-          }
-          /* হোভার করলে বাটনটার অপাসিটি বাড়ে শাকার মতো */
-          #playz-native-fit-btn {
-            opacity: 0.8;
-            transition: opacity 0.2s;
-          }
-          #playz-native-fit-btn:hover {
-            opacity: 1;
-          }
-        `
-      }} />
-      <Script 
+      {/* LOGS */}
+      <div className="max-w-6xl mx-auto p-3">
+        <PlayerLogs
+          ref={loggerRef}
+          matchTitle={matchTitle}
+          matchObj={currentMatch}
+        />
+      </div>
+
+      {/* ADS SCRIPT (optional) */}
+      <Script
         src="https://momrollback.com/f6/83/fb/f683fbd654f692b402785c1c51f998be.js"
-        strategy="lazyOnload" 
-        id="adsterra-popunder"
+        strategy="lazyOnload"
       />
     </main>
   );
