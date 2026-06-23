@@ -96,28 +96,22 @@ export default function StreamPlayer({ id }: { id: string }) {
   }, [currentMatch]);
 
   const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { 
-  revalidateOnFocus: false,
-  refreshInterval: 15000, // 🎯 ম্যাজিক লাইন: প্রতি ১৫ সেকেন্ড পর পর রিফ্রেশ ছাড়াই ব্যাকগ্রাউন্ডে নতুন টোকেন চলে আসবে
-  dedupingInterval: 5000
-});
+    revalidateOnFocus: false,
+    refreshInterval: 15000, 
+    dedupingInterval: 5000
+  });
 
- // 🎯 এই ব্লকটি খুঁজে বের করে এভাবে রিপ্লেস করুন
-const streams = useMemo<Stream[] | null>(() => {
-  if (!streamsFromApi) return null;
-  
-  // ফায়ারবেস থেকে আসা র-লিস্ট বের করা
-  const rawList = Array.isArray(streamsFromApi) ? streamsFromApi : streamsFromApi.streams || [];
-  
-  // 🔥 ফিক্সড: কোনো সর্টিং হবে না! ব্যাকএন্ড থেকে আসা বেস্ট সিরিয়ালটাই হুবহু ম্যাপ হবে
-  return rawList
-    .filter((s: any) => s && (s.link || s.url))
-    .map((s: any) => ({
-      link: s.link || s.url || '', 
-      title: s.name || s.title || '', 
-      api: s.api || '',
-    }));
-}, [streamsFromApi]);
-
+  const streams = useMemo<Stream[] | null>(() => {
+    if (!streamsFromApi) return null;
+    const rawList = Array.isArray(streamsFromApi) ? streamsFromApi : streamsFromApi.streams || [];
+    return rawList
+      .filter((s: any) => s && (s.link || s.url))
+      .map((s: any) => ({
+        link: s.link || s.url || '', 
+        title: s.name || s.title || '', 
+        api: s.api || '',
+      }));
+  }, [streamsFromApi]);
 
   const currentStreamUrl = useMemo(() => streams?.[activeStreamIndex]?.link || null, [streams, activeStreamIndex]);
 
@@ -168,66 +162,88 @@ const streams = useMemo<Stream[] | null>(() => {
   return (
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/">
-            <button className="p-2 text-gray-400 hover:text-[#00E5FF] flex items-center gap-2 outline-none">
-              <span className="text-sm font-bold">Back to Home</span>
+            <button className="px-3 py-1.5 rounded-lg bg-gray-800/50 hover:bg-[#00E5FF]/10 text-gray-300 hover:text-[#00E5FF] transition-all border border-gray-700/40 text-xs font-bold outline-none flex items-center gap-2">
+              ← Back to Home
             </button>
           </Link>
-          <span className="text-sm font-bold tracking-wide truncate max-w-xs">{matchTitle || 'Live Event'}</span>
-          <div className="w-10"></div>
+          <span className="text-sm font-bold tracking-wide truncate max-w-xs md:max-w-lg">{matchTitle || 'Live Event'}</span>
+          <div className="w-20"></div>
         </div>
       </nav>
 
-      <div className="max-w-5xl mx-auto px-2 sm:px-4 mt-4">
-        <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-xl overflow-hidden shadow-xl border border-gray-800 group">
-          {isBuffering && !allServersDown && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-40">
-              <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin" />
+      {/* 🎯 ম্যাক্স-উইডথ ১২৮০ পিক্সেল (max-w-7xl) করা হলো যাতে পিসিতে লেআউট সুন্দর ছড়ায় */}
+      <div className="max-w-7xl mx-auto px-2 sm:px-4 mt-6">
+        
+        {/* 🔥 পিসিতে ৩ কলামের গ্রীড (md:grid-cols-3) এবং মোবাইলে নিচে নিচে (grid-cols-1) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+          
+          {/* 🖥️ বাম পাশের এরিয়া (ভিডিও প্লেয়ার + সার্ভার লিস্ট) -> পিসিতে ২ কলাম জায়গা নিবে */}
+          <div className="md:col-span-2 space-y-4">
+            <div ref={videoContainerRef} className="w-full bg-black aspect-video relative rounded-xl overflow-hidden shadow-2xl border border-gray-800/60 group">
+              {isBuffering && !allServersDown && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-40">
+                  <div className="w-10 h-10 border-4 border-[#00E5FF] border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+
+              {allServersDown && (
+                <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/95 z-50 flex-col gap-2 text-center p-4">
+                  <div className="text-red-400 font-bold">Stream Currently Unavailable</div>
+                  <button onClick={() => { setAllServersDown(false); setActiveStreamIndex(0); setFailedServers({}); }} className="mt-2 bg-gray-900 border border-gray-700 text-white px-4 py-1.5 rounded-full text-xs">Reset Playback</button>
+                </div>
+              )}
+
+              <video ref={videoRef} autoPlay playsInline className="w-full h-full" style={{ objectFit }} />
+
+              <AnimatePresence>
+                {showFitToast && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+                    className="absolute top-6 left-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-[#00E5FF] animate-pulse" />
+                    <span className="text-xs md:text-sm font-bold text-white capitalize">
+                      {objectFit === 'contain' ? 'Fit to Screen' : objectFit === 'cover' ? 'Zoom (Cropped)' : 'Stretch (Fill)'}
+                    </span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-          )}
 
-          {allServersDown && (
-            <div className="absolute inset-0 flex items-center justify-center bg-[#11131A]/95 z-50 flex-col gap-2 text-center p-4">
-              <div className="text-red-400 font-bold">Stream Currently Unavailable</div>
-              <button onClick={() => { setAllServersDown(false); setActiveStreamIndex(0); setFailedServers({}); }} className="mt-2 bg-gray-900 border border-gray-700 text-white px-4 py-1.5 rounded-full text-xs">Reset Playback</button>
-            </div>
-          )}
-
-          <video ref={videoRef} autoPlay playsInline className="w-full h-full" style={{ objectFit }} />
-
-          <AnimatePresence>
-            {showFitToast && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
-                className="absolute top-6 left-6 bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-gray-700/50 shadow-xl z-50 flex items-center gap-2 pointer-events-none"
-              >
-                <span className="w-2 h-2 rounded-full bg-[#00E5FF] animate-pulse" />
-                <span className="text-xs md:text-sm font-bold text-white capitalize">
-                  {objectFit === 'contain' ? 'Fit to Screen' : objectFit === 'cover' ? 'Zoom (Cropped)' : 'Stretch (Fill)'}
-                </span>
-              </motion.div>
+            {/* সার্ভার বাটন প্যানেল - ডিজাইন একটু উন্নত করা হলো */}
+            {streams && (
+              <div className="flex gap-2 overflow-x-auto py-3 px-4 items-center scrollbar-hide bg-[#161824]/60 border border-gray-800/50 rounded-xl">
+                <span className="text-gray-400 font-bold text-xs uppercase mr-2 tracking-wide">Servers:</span>
+                {streams.map((stream, index) => {
+                  const serverName = stream.title || `Server ${index + 1}`;
+                  return (
+                    <button 
+                      key={index} 
+                      onClick={() => handleManualSwitch(index)} 
+                      className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap border transition-all duration-200 ${
+                        activeStreamIndex === index && !allServersDown 
+                          ? 'bg-[#00E5FF]/10 border-[#00E5FF] text-[#00E5FF] shadow-[0_0_15px_rgba(0,229,255,0.15)]' 
+                          : 'bg-[#1C1E2B] border-gray-700/50 text-gray-400 hover:text-white hover:border-gray-600'
+                      }`}
+                    >
+                      {serverName}
+                    </button>
+                  );
+                })}
+              </div>
             )}
-          </AnimatePresence>
-        </div>
-
-        {streams && (
-          <div className="flex gap-2 overflow-x-auto py-4 items-center scrollbar-hide">
-            <span className="text-gray-400 font-bold text-xs uppercase mr-2">Servers:</span>
-            {streams.map((stream, index) => {
-              // 🎯 ফিক্সড: সরাসরি অবজেক্ট থেকে ম্যাপড টাইটেল রিড করা হচ্ছে
-              const serverName = stream.title || `Server ${index + 1}`;
-              return (
-                <button key={index} onClick={() => handleManualSwitch(index)} className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap border ${activeStreamIndex === index && !allServersDown ? 'bg-[#1C1E2B] border-[#00E5FF] text-white' : 'bg-[#1C1E2B] border-gray-700/50 text-gray-400'}`}>
-                  {serverName}
-                </button>
-              );
-            })}
           </div>
-        )}
 
-       <PlayerLogs ref={loggerRef} matchTitle={matchTitle || 'Live Event'} matchObj={currentMatch} />
+          {/* 🖥️ ডান পাশের এরিয়া (PlayerLogs / More Events) -> পিসিতে ১ কলাম জায়গা নিবে ও স্ক্রিনের সাথে ফিক্সড থাকবে */}
+          <div className="w-full md:sticky md:top-24 self-start">
+            <div className="bg-[#161824]/40 border border-gray-800/60 rounded-xl overflow-hidden p-1 shadow-lg">
+              <PlayerLogs ref={loggerRef} matchTitle={matchTitle || 'Live Event'} matchObj={currentMatch} />
+            </div>
+          </div>
 
+        </div>
       </div>
 
       <style dangerouslySetInnerHTML={{
@@ -245,4 +261,4 @@ const streams = useMemo<Stream[] | null>(() => {
       />
     </main>
   );
-      }
+}
