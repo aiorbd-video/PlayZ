@@ -2,7 +2,8 @@ import { ServerStat, Stream } from '../types/media';
 
 export class ServerRanker {
   private static statsMap = new Map<string, ServerStat>();
-  private static STORAGE_KEY = 'playz_live_engine_v2_stats';
+  private static STORAGE_KEY = 'playz_live_engine_v3_stats';
+  private static saveTimer: any = null;
 
   static {
     this.restore();
@@ -10,12 +11,17 @@ export class ServerRanker {
 
   private static save() {
     if (typeof window === 'undefined') return;
-    try {
-      const obj = Object.fromEntries(this.statsMap.entries());
-      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(obj));
-    } catch (e) {
-      console.error('ServerRanker Storage Persist Error:', e);
-    }
+    clearTimeout(this.saveTimer);
+    
+    // 🎯 ফিক্স ৪: ১ সেকেন্ড পর পর আই/ও স্প্যাম রুখতে ৩ সেকেন্ডের ডেবোন্স সেভার
+    this.saveTimer = setTimeout(() => {
+      try {
+        const obj = Object.fromEntries(this.statsMap.entries());
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(obj));
+      } catch (e) {
+        console.error('ServerRanker Save Failed:', e);
+      }
+    }, 3000);
   }
 
   private static restore() {
@@ -29,7 +35,7 @@ export class ServerRanker {
         });
       }
     } catch (e) {
-      console.error('ServerRanker Storage Restore Failed:', e);
+      console.error('ServerRanker Restore Failed:', e);
     }
   }
 
@@ -41,7 +47,7 @@ export class ServerRanker {
       if (!this.statsMap.has(url)) {
         this.statsMap.set(url, {
           url,
-          successCount: 1, // Baseline
+          successCount: 1,
           failCount: 0,
           stallCount: 0,
           totalLoadTime: 1.0,
@@ -56,15 +62,11 @@ export class ServerRanker {
   static getServerScore(url: string): number {
     const cleanUrl = url.split('|')[0].trim();
     const s = this.statsMap.get(cleanUrl);
-    if (!s) return 50; // Neutral baseline
+    if (!s) return 50;
 
     const totalAttempts = s.successCount + s.failCount;
     const successRate = totalAttempts > 0 ? s.successCount / totalAttempts : 1;
-    
-    // Stability calculation: penalties based on stall counts relative to total actions
     const stabilityRate = Math.max(0, 1 - (s.stallCount / (s.successCount + 1 || 1)));
-    
-    // Speed calculation: average latency inverted mapping (Assume 5.0 seconds as worst response)
     const avgLoadTime = s.successCount > 0 ? s.totalLoadTime / s.successCount : 1.0;
     const speedRate = Math.max(0, Math.min(1, 1 - (avgLoadTime / 5.0)));
 
@@ -101,12 +103,10 @@ export class ServerRanker {
     }
   }
 
-  // Load Balancer Engine Rotation: Score based routing
   static getBestStreamIndex(streamsList: Stream[], currentIdx: number): number {
     if (!streamsList || streamsList.length <= 1) return currentIdx;
     this.initializeStats(streamsList);
 
-    // Sort index mappings dynamically according to internal runtime mathematical weights
     const mappedWithScores = streamsList.map((stream, idx) => ({
       idx,
       score: this.getServerScore(stream.link)
