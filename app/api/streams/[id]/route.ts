@@ -21,10 +21,12 @@ export async function GET(
   try {
     const cleanDbUrl = FIREBASE_URL.endsWith('/') ? FIREBASE_URL.slice(0, -1) : FIREBASE_URL;
     
-    // 🎯 ২. পাইথন বটের সাথে পাথ মিলানো হলো (live-streams এর বদলে playz-streams)
-    // 🎯 ৩. লাইভ টোকেন সেফটির জন্য ৩০ সেকেন্ড রিলিজ ক্যাশ রাখা হলো
+    // 🎯 ফিক্স ১: revalidate: 60 ফেলে দিয়ে অন-ডিমান্ড ট্যাগ 'firebase-streams' বসানো হলো
     const res = await fetch(`${cleanDbUrl}/playz-streams/${id}.json`, { 
-      next: { revalidate: 60 } 
+      next: { tags: ['firebase-streams'] },
+      headers: {
+        'Accept': 'application/json',
+      }
     });
 
     if (!res.ok) {
@@ -33,26 +35,25 @@ export async function GET(
 
     const matchData = await res.json();
 
-    // যদি ফায়ারবেসে এই স্ল্যাগের কোনো ডাটা না থাকে
     if (!matchData) {
       return NextResponse.json({ streams: [], matchInfo: null, message: "No active match found" }, { status: 200 });
     }
 
-    // 🎯 ৪. পাইথন বটের পাঠানো ডাটা স্ট্রাকচার অনুযায়ী ফ্রন্টএন্ডে ক্লিন ডাটা পাঠানো
-    // পাইথন বটের ডাটাতে 'streams' এবং অন্যান্য ইনফো একসাথে অবজেক্ট আকারে থাকে
     const streamsList = matchData.streams || [];
     
     return new NextResponse(
       JSON.stringify({ 
         streams: streamsList, 
-        matchInfo: matchData // ফ্রন্টএন্ডে ব্যবহারের জন্য পুরো ম্যাচ ডেটা পাঠিয়ে দেওয়া হলো
+        matchInfo: matchData 
       }),
       {
         status: 200,
         headers: {
           'Content-Type': 'application/json',
-          // ব্রাউজার এবং সিডিএন লেভেলে ৩০ সেকেন্ড ক্যাশ কন্ট্রোল (Zero Server Loading)
-          'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=10',
+          // 🎯 ফিক্স ২: ব্রাউজার মেমোরি লক ভাঙা হলো (max-age=0, must-revalidate)
+          // এখন ব্রাউজার প্রতিবার Vercel Edge-এ নক করবে। Vercel মেমোরি থেকে ডাটা দিবে ১ মিলিসেকেন্ডে।
+          // আর পাইথন বট ক্যাশ ডিলিট করলে ইউজার সাথে সাথে রিফ্রেশ ছাড়াই ফ্রেশ টোকেন পেয়ে যাবে!
+          'Cache-Control': 'public, max-age=0, s-maxage=31536000, must-revalidate, stale-while-revalidate=5',
         },
       }
     );
