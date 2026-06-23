@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { PlayerLogsHandle } from '@/app/components/PlayerLogs';
+
 import { Stream, ServerRanker, NetworkAI, StreamBrain } from '../PlayzEngine';
 import { parseClearKeys } from '../drm/parseClearKeys';
 import { SafeShakaWrapper } from '../engine/SafePlayer';
@@ -171,6 +172,7 @@ export function useShakaEngine({
             ServerRanker.recordStall(currentStreamUrl);
           }
 
+          // 🎯 ফিক্সড: এখন আর অতিরিক্ত ডাটা পাস করা হচ্ছে না, শুধু ভিডিও আর সুইচ ফাংশন!
           StreamBrain.update({
             video,
             safeSwitch: safeSwitchServer,
