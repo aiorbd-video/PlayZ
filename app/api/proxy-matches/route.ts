@@ -4,9 +4,9 @@ export async function GET() {
   try {
     const FULL_DATA_URL = "https://ratul-liv-default-rtdb.asia-southeast1.firebasedatabase.app/playz-streams.json";
 
-    // 🎯 ফিক্স: cache: 'no-store' ফেলে দিয়ে ২০ সেকেন্ডের ক্যাশ টাইম সেট করা হলো
+    // 🎯 ফিক্স: ১৫ সেকেন্ডের ফিক্সড টাইম লক হাওয়া! ডাটা ক্যাশ হবে ট্যাগের অধীনে
     const response = await fetch(FULL_DATA_URL, {
-      next: { revalidate: 60 }, // ঠিক ২০ সেকেন্ড পর পর সার্ভার ফায়ারবেস থেকে নতুন ডাটা নিবে
+      next: { tags: ['firebase-streams'] }, // 🏷️ এই ট্যাগ দিয়ে আমরা দূর থেকে ক্যাশ ডিলিট করব
       headers: {
         'Accept': 'application/json',
       }
@@ -27,8 +27,8 @@ export async function GET() {
         status: 200,
         headers: {
           'Content-Type': 'application/json',
-          // 🎯 ব্রাউজার এবং CDN লেভেলে ক্যাশ কন্ট্রোল (ব্যান্ডউইথ প্রটেকশন)
-          'Cache-Control': 'public, s-maxage=20, stale-while-revalidate=5',
+          // 🎯 CDN-কে বলা হলো ডাটা ক্যাশ রাখো, আমরা ম্যানুয়ালি পুশ না করা পর্যন্ত ক্লিয়ার করিও না
+          'Cache-Control': 'public, s-maxage=31536000, stale-while-revalidate=10',
         },
       }
     );
