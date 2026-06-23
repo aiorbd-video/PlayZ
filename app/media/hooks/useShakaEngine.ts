@@ -61,8 +61,11 @@ export function useShakaEngine({
     const initInstance = async () => {
       try {
         loggerRef.current?.addLog('Core Engine: Mounting Secure Modular Stack...', 'info');
-        const shaka = await import('shaka-player/dist/shaka-player.ui');
-        shaka.polyfill.installAll();
+        const shaka: any = await import('shaka-player/dist/shaka-player.ui');
+if (shaka.polyfill) {
+  shaka.polyfill.installAll();
+}
+
 
         const player = new shaka.Player(videoRef.current);
         playerRef.current = player;
