@@ -14,7 +14,6 @@ interface EventInfo { eventCat: string; eventName: string; teamA: string; teamB:
 interface Match { id: number | string; eventInfo: EventInfo; links?: string; }
 interface ServerFailureRecord { time: number; attempts: number; }
 
-
 const CONFIG = {
   failoverCooldown: 1000,
   serverBlacklistDuration: 20000,
@@ -66,39 +65,31 @@ export default function StreamPlayer({ id }: { id: string }) {
   // 🎯 আসল ম্যাজিক: শাকা প্লেয়ারের কন্ট্রোল প্যানেলের ভেতরে বাটন ইনজেক্ট করা
   useEffect(() => {
     const interval = setInterval(() => {
-      // শাকার কন্ট্রোল বার খুঁজছি
       const controlsPanel = videoContainerRef.current?.querySelector('.shaka-controls-button-panel');
       
       if (controlsPanel && !document.getElementById('playz-native-fit-btn')) {
         const btn = document.createElement('button');
         btn.id = 'playz-native-fit-btn';
-        // শাকার অরিজিনাল ক্লাস দিলাম যাতে দেখতে একদম ওদের বাটনের মতোই হয়
         btn.className = 'shaka-control-button shaka-tooltip'; 
         btn.setAttribute('aria-label', 'Toggle Zoom/Stretch');
-        
-        // আপনার ছবির ওই আইকনটা
         btn.innerHTML = `<svg style="width: 22px; height: 22px; margin: auto;" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"></path></svg>`;
-        
-        // ক্লিক করলে ফাংশন কল হবে
         btn.onclick = () => handleFitToggle();
 
-        // ফুলস্ক্রিন বাটনের ঠিক আগে (আপনার ছবির জায়গামতো) বসিয়ে দিলাম
         const fullscreenBtn = controlsPanel.querySelector('.shaka-fullscreen-button');
         if (fullscreenBtn) {
           controlsPanel.insertBefore(btn, fullscreenBtn);
         } else {
           controlsPanel.appendChild(btn);
         }
-        
-        clearInterval(interval); // বাটন বসানো শেষ, তাই চেক করা বন্ধ
+        clearInterval(interval);
       }
     }, 500);
 
     return () => clearInterval(interval);
   }, [handleFitToggle]);
 
+  // 🎯 ১. Live Matches কল করার জন্য লোকাল প্রক্সি ব্যবহার
   const { data: rawMatches } = useSWR('/api/proxy?type=matches', fetcher, { revalidateOnFocus: false });
-
   
   const matches = useMemo(() => {
     if (!rawMatches || !Array.isArray(rawMatches)) return null;
@@ -116,7 +107,13 @@ export default function StreamPlayer({ id }: { id: string }) {
     });
   }, [rawMatches]);
 
-      const streamFetchUrl = useMemo(() => {
+  const currentMatch = useMemo(() => {
+    if (!matches) return null;
+    return matches.find((m: any) => String(m.id) === String(id)) || null;
+  }, [matches, id]);
+
+  // 🎯 ২. Stream URL বানানোর লজিক
+  const streamFetchUrl = useMemo(() => {
     if (currentMatch?.links) {
       const streamSlug = currentMatch.links.replace('pro/', '').replace('.txt', '');
       return `/api/proxy?type=stream&id=${streamSlug}`;
@@ -124,8 +121,7 @@ export default function StreamPlayer({ id }: { id: string }) {
     return null;
   }, [currentMatch]);
 
-
-
+  // 🎯 ৩. Stream API কল
   const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { 
     revalidateOnFocus: false,
     refreshInterval: 15000, 
@@ -275,12 +271,10 @@ export default function StreamPlayer({ id }: { id: string }) {
 
       <style dangerouslySetInnerHTML={{
         __html: `
-          /* 🎯 শাকার ডিফল্ট নীল স্পিনার চিরতরে বন্ধ করার সিএসএস */
           .shaka-spinner-container,
           .shaka-spinner-svg {
             display: none !important;
           }
-          /* হোভার করলে বাটনটার অপাসিটি বাড়ে শাকার মতো */
           #playz-native-fit-btn {
             opacity: 0.8;
             transition: opacity 0.2s;
