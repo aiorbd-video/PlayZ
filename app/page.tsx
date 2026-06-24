@@ -7,11 +7,6 @@ import { motion } from 'framer-motion';
 import { fetcher, getMatchStatus, getCategoryIcon } from './utils/helpers';
 import { ChannelCard, MatchCard } from './components/Cards';
 
-// 🚀 🟢 ফিক্সড: যদি Vercel Env ভুলও থাকে, তবুও সে Cat Event (Hugging Face) থেকে ডাটা টানবে
-  const { data: rawMatches } = useSWR('/api/proxy?type=matches', fetcher, { refreshInterval: 90000, revalidateOnFocus: false, dedupingInterval: 15000 });
-  const { data: channelData } = useSWR('/api/proxy?type=channels', fetcher, { refreshInterval: 60000, revalidateOnFocus: false, revalidateOnReconnect: true, dedupingInterval: 20000 });
-
-
 function MarqueeNotice() {
   const { data } = useSWR('/api/notice', fetcher, { refreshInterval: 30000, revalidateOnFocus: false });
   if (!data || !data.notice || data.notice.trim() === "" || data.notice === "null") return null;
@@ -63,10 +58,11 @@ export default function Home() {
     } catch (err) { console.log('Share error', err); }
   };
 
-    const { data: rawMatches } = useSWR('/api/proxy?type=matches', fetcher, { refreshInterval: 90000, revalidateOnFocus: false, dedupingInterval: 15000 });
+  // ✅ আপনার ডাটা ফেচিং লিংকগুলো এখানে সঠিকভাবে ফাংশনের ভেতর সেট করা হলো
+  const { data: rawMatches } = useSWR('/api/proxy?type=matches', fetcher, { refreshInterval: 90000, revalidateOnFocus: false, dedupingInterval: 15000 });
   const { data: channelData } = useSWR('/api/proxy?type=channels', fetcher, { refreshInterval: 60000, revalidateOnFocus: false, revalidateOnReconnect: true, dedupingInterval: 20000 });
   const { data: m3uData } = useSWR('/api/m3u', fetcher, { refreshInterval: 90000, revalidateOnFocus: false, dedupingInterval: 30000 });
-
+  
   const channels = channelData?.channels || [];
   const m3uChannels = m3uData?.channels || [];
 
