@@ -148,6 +148,9 @@ export function useShakaEngine({
 
         if (coreWatchdogRef.current) clearInterval(coreWatchdogRef.current);
 
+        // 🎯 ফিক্স: নতুন সার্ভার প্লে হওয়ার আগে ব্রেইনের হিস্ট্রি রিসেট করে দিন
+        StreamBrain.reset();
+
         coreWatchdogRef.current = setInterval(() => {
           const video = videoRef.current;
           const player = playerRef.current;
