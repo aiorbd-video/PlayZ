@@ -1,4 +1,3 @@
-// app/play/page.tsx
 'use client';
 
 import { useEffect, useRef, useState, Suspense, useMemo, useCallback } from 'react';
@@ -9,7 +8,7 @@ import 'shaka-player/dist/controls.css';
 import Script from 'next/script';
 
 import { SmartImage } from '../components/Cards';
-// 🎯 আপনার স্মার্ট ইঞ্জিন ইমপোর্ট করা হলো
+// 🎯 সঠিক ইঞ্জিন ইমপোর্ট পাথ
 import { StreamBrain, NetworkAI, ServerRanker } from '../media/PlayzEngine';
 
 function PlayerContent() {
@@ -33,9 +32,8 @@ function PlayerContent() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
-  const coreWatchdogRef = useRef<any>(null); // 🎯 ওয়াচডগ রেফারেন্স
+  const coreWatchdogRef = useRef<any>(null); 
   
-  // Enterprise Core Stability Refs
   const playerInitRef = useRef(false);
   const lastAppliedDrmRef = useRef<string | null>(null);
   const timersRef = useRef<Set<ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>>>(new Set());
@@ -48,8 +46,10 @@ function PlayerContent() {
   const [showFitToast, setShowFitToast] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const [isBuffering, setIsBuffering] = useState(true);
+  
+  // 🎯 Auto Switcher State
+  const [streamFailed, setStreamFailed] = useState(false);
 
-  // Core Client Security Layers
   useEffect(() => {
     const blockInspect = (e: MouseEvent) => e.preventDefault();
     const blockKeys = (e: KeyboardEvent) => {
@@ -119,9 +119,7 @@ function PlayerContent() {
                 button.setAttribute('aria-label', 'Toggle Fit');
                 button.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="white" style="pointer-events:none;"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
                 
-                this.eventManager.listen(button, 'click', () => {
-                  window.dispatchEvent(new CustomEvent('toggleObjectFit'));
-                });
+                this.eventManager.listen(button, 'click', () => window.dispatchEvent(new CustomEvent('toggleObjectFit')));
                 parent.appendChild(button);
               }
             }
@@ -144,25 +142,17 @@ function PlayerContent() {
         });
 
         player.configure({
-          streaming: {
-            bufferingGoal: 30,
-            rebufferingGoal: 5,
-            bufferBehind: 15,
-            retryParameters: { maxAttempts: 5, baseDelay: 1000, backoffFactor: 2, timeout: 20000 }
-          },
-          abr: { 
-            enabled: true, 
-            defaultBandwidthEstimate: 2000000,
-            restrictions: { maxHeight: 4320, maxWidth: 7680 } 
-          },
+          streaming: { bufferingGoal: 30, rebufferingGoal: 5, bufferBehind: 15, retryParameters: { maxAttempts: 5, baseDelay: 1000 } },
+          abr: { enabled: true, defaultBandwidthEstimate: 2000000 },
           manifest: { dash: { ignoreMinBufferTime: true } }
         });
 
         player.addEventListener('buffering', (e: any) => setIsBuffering(e.buffering));
         player.addEventListener('error', (e: any) => {
           console.error("Shaka Internal Error:", e.detail);
-          setPlayerError("Unable to play this channel. It might be offline or blocked.");
+          setPlayerError("Stream offline. Preparing to switch...");
           setIsBuffering(false);
+          setStreamFailed(true); // 🎯 এরর হলে অটো সুইচের জন্য সিগন্যাল
         });
 
         setPlayerInstance(player);
@@ -197,10 +187,8 @@ function PlayerContent() {
 
     let isMounted = true;
     
-    // 🎯 ডেড স্ট্রিম হ্যান্ডেলার (আটকে গেলে অটো রিলোড করবে)
     const handleDeadStream = async () => {
       if (!isMounted || !playerRef.current) return;
-      console.warn("Engine: Dead stream detected, attempting force recovery...");
       setIsBuffering(true);
       try {
         await playerRef.current.unload();
@@ -208,13 +196,15 @@ function PlayerContent() {
         videoRef.current?.play().catch(()=>{});
         setIsBuffering(false);
       } catch (e) {
-        setPlayerError("Stream connection lost.");
+        setPlayerError("Stream connection lost. Preparing to switch...");
+        setStreamFailed(true); // 🎯 রিকভারি ফেইল করলে অটো সুইচ সিগন্যাল
       }
     };
 
     const loadVideo = async () => {
       setPlayerError(null);
       setIsBuffering(true);
+      setStreamFailed(false); // নতুন ভিডিও লোডের আগে ফেইল স্টেট রিসেট
       if (coreWatchdogRef.current) clearInterval(coreWatchdogRef.current);
 
       try {
@@ -258,7 +248,6 @@ function PlayerContent() {
         await playerRef.current.load(finalStreamUrl);
         if (isMounted) setIsBuffering(false);
 
-        // 🎯 ব্রেইন রিসেট এবং ওয়াচডগ চালু
         StreamBrain.reset();
         coreWatchdogRef.current = setInterval(() => {
           const video = videoRef.current;
@@ -270,21 +259,20 @@ function PlayerContent() {
             if (typeof player.getStats === 'function') stats = player.getStats() || {};
           } catch {}
 
-          const bandwidth = stats.estimatedBandwidth || 4000000;
-          NetworkAI.push(bandwidth);
+          NetworkAI.push(stats.estimatedBandwidth || 4000000);
 
-          // ইঞ্জিনকে আপডেট দেওয়া হচ্ছে
           StreamBrain.update({
             video,
-            safeSwitch: handleDeadStream, // ডেড হলে রিকভারি ট্রিগার করবে
+            safeSwitch: handleDeadStream, 
           });
         }, 1000);
 
       } catch (e) {
         console.error("Load Error", e);
         if (isMounted) {
-          setPlayerError("Failed to load stream. Please try another channel.");
+          setPlayerError("Failed to load stream. Preparing to switch...");
           setIsBuffering(false);
+          setStreamFailed(true); // 🎯 একদম শুরুতে লোড ফেইল করলে অটো সুইচ সিগন্যাল
         }
       }
     };
@@ -295,6 +283,35 @@ function PlayerContent() {
       if (coreWatchdogRef.current) clearInterval(coreWatchdogRef.current);
     };
   }, [playerRef.current, streamUrl, drmKeyString]);
+
+  // ==========================================
+  // 🚀 AUTO NEXT CHANNEL SWITCHER LOGIC
+  // ==========================================
+  useEffect(() => {
+    if (streamFailed && playlistChannels.length > 0 && streamUrl) {
+      const currentIndex = playlistChannels.findIndex(ch => ch.link === streamUrl);
+
+      if (currentIndex !== -1 && currentIndex < playlistChannels.length - 1) {
+        const nextCh = playlistChannels[currentIndex + 1];
+        const secureToken = btoa(unescape(encodeURIComponent(nextCh.link)));
+        const drmKeyParam = nextCh.key ? `&key=${encodeURIComponent(nextCh.key)}` : '';
+
+        // ইউজারকে জানান দেওয়া হচ্ছে যে সুইচ করা হচ্ছে
+        setPlayerError(`Stream failed! Auto-switching to "${nextCh.name}" in 3s...`);
+
+        // ৩ সেকেন্ড অপেক্ষা করে নেক্সট চ্যানেলে রাউটার পুশ করা হবে
+        const timer = setTimeout(() => {
+          setStreamFailed(false);
+          router.replace(`/play?stream=${secureToken}${drmKeyParam}&title=${encodeURIComponent(nextCh.name)}&playlistId=${playlistId}`);
+        }, 3000);
+
+        return () => clearTimeout(timer);
+      } else {
+        setPlayerError("Stream failed. This is the last channel in the playlist.");
+      }
+    }
+  }, [streamFailed, playlistChannels, streamUrl, playlistId, router]);
+
 
   // Playlist Parsing Management
   useEffect(() => {
@@ -361,7 +378,7 @@ function PlayerContent() {
               <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-red-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
-              <h3 className="text-xl font-bold text-white mb-2">Stream Error</h3>
+              <h3 className="text-xl font-bold text-white mb-2">Stream Action</h3>
               <p className="text-gray-400 text-sm max-w-md">{playerError}</p>
             </div>
           )}
