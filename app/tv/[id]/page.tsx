@@ -8,7 +8,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
 import Script from 'next/script';
 
-import { fetcher } from '../../utils/helpers';
+// fetcher ফাংশনটি সাধারণ fetch এর জন্য
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
 import { SmartImage } from '../../components/Cards';
 
 export default function TvPlayer() {
@@ -37,7 +39,6 @@ export default function TvPlayer() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   
-  // Enterprise Stability Architecture Refs Fixed
   const playerRef = useRef<any>(null);
   const playerInitRef = useRef(false);
   const lastAppliedDrmRef = useRef<string | null>(null);
@@ -89,17 +90,37 @@ export default function TvPlayer() {
     }
   }, [showFitToast, objectFit]);
 
-  const { data } = useSWR('/api/channels', fetcher, {
+  // 🎯 ফায়ারবেস থেকে সরাসরি ডাটা ফেচ করা হচ্ছে
+  const { data: firebaseData } = useSWR('https://ratul-liv-default-rtdb.asia-southeast1.firebasedatabase.app/sports-channels.json', fetcher, {
     revalidateOnFocus: false,
     refreshInterval: 100000,   
     dedupingInterval: 60000   
   });
 
-  const channels = data?.channels || [];
+  // 🎯 ফায়ারবেসের Object ডাটাকে Array তে কনভার্ট করা হচ্ছে
+  const channels = useMemo(() => {
+    if (!firebaseData) return [];
+    
+    const parsedChannels: any[] = [];
+    Object.entries(firebaseData).forEach(([key, ch]: [string, any]) => {
+      if (ch.link && ch.name) {
+        parsedChannels.push({
+          id: key, // ফায়ারবেসের key টাই হবে আমাদের channel id
+          name: ch.name,
+          logo: ch.logo || '',
+          link: ch.link,
+          api: ch.api ? JSON.stringify(ch.api) : null // DRM কি স্ট্রিং করে দিচ্ছি
+        });
+      }
+    });
+    
+    return parsedChannels;
+  }, [firebaseData]);
   
   const channel = useMemo(() => {
     return channels.find((c: any) => c.id === targetId || c.id === rawId);
   }, [channels, targetId, rawId]);
+
   // ==========================================
   // PLAYER INITIALIZATION & UI EVENTS
   // ==========================================
@@ -330,6 +351,7 @@ export default function TvPlayer() {
           
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {filteredChannels.map((ch: any) => {
+              // লিংকের সিকিউরিটির জন্য ID কে এনকোড করে পাঠানো হচ্ছে
               const secureId = btoa(unescape(encodeURIComponent(ch.id)));
 
               return (
