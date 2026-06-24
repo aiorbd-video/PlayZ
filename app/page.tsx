@@ -8,7 +8,9 @@ import { fetcher, getMatchStatus, getCategoryIcon } from './utils/helpers';
 import { ChannelCard, MatchCard } from './components/Cards';
 
 // 🚀 🟢 ফিক্সড: যদি Vercel Env ভুলও থাকে, তবুও সে Cat Event (Hugging Face) থেকে ডাটা টানবে
-const LIVE_EVENTS_API = process.env.NEXT_PUBLIC_LIVE_EVENTS_API || "https://t.me/allonebd";
+  const { data: rawMatches } = useSWR('/api/proxy?type=matches', fetcher, { refreshInterval: 90000, revalidateOnFocus: false, dedupingInterval: 15000 });
+  const { data: channelData } = useSWR('/api/proxy?type=channels', fetcher, { refreshInterval: 60000, revalidateOnFocus: false, revalidateOnReconnect: true, dedupingInterval: 20000 });
+
 
 function MarqueeNotice() {
   const { data } = useSWR('/api/notice', fetcher, { refreshInterval: 30000, revalidateOnFocus: false });
