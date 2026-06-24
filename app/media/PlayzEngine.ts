@@ -87,33 +87,36 @@ export class NetworkAI {
   }
 }
 
-// 🛑 ৪. পিওর স্টল ডিটেক্টর (কোনো ম্যাথ ফাঁদ নেই)
+// 🛑 ৪. পিওর স্টল ডিটেক্টর (আপডেটেড: লজিক্যাল ট্র্যাপ মুক্ত)
 export class StallDetector {
   static check(video: HTMLVideoElement, lastTime: number): boolean {
-    if (!video) return false;
-
-    // যদি প্লেয়ার ম্যানুয়ালি পজ করা থাকে, তবে স্টল ধরবে না
-    if (video.paused) return false;
+    if (!video || video.paused) return false;
 
     const timeDelta = Math.abs(video.currentTime - lastTime);
-    const buffered = video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0;
-    const bufferAhead = Math.max(0, buffered - video.currentTime);
 
-    // শর্ত ১: ভিডিও প্লে করা, কিন্তু টাইম একটুও এগোচ্ছে না (ল্যাগ/ফ্রিজ) এবং বাফার নাই
-    const isFrozen = timeDelta < 0.05 && bufferAhead < 0.5;
+    // শর্ত ১: প্লেব্যাক টাইমার আটকে গেছে (১ সেকেন্ডে ০.২ সেকেন্ডের কম মুভমেন্ট)
+    // মাইক্রো-জিটারের কারণে যেন ফলস অ্যালার্ম দিয়ে কাউন্টার রিসেট না হয়।
+    const isTimeFrozen = timeDelta < 0.2;
 
-    // শর্ত ২: নেটওয়ার্ক ডেড হয়ে ভিডিওর রেডি-স্টেট একদম জিরো হয়ে গেছে
-    const isDead = video.readyState === 0;
+    // শর্ত ২: ভিডিও বাফারিং স্টেটে আটকে আছে (পর্যাপ্ত ডেটা নেই)
+    const isBuffering = video.readyState < 3;
 
-    return isFrozen || isDead;
+    // Ghost Buffer ট্র্যাপ রিমুভ করা হয়েছে! বাফার থাকলেও যদি ভিডিও না চলে, তবে সেটাই স্টল।
+    return isTimeFrozen || isBuffering;
   }
 }
 
-// 🧠 ৫. টার্মিনেটর স্ট্রিম ব্রেইন (ডেড হলে ১০০% সার্ভার সুইচ করবে)
+// 🧠 ৫. টার্মিনেটর স্ট্রিম ব্রেইন (আপডেটেড: গ্যারান্টিড সার্ভার সুইচ)
 export class StreamBrain {
   private static deadCounter = 0;
   private static lastTime = -1;
   private static lastSwitch = 0;
+
+  // নতুন সার্ভার লোড হলে আগের স্টল ডেটা ক্লিয়ার করার জন্য
+  static reset() {
+    this.deadCounter = 0;
+    this.lastTime = -1;
+  }
 
   static update(ctx: { video: HTMLVideoElement; safeSwitch: () => void; }) {
     const { video, safeSwitch } = ctx;
@@ -130,19 +133,18 @@ export class StreamBrain {
     this.lastTime = video.currentTime;
 
     if (stalled) {
-        this.deadCounter++; // আটকে থাকলে কাউন্টার বাড়বে (১ সেকেন্ডে ১ করে)
+        this.deadCounter++; // আটকে থাকলে কাউন্টার বাড়বে
     } else {
-        this.deadCounter = 0; // ভিডিও একটু চললেই কাউন্টার জিরো (লাফালাফি বন্ধ)
+        this.deadCounter = 0; // ভিডিও ঠিকঠাক চললে কাউন্টার জিরো
     }
 
-    // 🔴 গ্যারান্টিড সার্ভার সুইচ (টানা ১০ সেকেন্ড ডেড থাকলে)
-    if (this.deadCounter >= 10) {
+    // 🔴 গ্যারান্টিড সার্ভার সুইচ (টানা ৮ সেকেন্ড ডেড থাকলে)
+    if (this.deadCounter >= 8) {
         if (now - this.lastSwitch > 12000) { // ১২ সেকেন্ডের অ্যান্টি-লুপ লক
             this.lastSwitch = now;
-            this.deadCounter = 0;
-            this.lastTime = -1; // নতুন সার্ভারের জন্য ফ্রেশ স্টার্ট
+            this.reset(); // সুইচ করার আগে কাউন্টার ক্লিন করে নেওয়া
             
-            // ডেডলক ব্রেকার: কোনো কথা ছাড়া সোজা নেক্সট সার্ভার!
+            // ডেডলক ব্রেকার: সোজা নেক্সট সার্ভার!
             safeSwitch(); 
         }
     }
