@@ -46,7 +46,7 @@ export const metadata: Metadata = {
     },
   ],
 
-  creator: 'MD. RATUL HASAN',
+  creator: 'All in one reborn ,
   publisher: 'All In One Reborn',
 
   alternates: {
