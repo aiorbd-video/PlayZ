@@ -14,8 +14,6 @@ interface EventInfo { eventCat: string; eventName: string; teamA: string; teamB:
 interface Match { id: number | string; eventInfo: EventInfo; links?: string; }
 interface ServerFailureRecord { time: number; attempts: number; }
 
-const LIVE_EVENTS_API = process.env.LIVE_EVENTS_API || '';
-const STREAM_API_BASE = process.env.STREAM_API_BASE || '';
 
 const CONFIG = {
   failoverCooldown: 1000,
@@ -99,7 +97,8 @@ export default function StreamPlayer({ id }: { id: string }) {
     return () => clearInterval(interval);
   }, [handleFitToggle]);
 
-  const { data: rawMatches } = useSWR(LIVE_EVENTS_API, fetcher, { revalidateOnFocus: false });
+  const { data: rawMatches } = useSWR('/api/proxy?type=matches', fetcher, { revalidateOnFocus: false });
+
   
   const matches = useMemo(() => {
     if (!rawMatches || !Array.isArray(rawMatches)) return null;
@@ -117,18 +116,15 @@ export default function StreamPlayer({ id }: { id: string }) {
     });
   }, [rawMatches]);
 
-  const currentMatch = useMemo(() => {
-    if (!matches) return null;
-    return matches.find((m: any) => String(m.id) === String(id)) || null;
-  }, [matches, id]);
-
-  const streamFetchUrl = useMemo(() => {
+      const streamFetchUrl = useMemo(() => {
     if (currentMatch?.links) {
       const streamSlug = currentMatch.links.replace('pro/', '').replace('.txt', '');
-      return `${STREAM_API_BASE}${streamSlug}`;
+      return `/api/proxy?type=stream&id=${streamSlug}`;
     }
     return null;
   }, [currentMatch]);
+
+
 
   const { data: streamsFromApi } = useSWR(streamFetchUrl, fetcher, { 
     revalidateOnFocus: false,
