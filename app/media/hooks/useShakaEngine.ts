@@ -20,10 +20,30 @@ interface UseShakaEngineProps {
   getMimeType: (url: string) => string | undefined;
 }
 
-export function useShakaEngine({
-  currentStreamUrl, activeStreamIndex, streams, allServersDown,
-  videoRef, videoContainerRef, loggerRef, setIsBuffering, safeSwitchServer, getMimeType,
-}: UseShakaEngineProps) {
+export function useShakaEngine(props: UseShakaEngineProps) {
+  const {
+    currentStreamUrl, activeStreamIndex, streams, allServersDown,
+    videoRef, videoContainerRef
+  } = props;
+
+  // 🎯 ফিক্স ১: Re-render Loop বন্ধ করতে ফাংশনগুলোকে Ref এর ভেতর রাখা হলো
+  const callbacks = useRef({
+    safeSwitchServer: props.safeSwitchServer,
+    setIsBuffering: props.setIsBuffering,
+    getMimeType: props.getMimeType,
+    loggerRef: props.loggerRef,
+  });
+
+  // ফাংশনগুলো সবসময় আপডেটেড থাকবে, কিন্তু প্লেয়ার ডিলিট করবে না
+  useEffect(() => {
+    callbacks.current = {
+      safeSwitchServer: props.safeSwitchServer,
+      setIsBuffering: props.setIsBuffering,
+      getMimeType: props.getMimeType,
+      loggerRef: props.loggerRef,
+    };
+  });
+
   const wrapperRef = useRef<SafeShakaWrapper | null>(null);
   const playerRef = useRef<any>(null);
   const uiRef = useRef<any>(null);
@@ -42,18 +62,17 @@ export function useShakaEngine({
     latestStreamUrlRef.current = currentStreamUrl; 
   }, [currentStreamUrl]);
 
+  // 🎯 ফিক্স ২: ডিপেন্ডেন্সি অ্যারে থেকে কলব্যাকগুলো সরিয়ে দেওয়া হলো যেন প্লেয়ার মাত্র ১ বারই মাউন্ট হয়
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || initInProgressRef.current) return;
     initInProgressRef.current = true;
 
     const initInstance = async () => {
       try {
-        loggerRef.current?.addLog('Core Engine: Mounting Secure Modular Stack...', 'info');
+        callbacks.current.loggerRef.current?.addLog('Core Engine: Mounting Secure Modular Stack...', 'info');
         const shaka: any = await import('shaka-player/dist/shaka-player.ui');
         
-        if (shaka.polyfill) {
-          shaka.polyfill.installAll();
-        }
+        if (shaka.polyfill) shaka.polyfill.installAll();
 
         const player = new shaka.Player(videoRef.current);
         playerRef.current = player;
@@ -82,12 +101,14 @@ export function useShakaEngine({
           manifest: { dash: { autoCorrectDrift: true, ignoreMinBufferTime: true } }
         });
 
-        wrapperRef.current.safeAddEventListener(player, 'buffering', (e: any) => setIsBuffering(e.buffering));
+        wrapperRef.current.safeAddEventListener(player, 'buffering', (e: any) => {
+           callbacks.current.setIsBuffering(e.buffering);
+        });
         
         setIsEngineReady(true);
       } catch (err: any) {
         initInProgressRef.current = false;
-        loggerRef.current?.addLog(`Core Mount Failed: ${err.message}`, 'error');
+        callbacks.current.loggerRef.current?.addLog(`Core Mount Failed: ${err.message}`, 'error');
       }
     };
 
@@ -100,7 +121,7 @@ export function useShakaEngine({
       if (uiRef.current) uiRef.current.destroy();
       if (wrapperRef.current) wrapperRef.current.safeDestroy();
     };
-  }, [safeSwitchServer, setIsBuffering, videoContainerRef, videoRef, loggerRef]);
+  }, [videoContainerRef, videoRef]); 
 
   useEffect(() => {
     if (!isEngineReady || !wrapperRef.current || allServersDown || !currentStreamUrl || !streams?.length) return;
@@ -115,7 +136,7 @@ export function useShakaEngine({
       if (coreWatchdogRef.current) clearInterval(coreWatchdogRef.current);
 
       isCurrentlyLoadingRef.current = true;
-      setIsBuffering(true);
+      callbacks.current.setIsBuffering(true);
       const startTime = Date.now();
 
       try {
@@ -124,7 +145,7 @@ export function useShakaEngine({
 
         wrapperRef.current?.safeConfigure({ drm: { clearKeys: Object.keys(clearKeysObj).length > 0 ? clearKeysObj : {} } });
 
-        let mimeType = getMimeType(cleanUrlForMime);
+        let mimeType = callbacks.current.getMimeType(cleanUrlForMime);
         if (cleanUrlForMime.split('?')[0].endsWith('.mpd')) mimeType = 'application/dash+xml';
 
         lastLoadedIndexRef.current = activeStreamIndex;
@@ -137,18 +158,17 @@ export function useShakaEngine({
         if (videoRef.current && isMounted) {
           try {
             await videoRef.current.play();
-            loggerRef.current?.addLog('Playback live on-screen!', 'success');
+            callbacks.current.loggerRef.current?.addLog('Playback live on-screen!', 'success');
             ServerRanker.recordSuccess(currentStreamUrl, (Date.now() - startTime) / 1000);
           } catch {
             setTimeout(() => { videoRef.current?.play().catch(() => {}); }, 1500);
           }
         }
 
-        if (isMounted) setIsBuffering(false);
+        if (isMounted) callbacks.current.setIsBuffering(false);
 
         if (coreWatchdogRef.current) clearInterval(coreWatchdogRef.current);
 
-        // 🎯 ফিক্স: নতুন সার্ভার প্লে হওয়ার আগে ব্রেইনের হিস্ট্রি রিসেট করে দিন
         StreamBrain.reset();
 
         coreWatchdogRef.current = setInterval(() => {
@@ -175,17 +195,16 @@ export function useShakaEngine({
             ServerRanker.recordStall(currentStreamUrl);
           }
 
-          // 🎯 ফিক্সড: এখন আর অতিরিক্ত ডাটা পাস করা হচ্ছে না, শুধু ভিডিও আর সুইচ ফাংশন!
           StreamBrain.update({
             video,
-            safeSwitch: safeSwitchServer,
+            safeSwitch: callbacks.current.safeSwitchServer,
           });
 
         }, 1000);
 
       } catch (err: any) {
         ServerRanker.recordFailure(currentStreamUrl);
-        if (isMounted) safeSwitchServer();
+        if (isMounted) callbacks.current.safeSwitchServer();
       } finally {
         isCurrentlyLoadingRef.current = false;
       }
@@ -193,5 +212,5 @@ export function useShakaEngine({
 
     loadStreamSource();
     return () => { isMounted = false; if (coreWatchdogRef.current) clearInterval(coreWatchdogRef.current); };
-  }, [currentStreamUrl, activeStreamIndex, allServersDown, isEngineReady, streams, safeSwitchServer, getMimeType, setIsBuffering, videoRef, loggerRef]);
+  }, [currentStreamUrl, activeStreamIndex, allServersDown, isEngineReady, streams, videoRef]); 
 }
