@@ -89,7 +89,7 @@ export default function StreamPlayer({ id }: { id: string }) {
   }, [handleFitToggle]);
 
   // 🎯 ১. Live Matches কল করার জন্য লোকাল প্রক্সি ব্যবহার
-  const { data: rawMatches } = useSWR('/api/proxy?type=matches', fetcher, { revalidateOnFocus: false });
+  const { data: rawMatches } = useSWR('/app/api/proxy?type=matches', fetcher, { revalidateOnFocus: false });
   
   const matches = useMemo(() => {
     if (!rawMatches || !Array.isArray(rawMatches)) return null;
