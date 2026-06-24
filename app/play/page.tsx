@@ -10,7 +10,7 @@ import Script from 'next/script';
 
 import { SmartImage } from '../components/Cards';
 // 🎯 আপনার স্মার্ট ইঞ্জিন ইমপোর্ট করা হলো
-import { StreamBrain, NetworkAI, ServerRanker } from '../PlayzEngine';
+import { StreamBrain, NetworkAI, ServerRanker } from '../media/PlayzEngine';
 
 function PlayerContent() {
   const searchParams = useSearchParams();
