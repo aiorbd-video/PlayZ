@@ -14,8 +14,8 @@ interface EventInfo { eventCat: string; eventName: string; teamA: string; teamB:
 interface Match { id: number | string; eventInfo: EventInfo; links?: string; }
 interface ServerFailureRecord { time: number; attempts: number; }
 
-const LIVE_EVENTS_API = process.env.NEXT_PUBLIC_LIVE_EVENTS_API || '';
-const STREAM_API_BASE = process.env.NEXT_PUBLIC_STREAM_API_BASE || '';
+const LIVE_EVENTS_API = process.env.LIVE_EVENTS_API || '';
+const STREAM_API_BASE = process.env.STREAM_API_BASE || '';
 
 const CONFIG = {
   failoverCooldown: 1000,
