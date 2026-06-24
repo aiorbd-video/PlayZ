@@ -1,3 +1,4 @@
+// File: app/watch/[id]/StreamPlayer.tsx
 'use client';
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
@@ -62,7 +63,6 @@ export default function StreamPlayer({ id }: { id: string }) {
     }
   }, [showFitToast]);
 
-  // 🎯 আসল ম্যাজিক: শাকা প্লেয়ারের কন্ট্রোল প্যানেলের ভেতরে বাটন ইনজেক্ট করা
   useEffect(() => {
     const interval = setInterval(() => {
       const controlsPanel = videoContainerRef.current?.querySelector('.shaka-controls-button-panel');
@@ -81,7 +81,7 @@ export default function StreamPlayer({ id }: { id: string }) {
         } else {
           controlsPanel.appendChild(btn);
         }
-        clearInterval(interval);
+        clearInterval(interval); 
       }
     }, 500);
 
