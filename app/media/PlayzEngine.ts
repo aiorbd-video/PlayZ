@@ -87,24 +87,22 @@ export class NetworkAI {
   }
 }
 
-// 🛑 ৪. পিওর স্টল ডিটেক্টর (আপডেটেড: লজিক্যাল ট্র্যাপ মুক্ত)
+// app/media/PlayzEngine.ts এর ভেতরে StallDetector ক্লাসটি এরকম করে দিন:
+
 export class StallDetector {
   static check(video: HTMLVideoElement, lastTime: number): boolean {
-    if (!video || video.paused) return false;
+    // 🎯 ফিক্স: ভিডিও পজ থাকলে অথবা একদম শুরুতে (currentTime === 0) থাকলে স্টল ধরবে না
+    if (!video || video.paused || video.currentTime === 0) return false;
 
     const timeDelta = Math.abs(video.currentTime - lastTime);
 
-    // শর্ত ১: প্লেব্যাক টাইমার আটকে গেছে (১ সেকেন্ডে ০.২ সেকেন্ডের কম মুভমেন্ট)
-    // মাইক্রো-জিটারের কারণে যেন ফলস অ্যালার্ম দিয়ে কাউন্টার রিসেট না হয়।
     const isTimeFrozen = timeDelta < 0.2;
-
-    // শর্ত ২: ভিডিও বাফারিং স্টেটে আটকে আছে (পর্যাপ্ত ডেটা নেই)
     const isBuffering = video.readyState < 3;
 
-    // Ghost Buffer ট্র্যাপ রিমুভ করা হয়েছে! বাফার থাকলেও যদি ভিডিও না চলে, তবে সেটাই স্টল।
     return isTimeFrozen || isBuffering;
   }
 }
+
 
 // 🧠 ৫. টার্মিনেটর স্ট্রিম ব্রেইন (আপডেটেড: গ্যারান্টিড সার্ভার সুইচ)
 export class StreamBrain {
