@@ -6,6 +6,7 @@ import { GoogleAnalytics } from '@next/third-parties/google';
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  maximumScale: 5,
   themeColor: '#0f172a',
 };
 
@@ -16,38 +17,48 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
 
   title: {
-    default: 'All In One Reborn | Watch Live Cricket, Football & WWE HD',
+    default: 'All In One Reborn | Watch Live Sports, Cricket & Football HD',
     template: '%s | All In One Reborn',
   },
 
   description:
-    'Watch live cricket, football, WWE, UFC and premium sports events in HD quality. Fast streaming, mobile friendly and free access worldwide.',
+    'Stream live cricket, football, WWE, and UFC in HD for free on All In One Reborn. Get buffer-free access to today\'s live sports matches worldwide.',
 
   applicationName: 'All In One Reborn',
 
   keywords: [
     'live cricket',
-    'live football',
-    'live sports',
-    'watch cricket live',
-    'football live stream',
-    'wwe live',
-    'ufc live',
-    'sports streaming',
+    'live football stream',
+    'watch live sports hd',
+    'live tv bd',
+    'wwe live today',
+    'ufc live stream',
+    'sports streaming free',
     'bangladesh cricket live',
     'hd sports stream',
     'all in one reborn',
     'live match today',
+    'ipl live',
+    'bpl live',
+    't20 world cup live',
+    'football highlights hd'
   ],
 
   authors: [
     {
       name: 'MD. RATUL HASAN',
+      url: SITE_URL,
     },
   ],
 
-  creator: 'All in one reborn ,
+  creator: 'All In One Reborn',
   publisher: 'All In One Reborn',
+
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
 
   alternates: {
     canonical: SITE_URL,
@@ -71,27 +82,25 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'en_US',
     url: SITE_URL,
-    // 🎯 গুগলকে সাইটের নাম ঠিকভাবে বোঝানোর জন্য এই জায়গাটি সবচেয়ে জরুরি
     siteName: 'All In One Reborn',
-    title: 'All In One Reborn | Live Sports Streaming',
+    title: 'All In One Reborn | HD Live Sports Streaming',
     description:
-      'Watch live cricket, football, WWE, UFC and premium sports events in HD quality.',
-
+      'Watch live cricket, football, WWE, UFC and premium sports events in HD quality without buffering.',
     images: [
       {
         url: `${SITE_URL}/og-image.jpg`,
         width: 1200,
         height: 630,
-        alt: 'All In One Reborn Live',
+        alt: 'All In One Reborn Live Streaming Platform',
       },
     ],
   },
 
   twitter: {
     card: 'summary_large_image',
-    title: 'All In One Reborn',
+    title: 'All In One Reborn | HD Live Sports',
     description:
-      'Watch live cricket, football, WWE and premium sports events in HD quality.',
+      'Watch live cricket, football, WWE and premium sports events in HD quality for free.',
     images: [`${SITE_URL}/og-image.jpg`],
   },
 
@@ -110,6 +119,12 @@ export const metadata: Metadata = {
     apple: '/apple-touch-icon.png',
   },
 
+  appleWebApp: {
+    title: 'AIO Reborn',
+    statusBarStyle: 'black-translucent',
+    capable: true,
+  },
+
   manifest: '/manifest.json',
 };
 
@@ -119,18 +134,38 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   
-  // 🎯 ম্যাজিক ফিক্স: গুগলের সার্চ রেজাল্টে "Duck DNS" সরিয়ে আপনার আসল ব্র্যান্ড নাম বসানোর জন্য Schema
-  const websiteSchema = {
+  // 🎯 ম্যাজিক ফিক্স: গুগলের সার্চ রেজাল্টে "Duck DNS" সরিয়ে আপনার আসল ব্র্যান্ড নাম বসানোর জন্য Advanced Schema
+  const structuredData = {
     '@context': 'https://schema.org',
-    '@type': 'WebSite',
-    name: 'All In One Reborn',
-    alternateName: 'All In One Sports Web',
-    url: SITE_URL,
-    potentialAction: {
-      '@type': 'SearchAction',
-      target: `${SITE_URL}/search?q={search_term_string}`,
-      'query-input': 'required name=search_term_string',
-    },
+    '@graph': [
+      {
+        '@type': 'WebSite',
+        '@id': `${SITE_URL}/#website`,
+        name: 'All In One Reborn',
+        alternateName: ['AIO Reborn', 'All In One Sports Web'],
+        url: SITE_URL,
+        potentialAction: {
+          '@type': 'SearchAction',
+          target: `${SITE_URL}/search?q={search_term_string}`,
+          'query-input': 'required name=search_term_string',
+        },
+      },
+      {
+        '@type': 'Organization',
+        '@id': `${SITE_URL}/#organization`,
+        name: 'All In One Reborn',
+        url: SITE_URL,
+        logo: {
+          '@type': 'ImageObject',
+          url: `${SITE_URL}/icon-512.png`,
+          width: 512,
+          height: 512,
+        },
+        sameAs: [
+          'https://t.me/allonebd' // আপনার সোশ্যাল বা টেলিগ্রাম লিংক এখানে থাকলে গুগল ব্র্যান্ড ভ্যালু বেশি দেয়
+        ],
+      }
+    ]
   };
 
   return (
@@ -149,7 +184,7 @@ export default function RootLayout({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify(websiteSchema),
+            __html: JSON.stringify(structuredData),
           }}
         />
       </head>
