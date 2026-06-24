@@ -1,3 +1,4 @@
+// app/play/page.tsx
 'use client';
 
 import { useEffect, useRef, useState, Suspense, useMemo, useCallback } from 'react';
@@ -8,6 +9,8 @@ import 'shaka-player/dist/controls.css';
 import Script from 'next/script';
 
 import { SmartImage } from '../components/Cards';
+// 🎯 আপনার স্মার্ট ইঞ্জিন ইমপোর্ট করা হলো
+import { StreamBrain, NetworkAI, ServerRanker } from '../PlayzEngine';
 
 function PlayerContent() {
   const searchParams = useSearchParams();
@@ -30,6 +33,7 @@ function PlayerContent() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
+  const coreWatchdogRef = useRef<any>(null); // 🎯 ওয়াচডগ রেফারেন্স
   
   // Enterprise Core Stability Refs
   const playerInitRef = useRef(false);
@@ -84,13 +88,13 @@ function PlayerContent() {
       };
     }
   }, [showFitToast, objectFit]);
+
   // ==========================================
   // PLAYER INITIALIZATION & UI EVENTS
   // ==========================================
   useEffect(() => {
     if (!videoRef.current || !videoContainerRef.current || typeof window === 'undefined') return;
 
-    // Fix 1: Guard against strict-mode dual initialization race condition
     if (playerInitRef.current) return;
     playerInitRef.current = true;
 
@@ -133,14 +137,12 @@ function PlayerContent() {
 
         ui = new shaka.ui.Overlay(player, videoContainerRef.current, videoRef.current);
         
-        // 🎯 ফিক্সড: 'overflow_menu' যোগ করা হয়েছে প্লেয়ার সেটিং (গিয়ার আইকন) এর জন্য
         ui.configure({
           controlPanelElements: ['play_pause', 'time_and_duration', 'spacer', 'mute', 'volume', 'custom_stretch', 'overflow_menu', 'fullscreen'],
           addSeekBar: true,
           trackLabelFormat: shaka.ui.Overlay.TrackLabelFormat.RESOLUTION_BITRATE
         });
 
-        // Offloaded heavy global configuration settings loaded only once on initialization
         player.configure({
           streaming: {
             bufferingGoal: 30,
@@ -165,7 +167,6 @@ function PlayerContent() {
 
         setPlayerInstance(player);
       } catch (err) {
-        console.error("Player initialization failed.");
         setPlayerError("Player initialization failed.");
         playerInitRef.current = false;
       }
@@ -176,6 +177,7 @@ function PlayerContent() {
     return () => {
       isCancelled = true;
       playerInitRef.current = false;
+      if (coreWatchdogRef.current) clearInterval(coreWatchdogRef.current);
       if (ui) ui.destroy();
       if (player) {
         try { player.unload(); } catch {}
@@ -187,17 +189,35 @@ function PlayerContent() {
     };
   }, []);
 
-  // Video Stream Load Side-Effect Layer
+  // ==========================================
+  // STREAM LOAD & SMART ENGINE INTEGRATION
+  // ==========================================
   useEffect(() => {
     if (!playerRef.current || !streamUrl) return;
 
     let isMounted = true;
+    
+    // 🎯 ডেড স্ট্রিম হ্যান্ডেলার (আটকে গেলে অটো রিলোড করবে)
+    const handleDeadStream = async () => {
+      if (!isMounted || !playerRef.current) return;
+      console.warn("Engine: Dead stream detected, attempting force recovery...");
+      setIsBuffering(true);
+      try {
+        await playerRef.current.unload();
+        await playerRef.current.load(streamUrl);
+        videoRef.current?.play().catch(()=>{});
+        setIsBuffering(false);
+      } catch (e) {
+        setPlayerError("Stream connection lost.");
+      }
+    };
+
     const loadVideo = async () => {
       setPlayerError(null);
       setIsBuffering(true);
+      if (coreWatchdogRef.current) clearInterval(coreWatchdogRef.current);
+
       try {
-        
-        // Fix 3: Cached token state guard completely mitigates DRM reload loops
         if (lastAppliedDrmRef.current !== drmKeyString) {
           const clearKeysObj: Record<string, string> = {};
           let parsedData: any = drmKeyString;
@@ -237,6 +257,29 @@ function PlayerContent() {
         await playerRef.current.unload();
         await playerRef.current.load(finalStreamUrl);
         if (isMounted) setIsBuffering(false);
+
+        // 🎯 ব্রেইন রিসেট এবং ওয়াচডগ চালু
+        StreamBrain.reset();
+        coreWatchdogRef.current = setInterval(() => {
+          const video = videoRef.current;
+          const player = playerRef.current;
+          if (!video || !player) return;
+
+          let stats: any = {};
+          try {
+            if (typeof player.getStats === 'function') stats = player.getStats() || {};
+          } catch {}
+
+          const bandwidth = stats.estimatedBandwidth || 4000000;
+          NetworkAI.push(bandwidth);
+
+          // ইঞ্জিনকে আপডেট দেওয়া হচ্ছে
+          StreamBrain.update({
+            video,
+            safeSwitch: handleDeadStream, // ডেড হলে রিকভারি ট্রিগার করবে
+          });
+        }, 1000);
+
       } catch (e) {
         console.error("Load Error", e);
         if (isMounted) {
@@ -249,6 +292,7 @@ function PlayerContent() {
     loadVideo();
     return () => {
       isMounted = false;
+      if (coreWatchdogRef.current) clearInterval(coreWatchdogRef.current);
     };
   }, [playerRef.current, streamUrl, drmKeyString]);
 
