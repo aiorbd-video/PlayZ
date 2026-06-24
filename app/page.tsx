@@ -60,8 +60,8 @@ export default function Home() {
 
   // ✅ আপনার ডাটা ফেচিং লিংকগুলো এখানে সঠিকভাবে ফাংশনের ভেতর সেট করা হলো
   const { data: rawMatches } = useSWR('/api/proxy?type=matches', fetcher, { refreshInterval: 90000, revalidateOnFocus: false, dedupingInterval: 15000 });
-  const { data: channelData } = useSWR('/api/proxy?type=channels', fetcher, { refreshInterval: 60000, revalidateOnFocus: false, revalidateOnReconnect: true, dedupingInterval: 20000 });
-  const { data: m3uData } = useSWR('/api/m3u', fetcher, { refreshInterval: 90000, revalidateOnFocus: false, dedupingInterval: 30000 });
+  const { data: channelData } = useSWR('/api/channels', fetcher, { refreshInterval: 60000, revalidateOnFocus: false, revalidateOnReconnect: true, dedupingInterval: 20000 });
+ const { data: m3uData } = useSWR('/api/m3u', fetcher, { refreshInterval: 90000, revalidateOnFocus: false, dedupingInterval: 30000 });
   
   const channels = channelData?.channels || [];
   const m3uChannels = m3uData?.channels || [];
