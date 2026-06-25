@@ -1,9 +1,8 @@
 export const dynamic = 'force-static';
 
 // আপনার বাকি কোড নিচে যেমন ছিল তেমনই থাকবে...
-export async function GET() {
-  // ...
-}
+
+  //
 
 import { NextResponse } from 'next/server';
 
