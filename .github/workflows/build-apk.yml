@@ -31,7 +31,9 @@ jobs:
         run: npm install
 
       - name: Build Next.js Project
-        # এটি out ফোল্ডারে স্ট্যাটিক ফাইল তৈরি করবে
+        env:
+          NEXT_PUBLIC_IMG_PROXY: ${{ secrets.NEXT_PUBLIC_IMG_PROXY }}
+          NEXT_PUBLIC_GA_ID: ${{ secrets.NEXT_PUBLIC_GA_ID }}
         run: npm run build
 
       - name: Sync Files to Capacitor Android
