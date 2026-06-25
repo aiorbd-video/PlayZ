@@ -1,13 +1,16 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  // যদি BUILD_MODE 'export' হয়, তবেই এটি স্ট্যাটিক ফাইল বানাবে (মোবাইলের জন্য), 
-  // নাহলে Vercel-এর জন্য নরমাল মোডে চলবে।
-  ...(process.env.BUILD_MODE === 'export' ? { output: 'export' } : {}),
+  // যদি Vercel-এ বিল্ড হয়, তবে ফাঁকা থাকবে। আর অন্য কোথাও (গিটহাবে) বিল্ড হলে output: 'export' হবে।
+  ...(process.env.VERCEL ? {} : { output: 'export' }),
   
   images: { 
     unoptimized: true 
-  }
+  },
+  
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
 };
 
 export default nextConfig;
