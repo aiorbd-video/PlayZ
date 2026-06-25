@@ -1,0 +1,51 @@
+name: Build Next.js to Android APK
+
+# main ব্রাঞ্চে কোড পুশ করলেই বিল্ড শুরু হবে
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-apk:
+    name: Build Android App
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Install NPM Dependencies
+        run: npm install
+
+      - name: Build Next.js Project
+        # এটি out ফোল্ডারে স্ট্যাটিক ফাইল তৈরি করবে
+        run: npm run build
+
+      - name: Sync Files to Capacitor Android
+        # Next.js এর ফাইলগুলো Android ফোল্ডারে সিঙ্ক করবে
+        run: npx cap sync android
+
+      - name: Build APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: All-In-One-Reborn-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
