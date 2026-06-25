@@ -7,6 +7,10 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { fetcher } from '../../utils/helpers';
 import { SmartImage } from '../../components/Cards';
+// এই ফাংশনটি Next.js কে বলবে বিল্ডের সময় কোনো ফেক পেজ না বানাতে
+export function generateStaticParams() {
+  return [];
+}
 
 export default function PlaylistPage() {
   const params = useParams();
