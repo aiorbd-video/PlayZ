@@ -15,7 +15,7 @@
     {
       "src": "/og-image.jpg",
       "sizes": "512x512",
-      "type": "image/png",
+      "type": "image/jpg",
       "purpose": "any maskable"
     }
   ]
