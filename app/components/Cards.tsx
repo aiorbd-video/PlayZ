@@ -104,7 +104,7 @@ MatchCountdown.displayName = 'MatchCountdown';
 
 export const ChannelCard = memo(({ channel, isPlaylist }: { channel: any, isPlaylist?: boolean }) => {
   const secureId = isPlaylist ? channel.id : btoa(unescape(encodeURIComponent(channel.id)));
-  const linkHref = isPlaylist ? `/playlist/${secureId}` : `/tv/${secureId}`;
+  const linkHref = isPlaylist ? `/playlist?id=${secureId}` : `/tv?id=${secureId}`;
 
   return (
     <motion.div whileTap={{ scale: 0.95 }} className="w-full">
@@ -149,7 +149,8 @@ export const MatchCard = memo(({ match, status }: { match: any; status: string }
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileTap={{ scale: 0.98 }} className="h-full">
       {/* 🎯 Next.js <Link> এর বদলে ব্রাউজার ডিফল্ট <a> ট্যাগ দিয়ে Hard-Reload ফোর্স করা হলো */}
-      <a href={`/watch/${slugLink}`} className="outline-none block h-full mb-3 md:mb-0">
+      <a href={`/watch?id=${slugLink}`} className="outline-none block h-full mb-3 md:mb-0">
+
         <div className="bg-[#1C1E2B] border border-[#2A8496]/70 rounded-[16px] p-4 transition-all hover:border-[#00E5FF] hover:shadow-[0_4px_20px_rgba(0,229,255,0.15)] h-full flex flex-col justify-between">
           
           {(eventInfo.eventCat || eventInfo.eventName) && (
