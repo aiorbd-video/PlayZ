@@ -10,7 +10,7 @@ import Script from 'next/script';
 // fetcher ফাংশনটি সাধারণ fetch এর জন্য
 const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-import { SmartImage } from '../../components/Cards';
+import { SmartImage } from '../components/Cards';
 
 export default function TvPlayer() {
   const searchParams = useSearchParams();
