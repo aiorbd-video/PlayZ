@@ -5,11 +5,11 @@ export async function generateStaticParams() {
   return [{ id: '1' }]; 
 }
 
-// Next.js-এর searchParams এরর বাইপাস করার জন্য Suspense এবং শুধু params পাঠানো হলো
-export default function Page({ params }: any) {
+// এখানে কোনো params পাঠানো হচ্ছে না, কারণ ClientPage নিজে থেকেই তা ম্যানেজ করে নেবে
+export default function Page() {
   return (
     <Suspense fallback={<div className="min-h-screen bg-[#11131A]"></div>}>
-      <ClientPage params={params} />
+      <ClientPage />
     </Suspense>
   );
 }
