@@ -1,3 +1,4 @@
+export const dynamic = 'force-static';
 import { MetadataRoute } from 'next';
 
 // 🟢 মেইন পেজের মতো হুবহু SEO ফ্রেন্ডলি স্লাগ জেনারেটর
