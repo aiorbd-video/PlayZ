@@ -34,7 +34,10 @@ jobs:
         env:
           NEXT_PUBLIC_IMG_PROXY: ${{ secrets.NEXT_PUBLIC_IMG_PROXY }}
           NEXT_PUBLIC_GA_ID: ${{ secrets.NEXT_PUBLIC_GA_ID }}
-        run: npm run build
+        run: |
+          rm -rf app/api
+          npm run build
+
 
       - name: Sync Files to Capacitor Android
         # Next.js এর ফাইলগুলো Android ফোল্ডারে সিঙ্ক করবে
