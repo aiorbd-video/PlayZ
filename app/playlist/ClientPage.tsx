@@ -4,8 +4,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import useSWR from 'swr';
 import { motion } from 'framer-motion';
-import { fetcher } from '../../utils/helpers';
-import { SmartImage } from '../../components/Cards';
+import { fetcher } from '../utils/helpers';
+import { SmartImage } from '../components/Cards';
 
 export default function ClientPage() {
   const searchParams = useSearchParams();
