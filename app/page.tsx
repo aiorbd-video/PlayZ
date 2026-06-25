@@ -59,10 +59,11 @@ export default function Home() {
   };
 
   // ✅ আপনার ডাটা ফেচিং লিংকগুলো এখানে সঠিকভাবে ফাংশনের ভেতর সেট করা হলো
-  const { data: rawMatches } = useSWR('/api/proxy?type=matches', fetcher, { refreshInterval: 90000, revalidateOnFocus: false, dedupingInterval: 15000 });
-  const { data: channelData } = useSWR('/api/channels', fetcher, { refreshInterval: 60000, revalidateOnFocus: false, revalidateOnReconnect: true, dedupingInterval: 20000 });
- const { data: m3uData } = useSWR('/api/m3u', fetcher, { refreshInterval: 90000, revalidateOnFocus: false, dedupingInterval: 30000 });
-  
+  const { data: rawMatches } = useSWR('https://www.ratulxlive.vercel.app/api/proxy?type=matches', ...);
+const { data: channelData } = useSWR('https://www.ratulxlive.vercel.app/api/channels', ...);
+const { data: m3uData } = useSWR('https://www.ratulxlive.vercel.app/api/m3u', ...);
+const { data } = useSWR('https://www.ratulxlive.vercel.app/api/notice', ...); // MarqueeNotice ফাংশনের ভেতরে
+
   const channels = channelData?.channels || [];
   const m3uChannels = m3uData?.channels || [];
 
