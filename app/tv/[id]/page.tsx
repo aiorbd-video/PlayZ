@@ -1,11 +1,11 @@
 import ClientPage from './ClientPage';
 
-export function generateStaticParams() {
-  return [];
+// ১. Next.js কে শান্ত করতে একটি ডামি (dummy) আইডি দিয়ে দিলাম
+export async function generateStaticParams() {
+  return [{ id: '1' }]; 
 }
 
-// Next.js থেকে আসা params বা ডেটাগুলো props হিসেবে রিসিভ করা হচ্ছে
+// ২. আপনার আসল পেজে ডেটা পাঠিয়ে দিলাম
 export default function Page(props: any) {
-  // সেই ডেটাগুলো সরাসরি ClientPage-এ পাঠিয়ে দেওয়া হচ্ছে
   return <ClientPage {...props} />;
 }
