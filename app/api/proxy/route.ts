@@ -1,7 +1,7 @@
 export const dynamic = 'force-static';
 
 // File: app/api/proxy/route.ts
-export const dynamic = 'force-dynamic';
+ //export const dynamic = 'force-dynamic'; pore edit korbo
 import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
