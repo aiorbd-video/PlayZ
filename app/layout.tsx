@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import SecurityScript from './components/SecurityScript';
 import { GoogleAnalytics } from '@next/third-parties/google';
+import Script from 'next/script';
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -210,6 +211,22 @@ export default function RootLayout({
         {/* 🟢 ফ্লোটিং টেলিগ্রাম বাটন শেষ */}
 
         {children}
+        <Script id="register-sw" strategy="afterInteractive">
+          {`
+            if ('serviceWorker' in navigator) {
+              window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/sw.js').then(
+                  function(registration) {
+                    console.log('Service Worker registration successful with scope: ', registration.scope);
+                  },
+                  function(err) {
+                    console.log('Service Worker registration failed: ', err);
+                  }
+                );
+              });
+            }
+          `}
+        </Script>
 
         {/* 🟢 Google Analytics (Vercel Env থেকে ডাইনামিক্যালি আনা) */}
         {process.env.NEXT_PUBLIC_GA_ID && (
