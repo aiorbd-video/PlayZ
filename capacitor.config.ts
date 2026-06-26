@@ -2,9 +2,8 @@ import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.playz.app', 
-  appName: 'All in one', // 🎯 এখানে কোটেশন মার্কটি ঠিক করা হয়েছে
+  appName: 'All in one', 
   webDir: 'out',
-  bundledWebRuntime: false,
   server: {
     androidScheme: 'https',
     cleartext: true
