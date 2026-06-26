@@ -2,7 +2,7 @@ import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.playz.app', // আপনার অ্যাপের আইডি যেমন আছে তেমনই রাখবেন
-  appName: 'PlayZ', // আপনার অ্যাপের নাম
+  appName: 'All in one, // আপনার অ্যাপের নাম
   webDir: 'out',
   bundledWebRuntime: false,
   server: {
