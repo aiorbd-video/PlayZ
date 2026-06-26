@@ -1,15 +1,14 @@
 import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.playz.app', // আপনার অ্যাপের আইডি যেমন আছে তেমনই রাখবেন
-  appName: 'All in one, // আপনার অ্যাপের নাম
+  appId: 'com.playz.app', 
+  appName: 'All in one', // 🎯 এখানে কোটেশন মার্কটি ঠিক করা হয়েছে
   webDir: 'out',
   bundledWebRuntime: false,
   server: {
     androidScheme: 'https',
     cleartext: true
   },
-  // 🎯 এই প্লাগিন অংশটুকু যোগ করুন (এটাই CORS বাইপাস করবে)
   plugins: {
     CapacitorHttp: {
       enabled: true,
