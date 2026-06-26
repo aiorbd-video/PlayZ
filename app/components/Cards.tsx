@@ -2,7 +2,7 @@
 
 import { useState, useEffect, memo } from 'react';
 import Image from 'next/image';
-import Link from 'next/link'; // 🎯 ব্রাউজার ডিফল্ট a ট্যাগ বাদ দিয়ে আবার Next.js Link আনা হলো
+import { useRouter } from 'next/navigation'; // 🎯 রাউটার ইমপোর্ট করা হলো
 import { motion } from 'framer-motion';
 import { getImg, generateSlug, IMG_PROXY } from '../utils/helpers';
 
@@ -103,13 +103,17 @@ export const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { star
 MatchCountdown.displayName = 'MatchCountdown';
 
 export const ChannelCard = memo(({ channel, isPlaylist }: { channel: any, isPlaylist?: boolean }) => {
+  const router = useRouter(); // 🎯 রাউটার ব্যবহার
   const secureId = isPlaylist ? channel.id : btoa(unescape(encodeURIComponent(channel.id)));
   const linkHref = isPlaylist ? `/playlist?id=${secureId}` : `/tv?id=${secureId}`;
 
   return (
-    <motion.div whileTap={{ scale: 0.95 }} className="w-full">
-      {/* 🎯 a ট্যাগের বদলে Link ব্যবহার করা হলো যাতে পেজ রিফ্রেশ না হয় */}
-      <Link href={linkHref} className="outline-none block h-full">
+    <motion.div 
+      whileTap={{ scale: 0.95 }} 
+      className="w-full cursor-pointer"
+      onClick={() => router.push(linkHref)} // 🎯 Link বাদ দিয়ে সরাসরি পুশ
+    >
+      <div className="outline-none block h-full">
         <div className="bg-[#1C1E2B] border border-[#2A8496]/50 rounded-xl p-2 md:p-3 flex flex-col items-center justify-center aspect-[4/5] hover:border-[#00E5FF] hover:shadow-[0_0_15px_rgba(0,229,255,0.2)] transition-all relative overflow-hidden group">
           <div className="w-[50px] h-[50px] md:w-[70px] md:h-[70px] lg:w-[80px] lg:h-[80px] rounded-full bg-white flex items-center justify-center overflow-hidden mb-2 shadow-inner border border-gray-300 transition-transform group-hover:scale-110">
             <SmartImage src={channel.logo} alt={channel.name} width={80} height={80} className="object-contain p-1" />
@@ -121,7 +125,7 @@ export const ChannelCard = memo(({ channel, isPlaylist }: { channel: any, isPlay
             </span>
           </div>
         </div>
-      </Link>
+      </div>
 
       <style dangerouslySetInnerHTML={{__html: `
         .main-marquee-container {
@@ -143,13 +147,19 @@ export const ChannelCard = memo(({ channel, isPlaylist }: { channel: any, isPlay
 ChannelCard.displayName = 'ChannelCard';
 
 export const MatchCard = memo(({ match, status }: { match: any; status: string }) => {
+  const router = useRouter(); // 🎯 রাউটার ব্যবহার
   const eventInfo = match.eventInfo || match.event || {};
   const slugLink = generateSlug(eventInfo.teamA, eventInfo.teamB, eventInfo.eventName, match.id);
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileTap={{ scale: 0.98 }} className="h-full">
-      {/* 🎯 a ট্যাগের বদলে Link ব্যবহার করা হলো যাতে পেজ রিফ্রেশ না হয় */}
-      <Link href={`/watch?id=${slugLink}`} className="outline-none block h-full mb-3 md:mb-0">
+    <motion.div 
+      initial={{ opacity: 0, y: 10 }} 
+      animate={{ opacity: 1, y: 0 }} 
+      whileTap={{ scale: 0.98 }} 
+      className="h-full cursor-pointer"
+      onClick={() => router.push(`/watch?id=${slugLink}`)} // 🎯 Link বাদ দিয়ে সরাসরি পুশ
+    >
+      <div className="outline-none block h-full mb-3 md:mb-0">
         <div className="bg-[#1C1E2B] border border-[#2A8496]/70 rounded-[16px] p-4 transition-all hover:border-[#00E5FF] hover:shadow-[0_4px_20px_rgba(0,229,255,0.15)] h-full flex flex-col justify-between">
           
           {(eventInfo.eventCat || eventInfo.eventName) && (
@@ -185,7 +195,7 @@ export const MatchCard = memo(({ match, status }: { match: any; status: string }
             </div>
           </div>
         </div>
-      </Link>
+      </div>
     </motion.div>
   );
 }, (prevProps, nextProps) => prevProps.match.id === nextProps.match.id && prevProps.status === nextProps.status);
