@@ -4,6 +4,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle, memo } from 'reac
 import useSWR from 'swr';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
+import { useRouter } from 'next/navigation'; // 🎯 রাউটার ইমপোর্ট করা হলো
 
 export interface PlayerLogsHandle {
   addLog: (message: string, type?: 'info' | 'success' | 'error' | 'warn') => void;
@@ -121,12 +122,19 @@ const MatchCountdown = memo(({ startTimeStr, endTimeStr, status }: { startTimeSt
 MatchCountdown.displayName = 'MatchCountdown';
 
 const MatchCardComponent = memo(({ match, status }: { match: any; status: string }) => {
+  const router = useRouter(); // 🎯 রাউটার ব্যবহার করা হলো
   const eventInfo = match.eventInfo || match.event || {};
   const slugLink = generateSlug(eventInfo.teamA, eventInfo.teamB, eventInfo.eventName, match.id);
 
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} whileTap={{ scale: 0.98 }} className="h-full">
-      <a href={`/watch/${slugLink}`} className="outline-none block h-full mb-3 md:mb-0">
+    <motion.div 
+      initial={{ opacity: 0, y: 10 }} 
+      animate={{ opacity: 1, y: 0 }} 
+      whileTap={{ scale: 0.98 }} 
+      className="h-full cursor-pointer"
+      onClick={() => router.push(`/watch?id=${slugLink}`)} // 🎯 a ট্যাগ বাদ দিয়ে সরাসরি রাউটার পুশ এবং ?id= ফরম্যাট!
+    >
+      <div className="outline-none block h-full mb-3 md:mb-0">
         <div className="bg-[#1C1E2B] border border-[#2A8496]/70 rounded-[16px] p-4 transition-all hover:border-[#00E5FF] hover:shadow-[0_4px_20px_rgba(0,229,255,0.15)] h-full flex flex-col justify-between">
           
           {(eventInfo.eventCat || eventInfo.eventName) && (
@@ -162,7 +170,7 @@ const MatchCardComponent = memo(({ match, status }: { match: any; status: string
             </div>
           </div>
         </div>
-      </a>
+      </div>
     </motion.div>
   );
 }, (prevProps, nextProps) => prevProps.match.id === nextProps.match.id && prevProps.status === nextProps.status);
@@ -191,7 +199,6 @@ export const PlayerLogs = forwardRef<PlayerLogsHandle, PlayerLogsProps>(({ match
               d = `${p[2]}/${p[1]}/${p[0]}`; 
            }
         }
-        // 🎯 THE UTC FIX: টাইমের শেষে +0000 যোগ করা হলো, ব্রাউজার নিজে থেকে ৬ ঘণ্টা (BDT) যোগ করে নিবে!
         mappedStartTime = `${d} ${eventInfo.time} +0000`;
       }
 
