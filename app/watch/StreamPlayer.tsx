@@ -1,9 +1,8 @@
-// File: app/watch/[id]/StreamPlayer.tsx
 'use client';
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import useSWR from 'swr';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation'; // 🎯 রাউটার ইমপোর্ট করা হলো
 import { motion, AnimatePresence } from 'framer-motion';
 import 'shaka-player/dist/controls.css';
 import Script from 'next/script';
@@ -23,6 +22,7 @@ const CONFIG = {
 const fetcher = (url: string) => fetch(url, { cache: 'no-store' }).then((res) => res.json());
 
 export default function StreamPlayer({ id }: { id: string }) {
+  const router = useRouter(); // 🎯 রাউটার ইনিশিয়ালাইজ করা হলো
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const loggerRef = useRef<PlayerLogsHandle>(null);
@@ -88,8 +88,8 @@ export default function StreamPlayer({ id }: { id: string }) {
     return () => clearInterval(interval);
   }, [handleFitToggle]);
 
-  // 🎯 ১. Live Matches কল করার জন্য লোকাল প্রক্সি ব্যবহার
-  const { data: rawMatches } = useSWR('/api/proxy?type=matches', fetcher, { revalidateOnFocus: false });
+  // 🎯 ১. Live Matches কল করার জন্য ফুল API লিংক (লোকাল প্রক্সি বাদ দিয়ে)
+  const { data: rawMatches } = useSWR('https://www.ratulxlive.duckdns.org/api/proxy?type=matches', fetcher, { revalidateOnFocus: false });
   
   const matches = useMemo(() => {
     if (!rawMatches || !Array.isArray(rawMatches)) return null;
@@ -112,11 +112,11 @@ export default function StreamPlayer({ id }: { id: string }) {
     return matches.find((m: any) => String(m.id) === String(id)) || null;
   }, [matches, id]);
 
-  // 🎯 ২. Stream URL বানানোর লজিক
+  // 🎯 ২. Stream URL বানানোর লজিক (ফুল API লিংক সহ)
   const streamFetchUrl = useMemo(() => {
     if (currentMatch?.links) {
       const streamSlug = currentMatch.links.replace('pro/', '').replace('.txt', '');
-      return `/api/proxy?type=stream&id=${streamSlug}`;
+      return `https://www.ratulxlive.duckdns.org/api/proxy?type=stream&id=${streamSlug}`;
     }
     return null;
   }, [currentMatch]);
@@ -190,11 +190,11 @@ export default function StreamPlayer({ id }: { id: string }) {
     <main className="min-h-screen bg-[#11131A] text-white font-sans pb-10">
       <nav className="p-4 bg-[#11131A]/90 sticky top-0 z-50 border-b border-gray-800/60 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <Link href="/">
-            <button className="px-3 py-1.5 rounded-lg bg-gray-800/50 hover:bg-[#00E5FF]/10 text-gray-300 hover:text-[#00E5FF] transition-all border border-gray-700/40 text-xs font-bold outline-none flex items-center gap-2">
-              ← Back to Home
-            </button>
-          </Link>
+          {/* 🎯 Link বাদ দিয়ে সরাসরি router.back() ব্যবহার করা হলো যাতে পেজ রিফ্রেশ না মারে */}
+          <button onClick={() => router.back()} className="px-3 py-1.5 rounded-lg bg-gray-800/50 hover:bg-[#00E5FF]/10 text-gray-300 hover:text-[#00E5FF] transition-all border border-gray-700/40 text-xs font-bold outline-none flex items-center gap-2">
+            ← Back to Home
+          </button>
+          
           <span className="text-sm font-bold tracking-wide truncate max-w-xs md:max-w-lg">{matchTitle || 'Live Event'}</span>
           <div className="w-20"></div>
         </div>
